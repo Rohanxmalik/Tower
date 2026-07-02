@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Rohanxmalik/Tower.git",
+    "url": "git+https://github.com/Rohanxmalik/Tower.git",
     "directory": "packages/cli"
   },
   "homepage": "https://github.com/Rohanxmalik/Tower#readme",
@@ -22,7 +22,7 @@
     "coordination"
   ],
   "bin": {
-    "tower": "./dist/index.js"
+    "tower": "dist/index.js"
   },
   "files": [
     "dist"

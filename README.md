@@ -19,7 +19,7 @@ and warns **before** the edit happens, not at merge time.
    Options:  [w] wait   [d] take dependent task   [b] branch from their WIP   [f] force
 ```
 
-> The image above is a static preview. Generate the animated GIF with
+> The banner above is an animated SVG. Prefer a real terminal-recording GIF? Run
 > [`vhs`](https://github.com/charmbracelet/vhs): `vhs examples/two-agents-demo/demo.tape` → `docs/demo.gif`.
 
 > Status: **early / building in public.** MVP works end-to-end. See [MVP-SPEC.md](./MVP-SPEC.md)

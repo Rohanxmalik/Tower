@@ -1,0 +1,20 @@
+{
+  "name": "@tower/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "tower": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "@tower/server": "*",
+    "@tower/shared": "*",
+    "yaml": "^2.6.1"
+  }
+}

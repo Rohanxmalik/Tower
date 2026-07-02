@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="360" viewBox="0 0 840 360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <rect width="840" height="360" rx="10" fill="#0d1117"/>
+  <rect width="840" height="36" rx="10" fill="#161b22"/>
+  <rect y="26" width="840" height="10" fill="#161b22"/>
+  <circle cx="22" cy="18" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="18" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="18" r="6" fill="#27c93f"/>
+  <text x="420" y="22" fill="#8b949e" font-size="13" text-anchor="middle">tower — air-traffic control for AI agents</text>
+
+  <text font-size="15" xml:space="preserve">
+    <tspan x="24" y="78" fill="#3fb950">$ </tspan><tspan fill="#c9d1d9">tower claim --agent cursor-bob --symbol src/auth.ts#AuthService.verify</tspan>
+    <tspan x="24" y="104" fill="#56d364">✅ No collisions — safe to proceed.</tspan>
+
+    <tspan x="24" y="150" fill="#3fb950">$ </tspan><tspan fill="#c9d1d9">tower claim --agent claude-a --symbol src/auth.ts#AuthService.verify</tspan>
+    <tspan x="24" y="182" fill="#f85149" font-weight="bold">⛔ COLLISION — AuthService.verify</tspan>
+    <tspan x="24" y="208" fill="#8b949e">   Agent "cursor-bob" is mid-change (started 2m ago, ETA ~6m, purpose: replace JWT).</tspan>
+    <tspan x="24" y="234" fill="#6e7681">   Options:  [w] wait   [d] take dependent task   [b] branch from their WIP   [f] force</tspan>
+  </text>
+
+  <text x="24" y="300" fill="#c9d1d9" font-size="14">Caught <tspan fill="#58a6ff">before the first keystroke</tspan> — not at merge time.</text>
+  <text x="24" y="326" fill="#484f58" font-size="12.5">Semantic (tree-sitter) symbol overlap · model-agnostic over MCP · works with Claude Code, Cursor, Codex</text>
+</svg>

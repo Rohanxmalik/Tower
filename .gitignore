@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# Tower local state
+.tower/tower.db
+.tower/*.db

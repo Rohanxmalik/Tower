@@ -1,0 +1,136 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AddressInfo } from "node:net";
+import {
+  cmdClaim,
+  cmdStatus,
+  cmdInit,
+  cmdComplete,
+  cmdServe,
+  cmdWatch,
+  type ClaimArgs,
+} from "./commands.js";
+import { buildService } from "./lib.js";
+
+let dir: string;
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "tower-cli-"));
+});
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+
+function collect(): { out: (l: string) => void; lines: string[] } {
+  const lines: string[] = [];
+  return { out: (l) => lines.push(l), lines };
+}
+
+const bob: ClaimArgs = {
+  agentId: "cursor-bob",
+  repo: "acme/app",
+  branch: "main",
+  files: [],
+  symbols: ["src/auth.ts#AuthService.verify"],
+  purpose: "replace JWT",
+  etaMinutes: 6,
+};
+
+describe("cmdClaim", () => {
+  it("registers a first claim with no collision", () => {
+    const { out, lines } = collect();
+    const hard = cmdClaim(dir, bob, out);
+    expect(hard).toBe(false);
+    expect(lines.join("\n")).toContain("safe to proceed");
+  });
+
+  it("detects a hard collision when a second agent claims the same symbol", () => {
+    cmdClaim(dir, bob, () => {});
+    const { out, lines } = collect();
+    const hard = cmdClaim(dir, { ...bob, agentId: "claude-a", purpose: "add rate limit" }, out);
+    expect(hard).toBe(true);
+    const text = lines.join("\n");
+    expect(text).toContain("⛔ COLLISION — AuthService.verify");
+    expect(text).toContain('Agent "cursor-bob"');
+  });
+
+  it("shares state across invocations via the file-backed store", () => {
+    cmdClaim(dir, bob, () => {});
+    const { out, lines } = collect();
+    cmdStatus(dir, out);
+    expect(lines.join("\n")).toContain("cursor-bob");
+  });
+});
+
+describe("cmdComplete", () => {
+  it("completes an active claim and clears it from status", () => {
+    const svc = buildService(dir);
+    const { claimId } = svc.claimIntent({
+      agentId: "a",
+      repo: "r",
+      branch: "main",
+      files: ["src/x.ts"],
+      symbols: [],
+      purpose: "",
+    });
+    svc.store.close();
+
+    const { out, lines } = collect();
+    expect(cmdComplete(dir, claimId, "deadbeef", out)).toBe(true);
+    expect(lines.join("\n")).toContain("Completed claim");
+
+    const status = collect();
+    cmdStatus(dir, status.out);
+    expect(status.lines.join("\n")).toContain("No active claims");
+  });
+
+  it("reports when there is no matching active claim", () => {
+    const { out, lines } = collect();
+    expect(cmdComplete(dir, "does-not-exist", undefined, out)).toBe(false);
+    expect(lines.join("\n")).toContain("No active claim");
+  });
+});
+
+describe("cmdServe", () => {
+  it("starts an HTTP server that answers /health", async () => {
+    const { out, lines } = collect();
+    const server = await cmdServe(dir, { http: true, port: 0 }, out);
+    expect(server).toBeDefined();
+    try {
+      const port = (server!.address() as AddressInfo).port;
+      const res = await fetch(`http://127.0.0.1:${port}/health`);
+      expect((await res.json()).ok).toBe(true);
+      expect(lines.join("\n")).toContain("listening");
+    } finally {
+      await new Promise<void>((r) => server!.close(() => r()));
+    }
+  });
+});
+
+describe("cmdWatch", () => {
+  it("polls the claims table for the requested number of ticks", async () => {
+    cmdClaim(dir, bob, () => {});
+    const { out, lines } = collect();
+    await cmdWatch(dir, out, { intervalMs: 1, ticks: 2 });
+    const printed = lines.filter((l) => l.includes("Active claims"));
+    expect(printed).toHaveLength(2);
+  });
+});
+
+describe("cmdInit", () => {
+  it("writes an example policy and prints MCP setup", () => {
+    const { out, lines } = collect();
+    cmdInit(dir, out);
+    expect(existsSync(join(dir, ".tower", "policy.yaml"))).toBe(true);
+    expect(lines.join("\n")).toContain("mcpServers");
+  });
+
+  it("respects an existing policy file", () => {
+    mkdirSync(join(dir, ".tower"), { recursive: true });
+    writeFileSync(join(dir, ".tower", "policy.yaml"), "modules: {}\n");
+    const { out, lines } = collect();
+    cmdInit(dir, out);
+    expect(lines.join("\n")).toContain("already exists");
+  });
+});

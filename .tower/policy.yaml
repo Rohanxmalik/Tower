@@ -1,0 +1,8 @@
+# Tower policy — declare your modules so the sequencer can order agent work safely.
+# This example matches a conventional src/ layout; adapt to your repo.
+modules:
+  auth: { path: "src/auth/**" }
+  api: { path: "src/api/**", depends_on: [auth] }
+  dashboard: { path: "src/dashboard/**", depends_on: [api] }
+limits:
+  max_agents_per_module: 3

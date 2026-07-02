@@ -1,0 +1,20 @@
+#!/bin/sh
+# Tower post-commit hook — release an agent's claim once work is committed.
+#
+# Install:
+#   cp examples/git-hooks/post-commit .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
+#
+# How it works: your agent stores its active claim id (e.g. in .tower/claim-id
+# after calling claim_intent). On commit we complete that claim so others see the
+# file freed and the commit sha recorded.
+
+CLAIM_FILE=".tower/claim-id"
+if [ -f "$CLAIM_FILE" ]; then
+  CLAIM_ID=$(cat "$CLAIM_FILE")
+  SHA=$(git rev-parse HEAD)
+  # Best-effort; never block a commit on Tower.
+  npx --yes @tower/cli complete --claim "$CLAIM_ID" --sha "$SHA" >/dev/null 2>&1 || true
+  rm -f "$CLAIM_FILE"
+fi
+exit 0

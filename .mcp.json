@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tower": {
+      "command": "node",
+      "args": ["packages/cli/dist/index.js", "serve"]
+    }
+  }
+}

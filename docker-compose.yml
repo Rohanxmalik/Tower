@@ -1,0 +1,15 @@
+# Host one Tower for a team. Set TOWER_TOKEN in your shell or a .env file.
+#   TOWER_TOKEN=your-secret docker compose up -d
+services:
+  tower:
+    build: .
+    ports:
+      - "4319:4319"
+    environment:
+      - TOWER_TOKEN=${TOWER_TOKEN:-changeme}
+    volumes:
+      - tower-data:/app/.tower
+    restart: unless-stopped
+
+volumes:
+  tower-data:

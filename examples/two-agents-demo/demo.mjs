@@ -21,7 +21,7 @@ try {
 
   log("\x1b[36m▶ cursor-bob starts refactoring AuthService.verify (replace JWT)\x1b[0m");
   await sleep(400);
-  cmdClaim(dir, {
+  await cmdClaim(dir, {
     agentId: "cursor-bob",
     repo,
     branch: "main",
@@ -36,7 +36,7 @@ try {
     "\n\x1b[36m▶ claude-a is asked to add rate-limiting — and reaches for the same symbol\x1b[0m",
   );
   await sleep(400);
-  cmdClaim(dir, {
+  await cmdClaim(dir, {
     agentId: "claude-a",
     repo,
     branch: "main",

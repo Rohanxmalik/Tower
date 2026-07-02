@@ -1,0 +1,11 @@
+{
+  "//": "Copy to .claude/settings.json to ENFORCE Tower on this repo. Requires `npm run build` first.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "node hooks/pretooluse-tower.mjs" }]
+      }
+    ]
+  }
+}

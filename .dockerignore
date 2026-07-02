@@ -1,0 +1,10 @@
+node_modules
+**/dist
+**/*.tsbuildinfo
+coverage
+.git
+.github
+.tower/tower.db
+.tower/*.db
+.tower/claim-id
+*.log

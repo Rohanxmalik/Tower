@@ -89,13 +89,38 @@ MCP clients (Claude Code / Cursor / Codex)
         ▼
 Tower server ── collision engine (tree-sitter symbols) · sequencer · SQLite store
         ▲
-tower CLI: init · serve · status · watch · claim · complete   (+ git post-commit hook)
+tower CLI: init · serve · status · watch · claim · guard · complete   (+ git & PreToolUse hooks)
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so
   `AuthService.verify` collides even across different diff hunks.
-- **Advisory, not a lock server:** Tower informs; the agent/human decides.
 - **Model-agnostic:** it's an MCP server — every major agent works today.
+
+## Enforcement (don't rely on the agent remembering)
+
+A tool call the agent _chooses_ to make isn't a safety net. The **Claude Code PreToolUse
+hook** makes it one: before any `Edit`/`Write`, Tower checks the file, and if another
+active agent holds a hard-conflicting claim the edit is **blocked** and the reason is fed
+back to Claude.
+
+```bash
+npm run build
+cp .claude/settings.example.json .claude/settings.json   # then reload Claude Code
+```
+
+Open two agent sessions on the same repo → the second is blocked when it reaches for a
+file the first is editing. Details + scope → [docs/enforcement.md](./docs/enforcement.md).
+
+## Team mode (different machines)
+
+Host one Tower and point every agent at it over MCP-HTTP:
+
+```bash
+TOWER_TOKEN=your-secret docker compose up -d   # http://<host>:4319/mcp
+```
+
+Each dev's `.mcp.json` uses `"type": "http", "url": ".../mcp"` — now your Claude tells your
+co-founder's Claude "don't touch auth until commit abc123." Setup → [docs/team.md](./docs/team.md).
 
 ## Monorepo layout
 
@@ -103,8 +128,10 @@ tower CLI: init · serve · status · watch · claim · complete   (+ git post-c
 packages/shared   protocol types + zod schemas (source of truth)
 packages/server   collision engine, sequencer, SQLite store, MCP server, transports
 packages/cli      the `tower` command
+hooks/            Claude Code PreToolUse enforcement hook
 examples/         two-agents-demo, git-hooks
-docs/             quickstart, protocol
+docs/             quickstart, protocol, enforcement, team
+Dockerfile        hosted team server
 ```
 
 ## Develop

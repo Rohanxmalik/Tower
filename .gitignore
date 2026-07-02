@@ -8,3 +8,4 @@ coverage/
 # Tower local state
 .tower/tower.db
 .tower/*.db
+.tower/claim-id

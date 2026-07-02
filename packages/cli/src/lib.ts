@@ -11,6 +11,9 @@ export function dbPath(cwd: string): string {
 export function policyPath(cwd: string): string {
   return join(towerDir(cwd), "policy.yaml");
 }
+export function claimIdPath(cwd: string): string {
+  return join(towerDir(cwd), "claim-id");
+}
 
 export function loadPolicy(cwd: string): Policy {
   const p = policyPath(cwd);

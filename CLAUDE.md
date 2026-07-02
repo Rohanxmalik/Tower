@@ -21,6 +21,10 @@ symbols you're about to change, plus a short `purpose`.
 The `tower` MCP server is wired up in [.mcp.json](.mcp.json). Run `npm run build` once so
 `packages/cli/dist` exists, then reload your editor to load the server.
 
+**Want it enforced (not just suggested)?** Copy `.claude/settings.example.json` →
+`.claude/settings.json` to enable the PreToolUse hook, which blocks an `Edit`/`Write` when
+another active agent holds a hard-conflicting claim. See [docs/enforcement.md](docs/enforcement.md).
+
 ## Commands
 
 ```bash
@@ -37,7 +41,8 @@ npm run demo      # the two-agent collision demo
 | ----------------- | ------------------------------------------------------------------------------- |
 | `packages/shared` | Protocol types + zod schemas — the single source of truth (9 tools)             |
 | `packages/server` | Collision engine (tree-sitter), sequencer, SQLite store, MCP server, transports |
-| `packages/cli`    | The `tower` command: init / serve / status / watch / claim / complete           |
+| `packages/cli`    | The `tower` command: init / serve / status / watch / claim / guard / complete   |
+| `hooks/`          | Claude Code PreToolUse enforcement hook                                         |
 
 Wire contract: [docs/protocol.md](docs/protocol.md). Full design: [MVP-SPEC.md](MVP-SPEC.md).
 

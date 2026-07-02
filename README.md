@@ -1,5 +1,9 @@
 # Tower 🗼
 
+[![CI](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml)
+![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-3fb950)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **Air-traffic control for AI agents editing a shared repo.**
 
 Tower is an [MCP](https://modelcontextprotocol.io) server that stops two AI agents from
@@ -36,16 +40,25 @@ npm run demo
 ```
 
 Two agents reach for the same symbol; the second is caught before its first keystroke.
-Record it — that's the launch GIF.
+Turn it into a GIF with [`vhs`](https://github.com/charmbracelet/vhs):
+`vhs examples/two-agents-demo/demo.tape`.
 
 ## Quickstart
 
-Needs **Node 22+** (uses built-in `node:sqlite`, no native build).
+Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Not on npm yet —
+clone and build:
 
 ```bash
-npx @tower/cli init      # writes .tower/policy.yaml + prints MCP setup
-npx @tower/cli serve     # MCP over stdio (or: serve --http --port 4319 --token <secret>)
+git clone https://github.com/Rohanxmalik/Tower && cd Tower
+npm install && npm run build
+
+node packages/cli/dist/index.js init     # writes .tower/policy.yaml + prints MCP setup
+node packages/cli/dist/index.js serve    # MCP over stdio (or: serve --http --port 4319 --token <secret>)
 ```
+
+Tip: `npm link` inside the repo gives you the `tower` command globally.
+
+> 📦 npm publish (`npx @tower/cli …`) is coming — see [issues](https://github.com/Rohanxmalik/Tower/issues).
 
 Point your agent's MCP config at Tower and add to its rules file:
 

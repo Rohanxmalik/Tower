@@ -1,10 +1,24 @@
 {
   "name": "@tower/shared",
   "version": "0.1.0",
+  "description": "Tower protocol types and zod schemas (shared).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rohanxmalik/Tower.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/Rohanxmalik/Tower#readme",
+  "bugs": "https://github.com/Rohanxmalik/Tower/issues",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -12,7 +26,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "zod": "^3.24.1"

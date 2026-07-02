@@ -1,15 +1,38 @@
 {
   "name": "@tower/cli",
   "version": "0.1.0",
+  "description": "Tower CLI — air-traffic control for AI agents editing a shared repo.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rohanxmalik/Tower.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Rohanxmalik/Tower#readme",
+  "bugs": "https://github.com/Rohanxmalik/Tower/issues",
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "claude",
+    "cursor",
+    "developer-tools",
+    "coordination"
+  ],
   "bin": {
     "tower": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",

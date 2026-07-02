@@ -5,6 +5,12 @@
   "description": "Tower — air-traffic control for AI agents editing a shared repo. Semantic pre-flight collision detection over MCP.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rohanxmalik/Tower.git"
+  },
+  "homepage": "https://github.com/Rohanxmalik/Tower#readme",
+  "bugs": "https://github.com/Rohanxmalik/Tower/issues",
   "workspaces": [
     "packages/shared",
     "packages/server",

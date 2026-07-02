@@ -6,6 +6,8 @@
 
 **Air-traffic control for AI agents editing a shared repo.**
 
+**[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — install: `npx -y tower-mcp serve`
+
 Tower is an [MCP](https://modelcontextprotocol.io) server that stops two AI agents from
 colliding on the same code. Any agent — Claude Code, Cursor, Codex, Gemini — registers
 what it's _about to change_; Tower detects **semantic** overlap with other active agents
@@ -45,22 +47,36 @@ Turn it into a GIF with [`vhs`](https://github.com/charmbracelet/vhs):
 
 ## Quickstart
 
-Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Not on npm yet —
-clone and build:
+Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Add Tower to your
+agent's MCP config:
+
+```jsonc
+// Claude Code — .mcp.json
+{
+  "mcpServers": {
+    "tower": { "command": "npx", "args": ["-y", "tower-mcp", "serve"] },
+  },
+}
+```
+
+Or drive it from the terminal:
+
+```bash
+npx -y tower-mcp init      # writes .tower/policy.yaml + prints MCP setup
+npx -y tower-mcp serve     # MCP over stdio (or: serve --http --port 4319 --token <secret>)
+```
+
+<details><summary>From source (contributors)</summary>
 
 ```bash
 git clone https://github.com/Rohanxmalik/Tower && cd Tower
 npm install && npm run build
-
-node packages/cli/dist/index.js init     # writes .tower/policy.yaml + prints MCP setup
-node packages/cli/dist/index.js serve    # MCP over stdio (or: serve --http --port 4319 --token <secret>)
+node packages/cli/dist/index.js serve
 ```
 
-Tip: `npm link` inside the repo gives you the `tower` command globally.
+</details>
 
-> 📦 npm publish (`npx @tower/cli …`) is coming — see [issues](https://github.com/Rohanxmalik/Tower/issues).
-
-Point your agent's MCP config at Tower and add to its rules file:
+Then add to your agent's rules file:
 
 > "Before editing any file, call `claim_intent` with the files and symbols you'll change.
 > If a `hard` conflict returns, stop and ask the user."

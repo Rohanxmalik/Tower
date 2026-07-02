@@ -1,0 +1,6 @@
+# Static landing page — hand-authored, not part of the TS quality gate.
+site/
+docs/demo.svg
+# Build output.
+**/dist/
+coverage/

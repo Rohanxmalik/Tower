@@ -2,6 +2,7 @@
   "name": "@tower/server",
   "version": "0.1.0",
   "description": "Tower coordination server: collision engine, sequencer, SQLite store, MCP transports.",
+  "private": true,
   "type": "module",
   "license": "MIT",
   "repository": {

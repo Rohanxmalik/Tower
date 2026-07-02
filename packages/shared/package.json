@@ -2,6 +2,7 @@
   "name": "@tower/shared",
   "version": "0.1.0",
   "description": "Tower protocol types and zod schemas (shared).",
+  "private": true,
   "type": "module",
   "license": "MIT",
   "repository": {

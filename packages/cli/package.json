@@ -1,7 +1,7 @@
 {
-  "name": "@tower/cli",
+  "name": "tower-mcp",
   "version": "0.1.0",
-  "description": "Tower CLI — air-traffic control for AI agents editing a shared repo.",
+  "description": "Air-traffic control for AI agents editing a shared repo — semantic pre-flight collision detection over MCP. Model-agnostic (Claude Code, Cursor, Codex).",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -13,31 +13,35 @@
   "bugs": "https://github.com/Rohanxmalik/Tower/issues",
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "ai-agents",
     "claude",
     "cursor",
+    "codex",
     "developer-tools",
     "coordination"
   ],
   "bin": {
     "tower": "./dist/index.js"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -b",
-    "prepublishOnly": "npm run build"
+    "build": "tsup"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
-    "@tower/server": "*",
-    "@tower/shared": "*",
-    "yaml": "^2.6.1"
+    "express": "^4.21.2",
+    "tree-sitter-wasms": "^0.1.12",
+    "web-tree-sitter": "^0.24.5",
+    "yaml": "^2.6.1",
+    "zod": "^3.24.1"
   }
 }

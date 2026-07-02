@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tower — air-traffic control for AI agents</title>
+    <meta
+      name="description"
+      content="Tower is an MCP server that stops two AI agents from colliding on the same code. Semantic pre-flight collision detection, before the keystroke — not at merge. Model-agnostic: Claude Code, Cursor, Codex."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070B0F'/%3E%3Cpath d='M16 5v22M9 27h14M12 11l4-4 4 4' stroke='%2338E08A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <meta property="og:title" content="Tower — air-traffic control for AI agents" />
+    <meta
+      property="og:description"
+      content="An MCP server that catches conflicting AI edits before the keystroke, not at merge. npx tower-mcp."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/Rohanxmalik/Tower/main/site/demo.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --radar: #070b0f;
+        --panel: #0e141b;
+        --panel-2: #121a23;
+        --line: #1e2a34;
+        --phosphor: #38e08a;
+        --amber: #f0b429;
+        --alert: #ff4d4d;
+        --cyan: #4cc9f0;
+        --ink: #c9d6df;
+        --muted: #6b7b88;
+        --display: "Space Grotesk", system-ui, sans-serif;
+        --body: "Inter", system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--radar);
+        color: var(--ink);
+        font-family: var(--body);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .wrap { width: min(1080px, 92vw); margin: 0 auto; }
+      .mono { font-family: var(--mono); }
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
+      section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; border-top: 1px solid var(--line); }
+
+      /* NAV */
+      nav {
+        position: sticky; top: 0; z-index: 20;
+        background: rgba(7, 11, 15, 0.82);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .nav-in { display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 0; }
+      .brand { display: flex; align-items: center; gap: 0.6rem; font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; color: #fff; }
+      .brand svg { display: block; }
+      .nav-links { display: flex; align-items: center; gap: 1.4rem; font-size: 0.92rem; }
+      .nav-links a { color: var(--ink); }
+      .btn {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        font-family: var(--mono); font-size: 0.9rem; font-weight: 500;
+        padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid var(--line);
+        color: var(--ink); background: var(--panel); cursor: pointer; transition: 0.15s;
+      }
+      .btn:hover { border-color: var(--phosphor); text-decoration: none; }
+      .btn-primary { background: var(--phosphor); color: #04150c; border-color: var(--phosphor); font-weight: 600; }
+      .btn-primary:hover { filter: brightness(1.08); }
+
+      /* HERO */
+      .hero { position: relative; border-top: none; padding-top: clamp(2.5rem, 6vw, 4.5rem); }
+      .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: center; }
+      h1 { font-size: clamp(2.3rem, 5.4vw, 4rem); font-weight: 700; color: #fff; margin: 0.9rem 0; }
+      h1 .glow { color: var(--phosphor); }
+      .lede { font-size: clamp(1.02rem, 1.5vw, 1.22rem); color: var(--muted); max-width: 40ch; }
+      .lede b { color: var(--ink); font-weight: 600; }
+      .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.6rem; }
+      .cmd {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        font-family: var(--mono); font-size: 0.95rem;
+        background: #05090c; border: 1px solid var(--line); border-radius: 10px;
+        padding: 0.8rem 0.9rem 0.8rem 1.1rem; margin-top: 1.4rem; max-width: 460px;
+      }
+      .cmd .prompt { color: var(--phosphor); }
+      .cmd code { color: var(--ink); }
+      .copy { border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 6px; padding: 0.35rem 0.6rem; font-family: var(--mono); font-size: 0.78rem; cursor: pointer; transition: 0.15s; }
+      .copy:hover { color: var(--phosphor); border-color: var(--phosphor); }
+      .copy.copied { color: var(--phosphor); border-color: var(--phosphor); }
+
+      /* CONSOLE / RADAR */
+      .console { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.1rem; overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
+      .console-head { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.9rem; }
+      .live { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--phosphor); }
+      .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--phosphor); animation: blink 1.6s infinite; }
+      .radar { position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%; opacity: 0.16; pointer-events: none;
+        background: conic-gradient(from 0deg, transparent 0deg, var(--phosphor) 40deg, transparent 90deg);
+        animation: sweep 4s linear infinite; }
+      /* FLIGHT STRIPS */
+      .strip { display: grid; grid-template-columns: 6px 1fr auto; gap: 0.8rem; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.8rem; margin-bottom: 0.7rem; font-family: var(--mono); }
+      .strip .bar { align-self: stretch; border-radius: 4px; background: var(--phosphor); }
+      .strip .call { font-size: 0.9rem; color: #fff; font-weight: 600; }
+      .strip .tgt { font-size: 0.78rem; color: var(--muted); }
+      .strip .status { font-size: 0.72rem; letter-spacing: 0.1em; padding: 0.25rem 0.5rem; border-radius: 5px; border: 1px solid; }
+      .status.cleared { color: var(--phosphor); border-color: rgba(56, 224, 138, 0.4); }
+      .status.hold { color: var(--alert); border-color: rgba(255, 77, 77, 0.5); }
+      .strip.conflict { border-color: rgba(255, 77, 77, 0.55); animation: flash 1.1s ease-out; }
+      .strip.conflict .bar { background: var(--alert); }
+      .alert-line { font-family: var(--mono); font-size: 0.8rem; color: var(--alert); padding: 0.2rem 0.2rem 0; opacity: 0; }
+      .hero-anim .strip-2 { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 1.6s forwards; }
+      .hero-anim .strip-2.conflict { animation: drop 0.5s ease-out 1.6s forwards, flash 1.1s ease-out 2.0s; }
+      .hero-anim .alert-line { animation: fadein 0.4s ease-out 2.15s forwards; }
+
+      /* PROBLEM */
+      .kicker { font-size: clamp(1.4rem, 2.6vw, 2rem); font-family: var(--display); font-weight: 600; color: #fff; max-width: 24ch; }
+      .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+      .lead-p { color: var(--muted); font-size: 1.05rem; }
+      .lead-p b { color: var(--ink); }
+
+      /* DEMO */
+      .demo-frame { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #05090c; }
+      .demo-frame img { display: block; width: 100%; height: auto; }
+
+      /* FEATURES */
+      .sec-head { margin-bottom: 2.2rem; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; transition: 0.15s; }
+      .card:hover { border-color: rgba(76, 201, 240, 0.4); transform: translateY(-2px); }
+      .card .tag { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); }
+      .card h3 { font-size: 1.12rem; color: #fff; margin: 0.6rem 0 0.4rem; }
+      .card p { margin: 0; color: var(--muted); font-size: 0.94rem; }
+
+      /* STEPS */
+      .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .step { border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; background: var(--panel); }
+      .step .num { font-family: var(--mono); font-size: 0.75rem; color: var(--amber); letter-spacing: 0.15em; }
+      .step h3 { color: #fff; font-size: 1.15rem; margin: 0.5rem 0 0.4rem; }
+      .step p { color: var(--muted); font-size: 0.92rem; margin: 0; }
+      .step .verdict { font-family: var(--mono); font-size: 0.82rem; margin-top: 0.7rem; }
+      .v-clear { color: var(--phosphor); }
+      .v-hold { color: var(--alert); }
+
+      /* INSTALL TABS */
+      .tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+      .tab { font-family: var(--mono); font-size: 0.85rem; padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); cursor: pointer; }
+      .tab.active { color: var(--phosphor); border-color: var(--phosphor); }
+      .tabpanel { display: none; }
+      .tabpanel.active { display: block; }
+      pre { margin: 0; background: #05090c; border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; overflow-x: auto; }
+      code, pre { font-family: var(--mono); font-size: 0.88rem; }
+      pre .c { color: var(--muted); }
+      pre .g { color: var(--phosphor); }
+      pre .k { color: var(--cyan); }
+
+      /* TOOLS */
+      .tools { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.55rem; }
+      .tool { display: grid; grid-template-columns: 180px 1fr; gap: 1rem; font-family: var(--mono); font-size: 0.86rem; padding: 0.6rem 0.85rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+      .tool .name { color: var(--phosphor); }
+      .tool .desc { color: var(--muted); font-family: var(--body); font-size: 0.88rem; }
+
+      /* ROADMAP */
+      .road { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+      .road li { font-family: var(--mono); font-size: 0.9rem; color: var(--muted); padding-left: 1.4rem; position: relative; }
+      .road li::before { content: "▸"; position: absolute; left: 0; color: var(--amber); }
+
+      /* FOOTER */
+      footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3.5rem; color: var(--muted); font-size: 0.9rem; }
+      .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+      .disclaimer { font-size: 0.78rem; color: #46525c; margin-top: 0.6rem; }
+
+      @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+      @keyframes sweep { to { transform: rotate(360deg); } }
+      @keyframes drop { to { opacity: 1; transform: translateY(0); } }
+      @keyframes fadein { to { opacity: 1; } }
+      @keyframes flash { 0% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.5); } 100% { box-shadow: 0 0 0 14px rgba(255, 77, 77, 0); } }
+
+      @media (max-width: 860px) {
+        .hero-grid, .two-col { grid-template-columns: 1fr; }
+        .grid, .steps, .tools { grid-template-columns: 1fr; }
+        .nav-links a.hide-sm { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .radar, .live .dot { animation: none; }
+        .hero-anim .strip-2, .hero-anim .strip-2.conflict, .hero-anim .alert-line { animation: none; opacity: 1; transform: none; }
+        html { scroll-behavior: auto; }
+      }
+      :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="wrap nav-in">
+        <span class="brand">
+          <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 4v24M8 28h16M11 11l5-5 5 5" stroke="#38E08A" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          TOWER
+        </span>
+        <div class="nav-links">
+          <a class="hide-sm" href="#how">How it works</a>
+          <a class="hide-sm" href="#install">Install</a>
+          <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
+          <a class="btn" href="https://github.com/Rohanxmalik/Tower">★ <span data-stars>Star</span></a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- HERO -->
+    <header class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <span class="eyebrow">MCP server · write-side coordination</span>
+          <h1>Air-traffic control<br />for your <span class="glow">AI agents</span></h1>
+          <p class="lede">
+            Two agents. One repo. <b>Zero collisions.</b> Tower catches conflicting edits
+            <b>before the keystroke</b> — not at merge.
+          </p>
+          <div class="cmd">
+            <span><span class="prompt">$ </span><code>npx -y tower-mcp serve</code></span>
+            <button class="copy" data-copy="npx -y tower-mcp serve">copy</button>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
+            <a class="btn" href="#install">Add to Claude Code</a>
+          </div>
+        </div>
+
+        <div class="console hero-anim" aria-hidden="true">
+          <div class="radar"></div>
+          <div class="console-head">
+            <span>TWR · repo: acme/app · main</span>
+            <span class="live"><span class="dot"></span>live</span>
+          </div>
+          <div class="strip">
+            <div class="bar"></div>
+            <div><div class="call">cursor-bob</div><div class="tgt">src/auth.ts · AuthService.verify</div></div>
+            <div class="status cleared">CLEARED</div>
+          </div>
+          <div class="strip strip-2 conflict">
+            <div class="bar"></div>
+            <div><div class="call">claude-a</div><div class="tgt">src/auth.ts · AuthService.verify</div></div>
+            <div class="status hold">HOLD</div>
+          </div>
+          <div class="alert-line">⛔ CONFLICT — AuthService.verify held by cursor-bob (ETA ~6m). Reroute or wait.</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- PROBLEM -->
+    <section>
+      <div class="wrap two-col">
+        <div class="kicker">You added a second agent. Now they fight over the same files.</div>
+        <div>
+          <p class="lead-p">
+            Git catches <b>text</b> conflicts at merge — after both agents have already done
+            the work. As you scale from one agent to five, the real cost is
+            <b>wasted parallel effort</b> and edits that only collide once it's too late.
+          </p>
+          <p class="lead-p">
+            Tower is the missing <b>write-side coordination</b> layer. Every agent declares
+            what it's about to change; Tower detects <b>semantic</b> overlap and stops the
+            second agent before it starts. It sits above git and speaks
+            <a href="https://modelcontextprotocol.io">MCP</a> — so it works with any agent.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DEMO -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Live · pre-flight check</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Caught before the first keystroke</h2>
+        </div>
+        <div class="demo-frame">
+          <img src="demo.svg" alt="Two agents claim the same symbol; the second gets a collision alert with who, why and ETA." />
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">On board</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Everything to keep agents out of each other's way</h2>
+        </div>
+        <div class="grid">
+          <div class="card"><div class="tag">semantic</div><h3>Symbol-level, not text</h3><p>Collisions come from tree-sitter ASTs (TS/JS/Python), so <span class="mono">AuthService.verify</span> conflicts even across different diff hunks.</p></div>
+          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into a guarantee: a hard-conflicting edit is stopped, with the reason fed back to the agent.</p></div>
+          <div class="card"><div class="tag">team</div><h3>Across machines</h3><p>Host one Tower over HTTP; every teammate's agent connects over MCP. Your Claude tells your co-founder's Claude to stay off auth.</p></div>
+          <div class="card"><div class="tag">agnostic</div><h3>Any agent</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. No lock-in to one model vendor.</p></div>
+          <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>. Agents recall them before acting, so nobody re-litigates a settled call.</p></div>
+          <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; Tower hands each agent a task whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW -->
+    <section id="how">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">The pattern</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Claim → detect → clear or hold</h2>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="num">STEP 01</div><h3>Claim intent</h3><p>Before editing, the agent calls <span class="mono">claim_intent</span> with the files and symbols it's about to touch.</p></div>
+          <div class="step"><div class="num">STEP 02</div><h3>Detect overlap</h3><p>Tower compares the intent against every active claim and grades the overlap: hard, soft, or clear.</p></div>
+          <div class="step"><div class="num">STEP 03</div><h3>Clear or hold</h3><p>No overlap → proceed. Hard conflict → the edit is held and the agent is told who holds it and why.<div class="verdict"><span class="v-clear">✔ CLEARED</span> &nbsp; or &nbsp; <span class="v-hold">⛔ HOLD</span></div></p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSTALL -->
+    <section id="install">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Cleared for takeoff</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Install in one line</h2>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="cc">Claude Code</button>
+          <button class="tab" data-tab="cursor">Cursor</button>
+          <button class="tab" data-tab="src">From source</button>
+        </div>
+        <div class="tabpanel active" id="cc">
+          <pre><span class="c"># .mcp.json</span>
+{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"tower"</span>: { <span class="k">"command"</span>: <span class="g">"npx"</span>, <span class="k">"args"</span>: [<span class="g">"-y"</span>, <span class="g">"tower-mcp"</span>, <span class="g">"serve"</span>] }
+  }
+}</pre>
+          <p class="lead-p" style="margin-top: 1rem">
+            Then add to <span class="mono">CLAUDE.md</span>: <em>"Before editing any file, call
+            <span class="mono">claim_intent</span>. If a hard conflict returns, stop and ask."</em>
+            Want it enforced? Enable the <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/enforcement.md">PreToolUse hook</a>.
+          </p>
+        </div>
+        <div class="tabpanel" id="cursor">
+          <pre><span class="c"># ~/.cursor/mcp.json</span>
+{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"tower"</span>: { <span class="k">"command"</span>: <span class="g">"npx"</span>, <span class="k">"args"</span>: [<span class="g">"-y"</span>, <span class="g">"tower-mcp"</span>, <span class="g">"serve"</span>] }
+  }
+}</pre>
+        </div>
+        <div class="tabpanel" id="src">
+          <pre><span class="g">git</span> clone https://github.com/Rohanxmalik/Tower && <span class="k">cd</span> Tower
+<span class="g">npm</span> install && <span class="g">npm</span> run build
+<span class="g">node</span> packages/cli/dist/index.js serve</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TOOLS -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Instrument panel</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Nine MCP tools</h2>
+        </div>
+        <div class="tools">
+          <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions in one call</span></div>
+          <div class="tool"><span class="name">check_collision</span><span class="desc">Dry-run check, no claim persisted</span></div>
+          <div class="tool"><span class="name">heartbeat</span><span class="desc">Keep a claim alive; auto-expires otherwise</span></div>
+          <div class="tool"><span class="name">complete_claim</span><span class="desc">Release on commit (records the sha)</span></div>
+          <div class="tool"><span class="name">release_claim</span><span class="desc">Abandon a claim</span></div>
+          <div class="tool"><span class="name">list_claims</span><span class="desc">Live claim state</span></div>
+          <div class="tool"><span class="name">log_decision</span><span class="desc">Record a decision + the why</span></div>
+          <div class="tool"><span class="name">get_decisions</span><span class="desc">Recall decisions before acting</span></div>
+          <div class="tool"><span class="name">next_task</span><span class="desc">A module that's safe to start now</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROADMAP -->
+    <section>
+      <div class="wrap two-col">
+        <div>
+          <span class="eyebrow">Flight plan</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Where this is going</h2>
+        </div>
+        <ul class="road">
+          <li>Predictive conflict detection (learned from your merge history)</li>
+          <li>Auto-resolution — a reconciliation agent for overlapping diffs</li>
+          <li>Cross-repo / org-wide intent graph + API-contract break detection</li>
+          <li>Enterprise: policy engine, SSO, audit ledger</li>
+          <li>A2A adapter for cross-vendor agent delegation</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap foot-in">
+        <div>
+          <span class="brand" style="font-size: 0.95rem">TOWER</span>
+          <div class="disclaimer">Open source · MIT. Not affiliated with Anthropic, Cursor, or the MCP project.</div>
+        </div>
+        <div class="nav-links">
+          <a href="https://github.com/Rohanxmalik/Tower">GitHub</a>
+          <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
+          <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/protocol.md">Protocol</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Copy buttons
+      document.querySelectorAll("[data-copy]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(btn.getAttribute("data-copy"));
+            const t = btn.textContent;
+            btn.textContent = "copied";
+            btn.classList.add("copied");
+            setTimeout(() => { btn.textContent = t; btn.classList.remove("copied"); }, 1300);
+          } catch (e) {}
+        });
+      });
+      // Install tabs
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+          document.querySelectorAll(".tabpanel").forEach((p) => p.classList.remove("active"));
+          tab.classList.add("active");
+          document.getElementById(tab.dataset.tab).classList.add("active");
+        });
+      });
+      // Live GitHub star count
+      fetch("https://api.github.com/repos/Rohanxmalik/Tower")
+        .then((r) => r.json())
+        .then((d) => {
+          const n = (d && d.stargazers_count != null ? d.stargazers_count : 0).toLocaleString();
+          document.querySelectorAll("[data-stars]").forEach((el) => (el.textContent = n));
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

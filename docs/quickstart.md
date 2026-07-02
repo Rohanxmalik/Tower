@@ -1,15 +1,14 @@
 # Quickstart
 
 Tower needs **Node 22+** (it uses the built-in `node:sqlite` — no native modules to
-compile). It isn't on npm yet, so clone and build:
+compile). Install is just `npx`:
 
 ```bash
-git clone https://github.com/Rohanxmalik/Tower && cd Tower
-npm install && npm run build
+npx -y tower-mcp --help
 ```
 
-For brevity below, `tower` = `node packages/cli/dist/index.js` (or run `npm link` once to
-get a global `tower` command).
+For brevity below, `tower` = `npx -y tower-mcp`. (From source: `git clone` the repo,
+`npm install && npm run build`, then `tower` = `node packages/cli/dist/index.js`.)
 
 ## 1. Initialize
 
@@ -38,13 +37,10 @@ Add to your agent's MCP config (Claude Code `.mcp.json` shown):
 ```json
 {
   "mcpServers": {
-    "tower": { "command": "node", "args": ["packages/cli/dist/index.js", "serve"] }
+    "tower": { "command": "npx", "args": ["-y", "tower-mcp", "serve"] }
   }
 }
 ```
-
-(This repo already ships that `.mcp.json`. Once Tower is on npm it becomes
-`"command": "npx", "args": ["@tower/cli", "serve"]`.)
 
 Then add to your agent's rules file (`CLAUDE.md`, `.cursorrules`, …):
 

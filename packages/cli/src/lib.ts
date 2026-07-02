@@ -53,7 +53,7 @@ export const MCP_SNIPPET = `Add Tower to your agent's MCP config, e.g. Claude Co
 
   {
     "mcpServers": {
-      "tower": { "command": "node", "args": ["packages/cli/dist/index.js", "serve"] }
+      "tower": { "command": "npx", "args": ["-y", "tower-mcp", "serve"] }
     }
   }
 

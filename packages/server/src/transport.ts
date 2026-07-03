@@ -1,9 +1,33 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
+import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import { buildMcpServer } from "./mcp.js";
 import { TowerService } from "./service.js";
+
+/** Constant-time string comparison; length mismatch still compares a full buffer. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    // Compare b against itself to keep timing independent of the mismatch position.
+    timingSafeEqual(bufB, bufB);
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * DNS-rebinding guard: a malicious website can point its own domain at 127.0.0.1 and
+ * drive a token-less local Tower from the victim's browser. When no token is configured,
+ * only accept requests whose Host header is a local name.
+ */
+function isLocalHost(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  const host = hostHeader.replace(/:\d+$/, "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+}
 
 /** Connect a Tower MCP server to stdio (local single-machine use). */
 export async function startStdio(service: TowerService): Promise<void> {
@@ -33,8 +57,15 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   });
 
   app.post("/mcp", async (req, res) => {
-    if (opts.token && req.header("authorization") !== `Bearer ${opts.token}`) {
-      res.status(401).json({ error: "unauthorized" });
+    if (opts.token) {
+      const header = req.header("authorization") ?? "";
+      if (!safeEqual(header, `Bearer ${opts.token}`)) {
+        res.status(401).json({ error: "unauthorized" });
+        return;
+      }
+    } else if (!isLocalHost(req.header("host"))) {
+      // Token-less mode is for local use only; block DNS-rebinding from browsers.
+      res.status(403).json({ error: "host not allowed without a token — set TOWER_TOKEN" });
       return;
     }
     const server = buildMcpServer(service);

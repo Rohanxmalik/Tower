@@ -73,4 +73,46 @@ describe("HTTP transport", () => {
     httpServer = await startHttp(service, { port: 0, token: "secret" });
     await expect(mcpClient(httpServer)).rejects.toThrow();
   });
+
+  it("rejects a wrong bearer token (timing-safe compare)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const res = await fetch(url(httpServer), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer wrong" },
+      body: "{}",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("blocks non-local Host headers in token-less mode (DNS-rebinding guard)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const port = (httpServer.address() as AddressInfo).port;
+    // fetch() refuses to override Host, so send a raw request like a rebinding browser would.
+    const { request } = await import("node:http");
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/mcp",
+          method: "POST",
+          headers: { host: "evil.example.com", "content-type": "application/json" },
+        },
+        (res) => resolve(res.statusCode ?? 0),
+      );
+      req.on("error", reject);
+      req.end("{}");
+    });
+    expect(status).toBe(403);
+  });
+
+  it("still serves localhost requests in token-less mode", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const client = await mcpClient(httpServer); // Host: 127.0.0.1 — allowed
+    const { tools } = await client.listTools();
+    expect(tools.length).toBe(9);
+  });
 });

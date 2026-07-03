@@ -446,14 +446,26 @@
           document.getElementById(tab.dataset.tab).classList.add("active");
         });
       });
-      // Live GitHub star count
-      fetch("https://api.github.com/repos/Rohanxmalik/Tower")
-        .then((r) => r.json())
-        .then((d) => {
-          const n = (d && d.stargazers_count != null ? d.stargazers_count : 0).toLocaleString();
-          document.querySelectorAll("[data-stars]").forEach((el) => (el.textContent = n));
+      // Live GitHub star count — cache-first, never clobbers to 0 on an API hiccup.
+      (function () {
+        const els = document.querySelectorAll("[data-stars]");
+        const setStars = (n) =>
+          els.forEach((el) => (el.textContent = Number(n).toLocaleString()));
+        const cached = localStorage.getItem("tower-stars");
+        if (cached !== null) setStars(cached);
+        fetch("https://api.github.com/repos/Rohanxmalik/Tower", {
+          cache: "no-store",
+          headers: { accept: "application/vnd.github+json" },
         })
-        .catch(() => {});
+          .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+          .then((d) => {
+            if (typeof d.stargazers_count === "number") {
+              localStorage.setItem("tower-stars", String(d.stargazers_count));
+              setStars(d.stargazers_count);
+            }
+          })
+          .catch(() => {}); // keep the cached count / label; GitHub caches the count ~1 min
+      })();
     </script>
   </body>
 </html>

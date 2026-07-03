@@ -12,6 +12,7 @@ import {
   cmdServe,
   cmdWatch,
   resolveSymbols,
+  resolvePort,
   type ClaimArgs,
 } from "./commands.js";
 import { buildService } from "./lib.js";
@@ -147,6 +148,18 @@ describe("cmdComplete", () => {
     const { out, lines } = collect();
     expect(await cmdComplete(dir, "does-not-exist", undefined, out)).toBe(false);
     expect(lines.join("\n")).toContain("No active claim");
+  });
+});
+
+describe("resolvePort", () => {
+  it("prefers an explicit port", () => {
+    expect(resolvePort(5000, { PORT: "3000" })).toBe(5000);
+  });
+  it("falls back to the PORT env (Render/Railway/Fly)", () => {
+    expect(resolvePort(undefined, { PORT: "10000" })).toBe(10000);
+  });
+  it("defaults to 4319 when neither is set", () => {
+    expect(resolvePort(undefined, {})).toBe(4319);
   });
 });
 

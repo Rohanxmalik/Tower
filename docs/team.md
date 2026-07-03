@@ -2,9 +2,30 @@
 
 For a single machine running multiple agents, the local server is enough. For a **team on
 different machines** to see each other's claims, host one Tower over HTTP and point every
-agent at it.
+agent at it. This gives you a **permanent HTTPS URL** — no tunnels (ngrok/localtunnel are
+fine for a 5-minute test, but they drop and change URLs; don't use them for real work).
 
-## Host it
+## Host it — one click (recommended)
+
+Deploy your own Tower to a cheap always-on host and get a stable URL in ~2 minutes:
+
+- **Render** (has a free tier): click **Deploy to Render**, and it reads
+  [`render.yaml`](../render.yaml) from the repo. It builds the Docker image and generates a
+  `TOWER_TOKEN` for you (copy it from the dashboard → Environment). Your URL is
+  `https://<your-app>.onrender.com/mcp`.
+
+  [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rohanxmalik/Tower)
+
+- **Railway**: New Project → **Deploy from GitHub repo** → pick your Tower fork. Railway
+  auto-detects the `Dockerfile`. Add a `TOWER_TOKEN` variable. It gives you a public URL.
+
+- **Fly.io**: from a clone, `fly launch` (it detects the `Dockerfile`), then
+  `fly secrets set TOWER_TOKEN=your-secret`.
+
+All three read `$PORT` automatically. Set `TOWER_TOKEN` and you're done — that's your
+shared team secret.
+
+## Host it — Docker (self-managed)
 
 With Docker Compose:
 

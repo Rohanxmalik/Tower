@@ -127,16 +127,28 @@ cp .claude/settings.example.json .claude/settings.json   # then reload Claude Co
 Open two agent sessions on the same repo → the second is blocked when it reaches for a
 file the first is editing. Details + scope → [docs/enforcement.md](./docs/enforcement.md).
 
-## Team mode (different machines)
+## Team mode (whole team, different machines)
 
-Host one Tower and point every agent at it over MCP-HTTP:
+Point everyone's agents — Claude, Cursor, Codex — at **one** Tower with a permanent URL.
+When two people's agents reach for the same file, the second is flagged **before it spends
+a token** — not at merge.
+
+Deploy your own in ~2 minutes (free tiers available), no tunnels:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rohanxmalik/Tower)
+
+Or self-manage with Docker:
 
 ```bash
 TOWER_TOKEN=your-secret docker compose up -d   # http://<host>:4319/mcp
 ```
 
 Each dev's `.mcp.json` uses `"type": "http", "url": ".../mcp"` — now your Claude tells your
-co-founder's Claude "don't touch auth until commit abc123." Setup → [docs/team.md](./docs/team.md).
+co-founder's Codex "don't touch auth until commit abc123." Full setup (Render/Railway/Fly +
+per-editor config) → [docs/team.md](./docs/team.md).
+
+> 🚀 **Don't want to host it?** [Tower Cloud](https://rohanxmalik.github.io/Tower/#cloud) —
+> a managed, always-on coordination server for teams — is coming. Join the waitlist.
 
 ## Monorepo layout
 

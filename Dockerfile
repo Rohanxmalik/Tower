@@ -20,5 +20,6 @@ COPY --from=build /app/packages ./packages
 COPY --from=build /app/package.json ./package.json
 EXPOSE 4319
 VOLUME ["/app/.tower"]
-# Bind 0.0.0.0 so the container is reachable; set TOWER_TOKEN to require auth.
-CMD ["node", "packages/cli/dist/index.js", "serve", "--http", "--port", "4319", "--host", "0.0.0.0"]
+# Bind 0.0.0.0 so the container is reachable; honour $PORT (Render/Railway/Fly set it,
+# default 4319). Set TOWER_TOKEN to require auth.
+CMD ["node", "packages/cli/dist/index.js", "serve", "--http", "--host", "0.0.0.0"]

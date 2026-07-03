@@ -1,0 +1,18 @@
+# One-click deploy to Render (https://render.com). Gives your team a permanent HTTPS
+# URL for Tower — no tunnels. Render reads this blueprint via the "Deploy to Render" button.
+services:
+  - type: web
+    name: tower
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Render generates a strong secret; copy it from the dashboard and share with the team.
+      - key: TOWER_TOKEN
+        generateValue: true
+    disk:
+      # Persist claims/decisions across restarts.
+      name: tower-data
+      mountPath: /app/.tower
+      sizeGB: 1

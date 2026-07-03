@@ -187,6 +187,22 @@
       .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
       .disclaimer { font-size: 0.78rem; color: #46525c; margin-top: 0.6rem; }
 
+      /* CLOUD / DEPLOY */
+      .cloud { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.8rem; }
+      .plan { border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem; background: var(--panel); }
+      .plan.cloud-plan { border-color: rgba(56, 224, 138, 0.45); background: linear-gradient(180deg, rgba(56, 224, 138, 0.06), transparent); }
+      .plan h3 { color: #fff; font-size: 1.2rem; }
+      .plan .price { font-family: var(--mono); color: var(--muted); font-size: 0.82rem; margin: 0.35rem 0 1rem; }
+      .plan .soon { color: var(--amber); font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em; margin-left: 0.4rem; }
+      .plan ul { list-style: none; padding: 0; margin: 0 0 1.3rem; display: grid; gap: 0.5rem; }
+      .plan li { color: var(--muted); font-size: 0.92rem; padding-left: 1.4rem; position: relative; }
+      .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--phosphor); }
+      .wait { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+      .wait input { flex: 1; min-width: 180px; font-family: var(--mono); font-size: 0.9rem; background: #05090c; border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.9rem; color: var(--ink); }
+      .wait input:focus { border-color: var(--phosphor); outline: none; }
+      .wait .msg { font-family: var(--mono); font-size: 0.82rem; color: var(--phosphor); margin-top: 0.5rem; width: 100%; }
+      @media (max-width: 860px) { .cloud { grid-template-columns: 1fr; } }
+
       @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
       @keyframes sweep { to { transform: rotate(360deg); } }
       @keyframes drop { to { opacity: 1; transform: translateY(0); } }
@@ -218,6 +234,7 @@
         <div class="nav-links">
           <a class="hide-sm" href="#how">How it works</a>
           <a class="hide-sm" href="#install">Install</a>
+          <a href="#cloud">Cloud</a>
           <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
           <a class="btn" href="https://github.com/Rohanxmalik/Tower">★ <span data-stars>Star</span></a>
         </div>
@@ -229,10 +246,11 @@
       <div class="wrap hero-grid">
         <div>
           <span class="eyebrow">MCP server · write-side coordination</span>
-          <h1>Air-traffic control<br />for your <span class="glow">AI agents</span></h1>
+          <h1>Air-traffic control<br />for your team's <span class="glow">AI agents</span></h1>
           <p class="lede">
-            Two agents. One repo. <b>Zero collisions.</b> Tower catches conflicting edits
-            <b>before the keystroke</b> — not at merge.
+            Your whole team's agents — Claude, Cursor, Codex — on one repo. When two people
+            reach for the same file, the second is flagged
+            <b>before it spends a token</b> — not at merge.
           </p>
           <div class="cmd">
             <span><span class="prompt">$ </span><code>npx -y tower-mcp serve</code></span>
@@ -268,18 +286,18 @@
     <!-- PROBLEM -->
     <section>
       <div class="wrap two-col">
-        <div class="kicker">You added a second agent. Now they fight over the same files.</div>
+        <div class="kicker">Your team pointed its agents at one repo. Now they collide on the same files.</div>
         <div>
           <p class="lead-p">
-            Git catches <b>text</b> conflicts at merge — after both agents have already done
-            the work. As you scale from one agent to five, the real cost is
-            <b>wasted parallel effort</b> and edits that only collide once it's too late.
+            Git catches <b>text</b> conflicts at merge — after everyone's agents have already
+            burned tokens doing the work. Two teammates, five agents each, one codebase: the
+            real cost is <b>wasted parallel effort</b> discovered far too late.
           </p>
           <p class="lead-p">
             Tower is the missing <b>write-side coordination</b> layer. Every agent declares
-            what it's about to change; Tower detects <b>semantic</b> overlap and stops the
-            second agent before it starts. It sits above git and speaks
-            <a href="https://modelcontextprotocol.io">MCP</a> — so it works with any agent.
+            what it's about to change; Tower detects <b>semantic</b> overlap across the whole
+            team and stops the second agent <b>before it spends a token</b>. It sits above git
+            and speaks <a href="https://modelcontextprotocol.io">MCP</a> — any agent, any model.
           </p>
         </div>
       </div>
@@ -410,6 +428,42 @@
       </div>
     </section>
 
+    <!-- CLOUD / DEPLOY -->
+    <section id="cloud">
+      <div class="wrap">
+        <span class="eyebrow">Deploy</span>
+        <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Run it yourself — or let us run it</h2>
+        <div class="cloud">
+          <div class="plan">
+            <h3>Self-host</h3>
+            <div class="price">Free · open source (MIT)</div>
+            <ul>
+              <li>Local mode + hosted HTTP server</li>
+              <li>One-click deploy to Render / Railway / Fly — a permanent URL, no tunnels</li>
+              <li>Your data stays on your own infrastructure</li>
+            </ul>
+            <a class="btn" href="https://github.com/Rohanxmalik/Tower/blob/main/docs/team.md">Deploy guide →</a>
+          </div>
+          <div class="plan cloud-plan">
+            <h3>Tower Cloud<span class="soon">COMING SOON</span></h3>
+            <div class="price">Managed · for teams &amp; enterprise</div>
+            <ul>
+              <li>A permanent, always-on server — zero setup, no servers to babysit</li>
+              <li>Team accounts, org workspaces, SSO &amp; audit (enterprise)</li>
+              <li>Gets smarter over time — conflict prediction learned from real history</li>
+            </ul>
+            <!-- Wire ENDPOINT (below, in the script) to a Formspree/Tally URL for real capture.
+                 Until then it opens a pre-filled email to the maintainer. -->
+            <form class="wait" id="wait">
+              <input type="email" required placeholder="you@team.com" aria-label="Work email" />
+              <button class="btn btn-primary" type="submit">Join the waitlist</button>
+              <span class="msg" hidden>On the list — we'll reach out. 🗼</span>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <footer>
       <div class="wrap foot-in">
         <div>
@@ -446,6 +500,38 @@
           document.getElementById(tab.dataset.tab).classList.add("active");
         });
       });
+      // Tower Cloud waitlist. Set ENDPOINT to a Formspree/Tally URL for real capture;
+      // until then it opens a pre-filled email to the maintainer (works with no backend).
+      (function () {
+        const form = document.getElementById("wait");
+        if (!form) return;
+        const ENDPOINT = ""; // e.g. "https://formspree.io/f/xxxxxxx"
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const input = form.querySelector("input");
+          const email = (input.value || "").trim();
+          if (!email) return;
+          const done = () => {
+            form.querySelector(".msg").hidden = false;
+            input.value = "";
+          };
+          if (ENDPOINT) {
+            fetch(ENDPOINT, {
+              method: "POST",
+              headers: { accept: "application/json", "content-type": "application/json" },
+              body: JSON.stringify({ email, product: "Tower Cloud" }),
+            })
+              .then(done)
+              .catch(done);
+          } else {
+            window.location.href =
+              "mailto:rohanxmalik06@gmail.com?subject=Tower%20Cloud%20waitlist&body=" +
+              encodeURIComponent(email);
+            done();
+          }
+        });
+      })();
+
       // Live GitHub star count — cache-first, never clobbers to 0 on an API hiccup.
       (function () {
         const els = document.querySelectorAll("[data-stars]");

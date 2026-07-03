@@ -252,6 +252,19 @@ export interface ServeArgs {
 }
 
 /**
+ * Resolve the HTTP port: an explicit `--port` wins, else the `PORT` env var (set by
+ * Render/Railway/Fly and most PaaS), else 4319. Lets the deploy buttons "just work".
+ */
+export function resolvePort(
+  argPort: number | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  if (argPort != null) return argPort;
+  const fromEnv = env.PORT ? Number(env.PORT) : NaN;
+  return Number.isFinite(fromEnv) ? fromEnv : 4319;
+}
+
+/**
  * Start the coordination server (stdio by default, or HTTP). Returns the HTTP
  * Server when in `--http` mode (so callers/tests can close it); undefined for stdio.
  */
@@ -262,7 +275,7 @@ export async function cmdServe(
 ): Promise<Server | undefined> {
   const service = buildService(cwd);
   if (args.http) {
-    const port = args.port ?? 4319;
+    const port = resolvePort(args.port);
     const token = args.token ?? process.env.TOWER_TOKEN;
     const host = args.host ?? "127.0.0.1";
     const server = await startHttp(service, {

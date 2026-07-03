@@ -17,6 +17,16 @@ import { relative, isAbsolute, basename } from "node:path";
 const ALLOW = 0;
 const BLOCK = 2;
 
+/** Normalize a git remote URL to a stable "host/owner/repo" id shared across clones. */
+function normalizeRepo(url) {
+  return url
+    .replace(/^git@([^:]+):/, "$1/")
+    .replace(/^ssh:\/\/git@/, "")
+    .replace(/^https?:\/\//, "")
+    .replace(/\.git$/, "")
+    .toLowerCase();
+}
+
 function readStdin() {
   try {
     return JSON.parse(readFileSync(0, "utf8"));
@@ -44,7 +54,9 @@ async function main() {
       .toString()
       .trim();
   try {
-    repo = basename(git("git rev-parse --show-toplevel"));
+    // Use the git remote origin so teammates on different clone paths share one repo id.
+    const origin = git("git config --get remote.origin.url");
+    repo = origin ? normalizeRepo(origin) : basename(git("git rev-parse --show-toplevel"));
     branch = git("git rev-parse --abbrev-ref HEAD") || "main";
   } catch {
     /* not a git repo — fall back to cwd basename */

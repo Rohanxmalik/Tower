@@ -73,7 +73,7 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
 
     case "status":
-      cmdStatus(cwd);
+      await cmdStatus(cwd);
       return 0;
 
     case "watch":
@@ -90,7 +90,7 @@ export async function run(argv: string[]): Promise<number> {
         process.stderr.write("complete requires --claim <id>\n");
         return 1;
       }
-      const ok = cmdComplete(cwd, values.claim, values.sha);
+      const ok = await cmdComplete(cwd, values.claim, values.sha);
       return ok ? 0 : 1;
     }
 

@@ -64,7 +64,7 @@ describe("cmdClaim", () => {
   it("shares state across invocations via the file-backed store", async () => {
     await cmdClaim(dir, bob, () => {});
     const { out, lines } = collect();
-    cmdStatus(dir, out);
+    await cmdStatus(dir, out);
     expect(lines.join("\n")).toContain("cursor-bob");
   });
 
@@ -81,7 +81,7 @@ describe("cmdGuard (enforcement)", () => {
     expect(blocked).toBe(false);
     // registered a claim
     const status = collect();
-    cmdStatus(dir, status.out);
+    await cmdStatus(dir, status.out);
     expect(status.lines.join("\n")).toContain("cursor-bob");
   });
 
@@ -94,7 +94,7 @@ describe("cmdGuard (enforcement)", () => {
 
     // only cursor-bob's claim exists; the blocked edit did not create one
     const status = collect();
-    cmdStatus(dir, status.out);
+    await cmdStatus(dir, status.out);
     const table = status.lines.join("\n");
     expect(table).toContain("cursor-bob");
     expect(table).not.toContain("claude-a");
@@ -122,7 +122,7 @@ describe("resolveSymbols (auto-extraction)", () => {
 });
 
 describe("cmdComplete", () => {
-  it("completes an active claim and clears it from status", () => {
+  it("completes an active claim and clears it from status", async () => {
     const svc = buildService(dir);
     const { claimId } = svc.claimIntent({
       agentId: "a",
@@ -135,17 +135,17 @@ describe("cmdComplete", () => {
     svc.store.close();
 
     const { out, lines } = collect();
-    expect(cmdComplete(dir, claimId, "deadbeef", out)).toBe(true);
+    expect(await cmdComplete(dir, claimId, "deadbeef", out)).toBe(true);
     expect(lines.join("\n")).toContain("Completed claim");
 
     const status = collect();
-    cmdStatus(dir, status.out);
+    await cmdStatus(dir, status.out);
     expect(status.lines.join("\n")).toContain("No active claims");
   });
 
-  it("reports when there is no matching active claim", () => {
+  it("reports when there is no matching active claim", async () => {
     const { out, lines } = collect();
-    expect(cmdComplete(dir, "does-not-exist", undefined, out)).toBe(false);
+    expect(await cmdComplete(dir, "does-not-exist", undefined, out)).toBe(false);
     expect(lines.join("\n")).toContain("No active claim");
   });
 });

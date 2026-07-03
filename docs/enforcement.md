@@ -42,12 +42,10 @@ the second one get blocked when it reaches for a file the first is editing.
 
 ## Scope & limits (honest)
 
-- **Single machine, multiple agents** today: the hook uses the repo's local
-  `.tower/tower.db`, so it coordinates the Claude/agent sessions running on _your_ machine
-  in _this_ repo. That already covers the common "I'm running 3 parallel agents" case.
-- **Cross-developer enforcement** (blocking based on a teammate's claim on another machine)
-  needs the hook to query a shared hosted Tower — see [team.md](./team.md). Cooperative
-  `claim_intent` calls over hosted MCP already work cross-machine; hook-level _blocking_
-  across machines is the next step.
+- **Single machine, multiple agents** (default): the hook uses the repo's local
+  `.tower/tower.db`, coordinating the agent sessions on _your_ machine in _this_ repo.
+- **Cross-developer enforcement**: set `TOWER_URL` (and `TOWER_TOKEN`) and the hook blocks
+  based on _teammates'_ claims on a shared hosted Tower — see [team.md](./team.md). Repo
+  identity is taken from the git `origin` remote so it matches across everyone's clones.
 - Granularity is **file-level** in the hook (PreToolUse can't know which symbol you'll
   touch yet). Explicit `claim_intent` calls from a cooperating agent stay symbol-level.

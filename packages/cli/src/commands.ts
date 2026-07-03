@@ -1,11 +1,20 @@
-import { writeFileSync, existsSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Server } from "node:http";
 import { startStdio, startHttp, SymbolExtractor } from "@tower/server";
-import type { SymbolRef } from "@tower/shared";
+import type {
+  SymbolRef,
+  Claim,
+  CheckCollisionOutput,
+  ClaimIntentOutput,
+  ListClaimsOutput,
+  OkOutput,
+} from "@tower/shared";
 import { renderConflicts, renderClaimsTable } from "./render.js";
+import { remoteConfig, withRemote, type RemoteCall } from "./remote.js";
 import {
   buildService,
+  towerDir,
   policyPath,
   claimIdPath,
   EXAMPLE_POLICY,
@@ -15,6 +24,27 @@ import {
 
 export type Writer = (line: string) => void;
 const stdout: Writer = (l) => process.stdout.write(l + "\n");
+
+/** Persist the current claim id for the git post-commit hook (ensures .tower/ exists). */
+function writeClaimId(cwd: string, id: string): void {
+  mkdirSync(towerDir(cwd), { recursive: true });
+  writeFileSync(claimIdPath(cwd), id);
+}
+
+/** Fetch active claims from a remote and index them by id, for collision rendering. */
+async function remoteClaimLookup(
+  call: RemoteCall,
+  repo: string,
+  branch: string,
+): Promise<(id: string) => Claim | undefined> {
+  const { claims } = (await call("list_claims", {
+    repo,
+    branch,
+    status: "active",
+  })) as ListClaimsOutput;
+  const byId = new Map(claims.map((c) => [c.id, c] as const));
+  return (id) => byId.get(id);
+}
 
 const extractor = new SymbolExtractor();
 
@@ -82,9 +112,8 @@ export async function cmdClaim(
   out: Writer = stdout,
   build?: BuildOptions,
 ): Promise<boolean> {
-  const service = buildService(cwd, build);
   const symbols = await resolveSymbols(cwd, args.files, args.symbols);
-  const { claimId, conflicts } = service.claimIntent({
+  const intent = {
     agentId: args.agentId,
     repo: args.repo,
     branch: args.branch,
@@ -92,8 +121,26 @@ export async function cmdClaim(
     symbols,
     purpose: args.purpose,
     ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
-  });
-  writeFileSync(claimIdPath(cwd), claimId);
+  };
+
+  const remote = remoteConfig();
+  if (remote) {
+    return withRemote(remote, async (call) => {
+      const { claimId, conflicts } = (await call("claim_intent", intent)) as ClaimIntentOutput;
+      writeClaimId(cwd, claimId);
+      const lookup = conflicts.length
+        ? await remoteClaimLookup(call, args.repo, args.branch)
+        : () => undefined;
+      out(renderConflicts(conflicts, lookup));
+      out("");
+      out(`(claim ${claimId.slice(0, 8)} registered for ${args.agentId} on ${remote.url})`);
+      return conflicts.some((c) => c.severity === "hard");
+    });
+  }
+
+  const service = buildService(cwd, build);
+  const { claimId, conflicts } = service.claimIntent(intent);
+  writeClaimId(cwd, claimId);
   out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
   out("");
   out(`(claim ${claimId.slice(0, 8)} registered for ${args.agentId})`);
@@ -113,52 +160,84 @@ export async function cmdGuard(
   out: Writer = stdout,
   build?: BuildOptions,
 ): Promise<boolean> {
-  const service = buildService(cwd, build);
   const symbols = await resolveSymbols(cwd, args.files, args.symbols);
-  const { conflicts } = service.checkCollision({
+  const scope = {
     agentId: args.agentId,
     repo: args.repo,
     branch: args.branch,
     files: args.files,
     symbols,
-  });
+  };
+  const intent = {
+    ...scope,
+    purpose: args.purpose,
+    ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
+  };
+
+  const remote = remoteConfig();
+  if (remote) {
+    return withRemote(remote, async (call) => {
+      const { conflicts } = (await call("check_collision", scope)) as CheckCollisionOutput;
+      if (conflicts.some((c) => c.severity === "hard")) {
+        out(renderConflicts(conflicts, await remoteClaimLookup(call, args.repo, args.branch)));
+        return true;
+      }
+      const { claimId } = (await call("claim_intent", intent)) as ClaimIntentOutput;
+      writeClaimId(cwd, claimId);
+      return false;
+    });
+  }
+
+  const service = buildService(cwd, build);
+  const { conflicts } = service.checkCollision(scope);
   const hard = conflicts.some((c) => c.severity === "hard");
   if (hard) {
     out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
     service.store.close();
     return true; // block; do not register a claim for an edit we're stopping
   }
-  const { claimId } = service.claimIntent({
-    agentId: args.agentId,
-    repo: args.repo,
-    branch: args.branch,
-    files: args.files,
-    symbols,
-    purpose: args.purpose,
-    ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
-  });
-  writeFileSync(claimIdPath(cwd), claimId);
+  const { claimId } = service.claimIntent(intent);
+  writeClaimId(cwd, claimId);
   service.store.close();
   return false;
 }
 
 /** Complete (release on commit) a claim by id, optionally recording the commit sha. */
-export function cmdComplete(
+export async function cmdComplete(
   cwd: string,
   claimId: string,
   commitSha: string | undefined,
   out: Writer = stdout,
   build?: BuildOptions,
-): boolean {
-  const service = buildService(cwd, build);
-  const { ok } = service.completeClaim({ claimId, ...(commitSha ? { commitSha } : {}) });
-  service.store.close();
+): Promise<boolean> {
+  const input = { claimId, ...(commitSha ? { commitSha } : {}) };
+  const remote = remoteConfig();
+  const ok = remote
+    ? ((await withRemote(remote, (call) => call("complete_claim", input))) as OkOutput).ok
+    : (() => {
+        const service = buildService(cwd, build);
+        const result = service.completeClaim(input);
+        service.store.close();
+        return result.ok;
+      })();
   out(ok ? `Completed claim ${claimId.slice(0, 8)}.` : `No active claim ${claimId.slice(0, 8)}.`);
   return ok;
 }
 
-/** Print the active-claims table. */
-export function cmdStatus(cwd: string, out: Writer = stdout, build?: BuildOptions): void {
+/** Print the active-claims table (from the hosted Tower when TOWER_URL is set). */
+export async function cmdStatus(
+  cwd: string,
+  out: Writer = stdout,
+  build?: BuildOptions,
+): Promise<void> {
+  const remote = remoteConfig();
+  if (remote) {
+    const { claims } = (await withRemote(remote, (call) =>
+      call("list_claims", { status: "active" }),
+    )) as ListClaimsOutput;
+    out(renderClaimsTable(claims));
+    return;
+  }
   const service = buildService(cwd, build);
   const claims = service.listClaims({ status: "active" }).claims;
   out(renderClaimsTable(claims));
@@ -209,12 +288,12 @@ export async function cmdWatch(
   const intervalMs = opts.intervalMs ?? 1000;
   let ticks = 0;
   await new Promise<void>((resolve) => {
-    const tick = (): void => {
-      cmdStatus(cwd, out);
+    const tick = async (): Promise<void> => {
+      await cmdStatus(cwd, out);
       ticks += 1;
       if (opts.ticks != null && ticks >= opts.ticks) return resolve();
-      setTimeout(tick, intervalMs);
+      setTimeout(() => void tick(), intervalMs);
     };
-    tick();
+    void tick();
   });
 }

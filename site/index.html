@@ -452,7 +452,8 @@
               <li>Team accounts, org workspaces, SSO &amp; audit (enterprise)</li>
               <li>Gets smarter over time — conflict prediction learned from real history</li>
             </ul>
-            <!-- Wire ENDPOINT (below, in the script) to a Formspree/Tally URL for real capture.
+            <!-- Waitlist capture. Set ENDPOINT (in the script below) to your Formspree form
+                 or Google Apps Script URL — full step-by-step in docs/WAITLIST.md.
                  Until then it opens a pre-filled email to the maintainer. -->
             <form class="wait" id="wait">
               <input type="email" required placeholder="you@team.com" aria-label="Work email" />
@@ -500,12 +501,16 @@
           document.getElementById(tab.dataset.tab).classList.add("active");
         });
       });
-      // Tower Cloud waitlist. Set ENDPOINT to a Formspree/Tally URL for real capture;
-      // until then it opens a pre-filled email to the maintainer (works with no backend).
+      // Tower Cloud waitlist → collect signups in a Google Sheet.
+      // Paste ONE url into ENDPOINT (setup guide: docs/WAITLIST.md):
+      //   • Google Apps Script web app  (…script.google.com/macros/s/…/exec) — free, straight to a Sheet
+      //   • or a Formspree form         (https://formspree.io/f/xxxxxxx)     — email + Sheets add-on
+      // Empty ENDPOINT falls back to a pre-filled email to the maintainer (works with no backend).
       (function () {
         const form = document.getElementById("wait");
         if (!form) return;
-        const ENDPOINT = ""; // e.g. "https://formspree.io/f/xxxxxxx"
+        const ENDPOINT = "";
+        const isAppsScript = /script\.google\.com/.test(ENDPOINT);
         form.addEventListener("submit", (e) => {
           e.preventDefault();
           const input = form.querySelector("input");
@@ -515,7 +520,20 @@
             form.querySelector(".msg").hidden = false;
             input.value = "";
           };
-          if (ENDPOINT) {
+          if (!ENDPOINT) {
+            window.location.href =
+              "mailto:rohanxmalik06@gmail.com?subject=Tower%20Cloud%20waitlist&body=" +
+              encodeURIComponent(email);
+            return done();
+          }
+          if (isAppsScript) {
+            // Apps Script web apps don't send CORS headers; no-cors lets the POST land
+            // (we can't read the response, so we optimistically show success).
+            const body = new URLSearchParams({ email, product: "Tower Cloud" });
+            fetch(ENDPOINT, { method: "POST", mode: "no-cors", body })
+              .then(done)
+              .catch(done);
+          } else {
             fetch(ENDPOINT, {
               method: "POST",
               headers: { accept: "application/json", "content-type": "application/json" },
@@ -523,11 +541,6 @@
             })
               .then(done)
               .catch(done);
-          } else {
-            window.location.href =
-              "mailto:rohanxmalik06@gmail.com?subject=Tower%20Cloud%20waitlist&body=" +
-              encodeURIComponent(email);
-            done();
           }
         });
       })();

@@ -129,11 +129,15 @@ file the first is editing. Details + scope → [docs/enforcement.md](./docs/enfo
 
 ## Team mode (whole team, different machines)
 
-Point everyone's agents — Claude, Cursor, Codex — at **one** Tower with a permanent URL.
-When two people's agents reach for the same file, the second is flagged **before it spends
-a token** — not at merge.
+Point everyone's agents — Claude, Cursor, Codex — at **one** Tower. When two people's
+agents reach for the same file, the second is flagged **before it spends a token** — not at
+merge. Two setups, pick by your team:
 
-Deploy your own in ~2 minutes (free tiers available), no tunnels:
+- **Same office / same WiFi (or living together):** no deploy, no tunnel — one laptop hosts
+  (`serve --http --host 0.0.0.0`), everyone points at its `192.168.x.x` address. 2 minutes.
+- **Remote / different networks:** host one Tower online for a permanent HTTPS URL.
+
+Deploy your own online in ~5 minutes (free tiers available), no tunnels:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rohanxmalik/Tower)
 
@@ -144,8 +148,9 @@ TOWER_TOKEN=your-secret docker compose up -d   # http://<host>:4319/mcp
 ```
 
 Each dev's `.mcp.json` uses `"type": "http", "url": ".../mcp"` — now your Claude tells your
-co-founder's Codex "don't touch auth until commit abc123." Full setup (Render/Railway/Fly +
-per-editor config) → [docs/team.md](./docs/team.md).
+co-founder's Codex "don't touch auth until commit abc123." Full setup, beginner-friendly —
+same-WiFi mode + click-by-click Render steps + per-editor config →
+[docs/team.md](./docs/team.md).
 
 > 🚀 **Don't want to host it?** [Tower Cloud](https://rohanxmalik.github.io/Tower/#cloud) —
 > a managed, always-on coordination server for teams — is coming. Join the waitlist.
@@ -158,7 +163,7 @@ packages/server   collision engine, sequencer, SQLite store, MCP server, transpo
 packages/cli      the `tower` command
 hooks/            Claude Code PreToolUse enforcement hook
 examples/         two-agents-demo, git-hooks
-docs/             quickstart, protocol, enforcement, team
+docs/             quickstart, protocol, enforcement, team, waitlist (Cloud signup capture)
 Dockerfile        hosted team server
 ```
 

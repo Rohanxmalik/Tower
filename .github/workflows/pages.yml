@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Queue deploys instead of cancelling mid-flight (cancelling can jam GitHub Pages).
+  cancel-in-progress: false
 
 jobs:
   deploy:

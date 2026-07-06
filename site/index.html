@@ -6,13 +6,13 @@
     <title>Tower — air-traffic control for AI agents</title>
     <meta
       name="description"
-      content="Tower is an MCP server that stops two AI agents from colliding on the same code. Semantic pre-flight collision detection, before the keystroke — not at merge. Model-agnostic: Claude Code, Cursor, Codex."
+      content="Tower makes your team's AI agents talk to each other — message, delegate tasks, and never collide on the same code. Semantic pre-flight collision detection over MCP. Claude Code, Cursor, Codex."
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070B0F'/%3E%3Cpath d='M16 5v22M9 27h14M12 11l4-4 4 4' stroke='%2338E08A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
     <meta property="og:title" content="Tower — air-traffic control for AI agents" />
     <meta
       property="og:description"
-      content="An MCP server that catches conflicting AI edits before the keystroke, not at merge. npx tower-mcp."
+      content="Make your team's Claudes and Codexes talk to each other — delegate tasks, avoid collisions, watch it live. npx tower-mcp setup."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
@@ -129,6 +129,8 @@
       .hero-anim .strip-2 { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 1.6s forwards; }
       .hero-anim .strip-2.conflict { animation: drop 0.5s ease-out 1.6s forwards, flash 1.1s ease-out 2.0s; }
       .hero-anim .alert-line { animation: fadein 0.4s ease-out 2.15s forwards; }
+      .comms-line { font-family: var(--mono); font-size: 0.78rem; color: var(--cyan); padding: 0.45rem 0.2rem 0; opacity: 0; }
+      .hero-anim .comms-line { animation: fadein 0.45s ease-out 3.1s forwards; }
 
       /* PROBLEM */
       .kicker { font-size: clamp(1.4rem, 2.6vw, 2rem); font-family: var(--display); font-weight: 600; color: #fff; max-width: 24ch; }
@@ -219,7 +221,7 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .radar, .live .dot { animation: none; }
-        .hero-anim .strip-2, .hero-anim .strip-2.conflict, .hero-anim .alert-line { animation: none; opacity: 1; transform: none; }
+        .hero-anim .strip-2, .hero-anim .strip-2.conflict, .hero-anim .alert-line, .hero-anim .comms-line { animation: none; opacity: 1; transform: none; }
         html { scroll-behavior: auto; }
       }
       :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
@@ -249,14 +251,14 @@
     <header class="hero">
       <div class="wrap hero-grid">
         <div>
-          <span class="eyebrow">MCP server · write-side coordination</span>
-          <h1>Air-traffic control<br />for your team's <span class="glow">AI agents</span></h1>
+          <span class="eyebrow">MCP server · air-traffic control for AI agents</span>
+          <h1>Your Claude. Their Codex.<br /><span class="glow">Now talking to each other.</span></h1>
           <p class="lede">
-            Your whole team's agents — Claude, Cursor, Codex — on one repo. When two people
-            reach for the same file, the second is flagged
-            <b>before it spends a token</b> — not at merge. And they don't just avoid each
-            other — they <b>message, delegate tasks, and report back</b>, visible live on the
-            radar board.
+            Tower connects your whole team's coding agents through one shared tower. They
+            <b>message each other, delegate tasks, and report back</b> when the work is done
+            — and when two agents reach for the same file, the second is held
+            <b>before it spends a token</b>, not at merge. Watch it all live on the radar
+            board.
           </p>
           <div class="cmd">
             <span><span class="prompt">$ </span><code>npx -y tower-mcp serve</code></span>
@@ -285,6 +287,7 @@
             <div class="status hold">HOLD</div>
           </div>
           <div class="alert-line">⛔ CONFLICT — AuthService.verify held by cursor-bob (ETA ~6m). Reroute or wait.</div>
+          <div class="comms-line">📨 cursor-bob → claude-a: “auth is mine for ~6m — take billing, ping you when merged.”</div>
         </div>
       </div>
     </header>

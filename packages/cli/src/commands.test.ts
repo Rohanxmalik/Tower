@@ -77,9 +77,11 @@ describe("cmdClaim", () => {
 
 describe("cmdGuard (enforcement)", () => {
   it("allows and claims when the file is clear", async () => {
-    const { out } = collect();
+    const { out, lines } = collect();
     const blocked = await cmdGuard(dir, bob, out);
     expect(blocked).toBe(false);
+    // says so out loud — silence looks like a failure
+    expect(lines.join("\n")).toContain("CLEAR");
     // registered a claim
     const status = collect();
     await cmdStatus(dir, status.out);

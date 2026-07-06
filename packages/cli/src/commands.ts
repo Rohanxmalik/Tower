@@ -174,6 +174,9 @@ export async function cmdGuard(
     ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
   };
 
+  const cleared = (claimId: string, where: string): void =>
+    out(`✅ CLEAR — no conflicting claims. Registered claim ${claimId.slice(0, 8)}${where}.`);
+
   const remote = remoteConfig();
   if (remote) {
     return withRemote(remote, async (call) => {
@@ -184,6 +187,7 @@ export async function cmdGuard(
       }
       const { claimId } = (await call("claim_intent", intent)) as ClaimIntentOutput;
       writeClaimId(cwd, claimId);
+      cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
       return false;
     });
   }
@@ -198,6 +202,7 @@ export async function cmdGuard(
   }
   const { claimId } = service.claimIntent(intent);
   writeClaimId(cwd, claimId);
+  cleared(claimId, ` for ${args.agentId}`);
   service.store.close();
   return false;
 }

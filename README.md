@@ -178,15 +178,15 @@ From a terminal — just run `send`; it asks the rest (who you are + the repo co
 
 ```
 $ npx -y tower-mcp send
-To (agent id, or * for everyone): cofounder
+To (agent id, or * for everyone): bob
 Message: add rate limiting to /login
 Is this a task for them? [y/N]: y
-📨 Sent task c78094d1 → cofounder
+📨 Sent task c78094d1 → bob
 
 $ npx -y tower-mcp inbox         # your messages (identity inferred from git)
 ```
 
-(Scripts/agents pass flags instead: `send --to cofounder --body "..." --task` — prompts
+(Scripts/agents pass flags instead: `send --to bob --body "..." --task` — prompts
 never appear outside a real terminal.)
 
 ## GitHub Action: PR collision reports

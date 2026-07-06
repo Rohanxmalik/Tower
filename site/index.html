@@ -400,24 +400,24 @@
         </div>
         <div class="terms" aria-label="Terminal demo: sending a task from one machine and receiving it on another">
           <div class="term">
-            <div class="term-head">YOUR MACHINE — rohan</div>
+            <div class="term-head">YOUR MACHINE — alice</div>
             <div class="term-body">
               <div class="tl" style="animation-delay: 0.3s"><span class="p">$ </span><span class="a">npx -y tower-mcp send</span></div>
-              <div class="tl" style="animation-delay: 1.0s"><span class="q">To (agent id, or * for everyone): </span><span class="a">cofounder</span></div>
+              <div class="tl" style="animation-delay: 1.0s"><span class="q">To (agent id, or * for everyone): </span><span class="a">bob</span></div>
               <div class="tl" style="animation-delay: 1.8s"><span class="q">Message: </span><span class="a">add rate limiting to /login</span></div>
               <div class="tl" style="animation-delay: 2.6s"><span class="q">Is this a task for them? [y/N]: </span><span class="a">y</span></div>
-              <div class="tl sent" style="animation-delay: 3.3s">📨 Sent task c78094d1 → cofounder</div>
-              <div class="tl done" style="animation-delay: 6.6s">[DONE] cofounder → rohan — “rate limit 30/min on /login, merged in ab12f3.”</div>
+              <div class="tl sent" style="animation-delay: 3.3s">📨 Sent task c78094d1 → bob</div>
+              <div class="tl done" style="animation-delay: 6.6s">[DONE] bob → alice — “rate limit 30/min on /login, merged in ab12f3.”</div>
             </div>
           </div>
           <div class="term">
-            <div class="term-head">THEIR MACHINE — cofounder</div>
+            <div class="term-head">THEIR MACHINE — bob</div>
             <div class="term-body">
               <div class="tl" style="animation-delay: 4.1s"><span class="p">$ </span><span class="a">npx -y tower-mcp inbox</span></div>
-              <div class="tl task-in" style="animation-delay: 4.8s">[TASK] rohan → cofounder (2s ago)</div>
+              <div class="tl task-in" style="animation-delay: 4.8s">[TASK] alice → bob (2s ago)</div>
               <div class="tl" style="animation-delay: 4.8s"><span class="a">       add rate limiting to /login</span></div>
               <div class="tl" style="animation-delay: 5.6s"><span class="q">…their Claude does the work — on their machine, their token…</span></div>
-              <div class="tl sent" style="animation-delay: 6.2s">📨 Sent task_update → rohan</div>
+              <div class="tl sent" style="animation-delay: 6.2s">📨 Sent task_update → alice</div>
             </div>
           </div>
         </div>

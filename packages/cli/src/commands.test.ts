@@ -270,3 +270,60 @@ describe("cmdSend / cmdInbox (agent comms)", () => {
     expect(again.lines.join("\n")).toContain("empty");
   });
 });
+
+describe("interactive send (gatherSendArgs)", () => {
+  it("fills from/repo from context and asks only for what's missing", async () => {
+    const { gatherSendArgs } = await import("./commands.js");
+    const asked: string[] = [];
+    const answers: Record<string, string> = {
+      "To (agent id, or * for everyone): ": "cofounder",
+      "Message: ": "add rate limiting to /login",
+      "Is this a task for them? [y/N]: ": "y",
+    };
+    const ask = async (q: string) => {
+      asked.push(q);
+      return answers[q] ?? "";
+    };
+    const args = await gatherSendArgs({}, { defaultFrom: "rohan", defaultRepo: "team/app", ask });
+    expect(args).toEqual({
+      from: "rohan",
+      to: "cofounder",
+      repo: "team/app",
+      body: "add rate limiting to /login",
+      task: true,
+    });
+    expect(asked).toHaveLength(3); // never asks for from/repo — they were derivable
+  });
+
+  it("asks nothing when everything is provided by flags", async () => {
+    const { gatherSendArgs } = await import("./commands.js");
+    const ask = async () => {
+      throw new Error("should not ask");
+    };
+    const args = await gatherSendArgs(
+      { from: "a", to: "b", repo: "r", body: "hi", task: false },
+      { defaultFrom: "x", defaultRepo: "y", ask },
+    );
+    expect(args.from).toBe("a");
+    expect(args.task).toBe(false);
+  });
+
+  it("re-asks until required answers are non-empty", async () => {
+    const { gatherSendArgs } = await import("./commands.js");
+    const replies = ["", "cofounder", "", "do it", "n"];
+    const ask = async () => replies.shift() ?? "";
+    const args = await gatherSendArgs({}, { defaultFrom: "rohan", defaultRepo: "r", ask });
+    expect(args.to).toBe("cofounder");
+    expect(args.body).toBe("do it");
+    expect(args.task).toBe(false);
+  });
+});
+
+describe("git-derived defaults", () => {
+  it("normalizes remote urls to host/owner/repo", async () => {
+    const { normalizeRepoUrl } = await import("./commands.js");
+    expect(normalizeRepoUrl("git@github.com:Acme/App.git")).toBe("github.com/acme/app");
+    expect(normalizeRepoUrl("https://github.com/Acme/App.git")).toBe("github.com/acme/app");
+    expect(normalizeRepoUrl("ssh://git@github.com/Acme/App")).toBe("github.com/acme/app");
+  });
+});

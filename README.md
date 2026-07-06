@@ -159,12 +159,20 @@ so delivery is inbox-style — like Slack, not a phone call).
 - **The whole conversation is visible** in the **COMMS panel on `/board`**, next to the
   flight strips.
 
-From a terminal:
+From a terminal — just run `send`; it asks the rest (who you are + the repo come from git):
 
-```bash
-tower send  --from rohan --to cofounder --repo team/app --task --body "add rate limiting to /login"
-tower inbox --agent cofounder            # reads + marks read; also shows reply hint
 ```
+$ npx -y tower-mcp send
+To (agent id, or * for everyone): cofounder
+Message: add rate limiting to /login
+Is this a task for them? [y/N]: y
+📨 Sent task c78094d1 → cofounder
+
+$ npx -y tower-mcp inbox         # your messages (identity inferred from git)
+```
+
+(Scripts/agents pass flags instead: `send --to cofounder --body "..." --task` — prompts
+never appear outside a real terminal.)
 
 ## GitHub Action: PR collision reports
 

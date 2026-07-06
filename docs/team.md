@@ -214,9 +214,10 @@ npx -y tower-mcp guard  --agent bob   --repo team/app --symbol "src/auth.ts#Auth
 # Anyone can watch the shared board:
 npx -y tower-mcp status
 
-# Talk to each other's agents (shows up in the /board COMMS panel):
-npx -y tower-mcp send  --from alice --to bob --repo team/app --task --body "add rate limiting to /login"
-npx -y tower-mcp inbox --agent bob     # bob's agent reads the task, does it, replies
+# Talk to each other's agents (shows up in the /board COMMS panel).
+# Just run `send` — it asks who/what and infers your identity + repo from git:
+npx -y tower-mcp send
+npx -y tower-mcp inbox                 # read your messages (marks them read)
 ```
 
 For the real thing, both enable the PreToolUse hook and open Claude Code in the repo — B's

@@ -1,5 +1,6 @@
 import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
+import { execSync } from "node:child_process";
 import type { Server } from "node:http";
 import { startStdio, startHttp, SymbolExtractor } from "@tower/server";
 import type {
@@ -355,6 +356,72 @@ export interface SendArgs {
   /** Send as a task request instead of a plain message. */
   task?: boolean;
   replyTo?: string;
+}
+
+/** Normalize a git remote URL to a stable "host/owner/repo" id (matches the hooks). */
+export function normalizeRepoUrl(url: string): string {
+  return url
+    .replace(/^git@([^:]+):/, "$1/")
+    .replace(/^ssh:\/\/git@/, "")
+    .replace(/^https?:\/\//, "")
+    .replace(/\.git$/, "")
+    .toLowerCase();
+}
+
+/** Best-effort defaults so `tower send` can skip questions: agent id + repo from git. */
+export function gitDefaults(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): {
+  defaultFrom: string;
+  defaultRepo: string;
+} {
+  const git = (cmd: string): string => {
+    try {
+      return execSync(cmd, { cwd, stdio: ["ignore", "pipe", "ignore"] })
+        .toString()
+        .trim();
+    } catch {
+      return "";
+    }
+  };
+  const origin = git("git config --get remote.origin.url");
+  return {
+    defaultFrom: env.TOWER_AGENT || git("git config user.name") || "dev",
+    defaultRepo: origin ? normalizeRepoUrl(origin) : basename(cwd),
+  };
+}
+
+export type Ask = (question: string) => Promise<string>;
+
+/**
+ * Interactive completion for `tower send`: derivable fields (from/repo) come from git,
+ * everything else is asked — so the command can be just `tower send`.
+ */
+export async function gatherSendArgs(
+  partial: Partial<SendArgs>,
+  ctx: { defaultFrom: string; defaultRepo: string; ask: Ask },
+): Promise<SendArgs> {
+  const required = async (given: string | undefined, question: string): Promise<string> => {
+    if (given) return given;
+    let answer = "";
+    while (!answer) answer = (await ctx.ask(question)).trim();
+    return answer;
+  };
+  const to = await required(partial.to, "To (agent id, or * for everyone): ");
+  const body = await required(partial.body, "Message: ");
+  let task = partial.task;
+  if (task === undefined) {
+    task = /^y(es)?$/i.test((await ctx.ask("Is this a task for them? [y/N]: ")).trim());
+  }
+  return {
+    from: partial.from ?? ctx.defaultFrom,
+    to,
+    repo: partial.repo ?? ctx.defaultRepo,
+    body,
+    task,
+    ...(partial.replyTo ? { replyTo: partial.replyTo } : {}),
+  };
 }
 
 /** Send an async message/task to another agent (the agent channel, from the terminal). */

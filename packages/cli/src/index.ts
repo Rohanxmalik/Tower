@@ -10,7 +10,10 @@ import {
   cmdNextTask,
   cmdSend,
   cmdInbox,
+  gatherSendArgs,
+  gitDefaults,
   type ClaimArgs,
+  type SendArgs,
 } from "./commands.js";
 
 const HELP = `Tower — air-traffic control for AI agents editing a shared repo.
@@ -31,10 +34,10 @@ Commands:
   next-task --agent <id> --repo <r>
                              The [d] option: a module that's safe to start right now
                              (needs modules in .tower/policy.yaml)
-  send --from <id> --to <id|*> --repo <r> --body <text> [--task] [--reply-to <id>]
-                             Message another agent (--task = delegate work to them)
-  inbox --agent <id> [--repo r]
-                             Read your messages (marks them read)
+  send                       Message another agent — just run it; it asks the rest.
+                             (--from/--repo are inferred from git; flags for scripts:
+                              --to <id|*> --body <text> [--task] [--reply-to <id>])
+  inbox [--agent <id>]       Read your messages (marks them read; agent inferred from git)
 
 Run with no command to print this help.`;
 
@@ -168,18 +171,41 @@ export async function run(argv: string[]): Promise<number> {
         },
         allowPositionals: false,
       });
-      if (!values.from || !values.to || !values.repo || !values.body) {
-        process.stderr.write("send requires --from, --to, --repo and --body\n");
+      const partial: Partial<SendArgs> = {
+        ...(values.from ? { from: values.from } : {}),
+        ...(values.to ? { to: values.to } : {}),
+        ...(values.repo ? { repo: values.repo } : {}),
+        ...(values.body ? { body: values.body } : {}),
+        ...(values.task !== undefined ? { task: values.task } : {}),
+        ...(values["reply-to"] ? { replyTo: values["reply-to"] } : {}),
+      };
+      const interactive = process.stdin.isTTY && (!partial.to || !partial.body);
+      if (!interactive && (!partial.to || !partial.body)) {
+        // Non-TTY (hooks/CI/agents) must never hang on a prompt.
+        process.stderr.write("send requires --to and --body (from/repo are inferred from git)\n");
         return 1;
       }
-      await cmdSend(cwd, {
-        from: values.from,
-        to: values.to,
-        repo: values.repo,
-        body: values.body,
-        ...(values.task ? { task: true } : {}),
-        ...(values["reply-to"] ? { replyTo: values["reply-to"] } : {}),
-      });
+      const defaults = gitDefaults(cwd);
+      let full: SendArgs;
+      if (interactive) {
+        const { createInterface } = await import("node:readline/promises");
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        try {
+          full = await gatherSendArgs(partial, { ...defaults, ask: (q) => rl.question(q) });
+        } finally {
+          rl.close();
+        }
+      } else {
+        full = {
+          from: partial.from ?? defaults.defaultFrom,
+          to: partial.to!,
+          repo: partial.repo ?? defaults.defaultRepo,
+          body: partial.body!,
+          ...(partial.task !== undefined ? { task: partial.task } : {}),
+          ...(partial.replyTo ? { replyTo: partial.replyTo } : {}),
+        };
+      }
+      await cmdSend(cwd, full);
       return 0;
     }
 
@@ -189,12 +215,10 @@ export async function run(argv: string[]): Promise<number> {
         options: { agent: { type: "string" }, repo: { type: "string" } },
         allowPositionals: false,
       });
-      if (!values.agent) {
-        process.stderr.write("inbox requires --agent\n");
-        return 1;
-      }
+      // No --agent? Use the same identity `send` would (TOWER_AGENT / git user.name).
+      const agentId = values.agent ?? gitDefaults(cwd).defaultFrom;
       await cmdInbox(cwd, {
-        agentId: values.agent,
+        agentId,
         ...(values.repo ? { repo: values.repo } : {}),
       });
       return 0;

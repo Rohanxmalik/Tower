@@ -17,7 +17,7 @@ import type {
 } from "@tower/shared";
 import { TowerService } from "./service.js";
 
-const SERVER_INFO = { name: "tower", version: "0.3.0" } as const;
+const SERVER_INFO = { name: "tower", version: "0.3.1" } as const;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:

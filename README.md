@@ -18,7 +18,11 @@ and warns **before** the edit happens, not at merge time.
 ```
 ⛔ COLLISION — AuthService.verify
    Agent "cursor-bob" is mid-change (started 2s ago, ETA ~6m, purpose: replace JWT).
-   Options:  [w] wait   [d] take dependent task   [b] branch from their WIP   [f] force
+   Options:
+     [w] wait      — retry in a few minutes; their claim expires without heartbeats
+     [d] dependent — run: tower next-task  (a module that's safe to start now)
+     [b] branch    — build on their WIP instead of racing them
+     [f] force     — re-run guard with --force; you own the merge risk
 ```
 
 > The banner above is an animated SVG. Prefer a real terminal-recording GIF? Run

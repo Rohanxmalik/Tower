@@ -7,6 +7,7 @@ import {
   cmdServe,
   cmdWatch,
   cmdComplete,
+  cmdNextTask,
   type ClaimArgs,
 } from "./commands.js";
 
@@ -22,8 +23,12 @@ Commands:
   complete --claim <id> [--sha <sha>]     Complete a claim (used by the git hook)
   claim --agent <id> --repo <r> [--branch b] [--file p]... [--symbol path#name]... [--purpose s] [--eta m]
                              Register an edit intent and print any collisions
-  guard <same args as claim> Enforcement: exit 2 (blocked) on a hard collision, else claim.
-                             Used by the Claude Code PreToolUse hook.
+  guard <same args as claim> [--force]
+                             Enforcement: exit 2 (blocked) on a hard collision, else claim.
+                             --force claims anyway (the [f] option). Used by the PreToolUse hook.
+  next-task --agent <id> --repo <r>
+                             The [d] option: a module that's safe to start right now
+                             (needs modules in .tower/policy.yaml)
 
 Run with no command to print this help.`;
 
@@ -45,6 +50,7 @@ function parseClaimArgs(rest: string[]): ClaimArgs | null {
       symbol: { type: "string", multiple: true },
       purpose: { type: "string" },
       eta: { type: "string" },
+      force: { type: "boolean" },
     },
     allowPositionals: false,
   });
@@ -60,6 +66,7 @@ function parseClaimArgs(rest: string[]): ClaimArgs | null {
     symbols: values.symbol ?? [],
     purpose: values.purpose ?? "",
     ...(toNum(values.eta) != null ? { etaMinutes: toNum(values.eta)! } : {}),
+    ...(values.force ? { force: true } : {}),
   };
 }
 
@@ -126,6 +133,20 @@ export async function run(argv: string[]): Promise<number> {
       if (!args) return 1;
       const blocked = await cmdGuard(cwd, args);
       return blocked ? 2 : 0;
+    }
+
+    case "next-task": {
+      const { values } = parseArgs({
+        args: rest,
+        options: { agent: { type: "string" }, repo: { type: "string" } },
+        allowPositionals: false,
+      });
+      if (!values.agent || !values.repo) {
+        process.stderr.write("next-task requires --agent and --repo\n");
+        return 1;
+      }
+      await cmdNextTask(cwd, { agentId: values.agent, repo: values.repo });
+      return 0;
     }
 
     default:

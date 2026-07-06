@@ -46,7 +46,7 @@ describe("renderConflicts", () => {
     expect(out).toContain('Agent "cursor-bob"');
     expect(out).toContain("ETA ~6m");
     expect(out).toContain("purpose: replace JWT");
-    expect(out).toContain("[b] branch from their WIP");
+    expect(out).toContain("[b] branch");
   });
 
   it("renders a soft overlap with gentler options", () => {
@@ -74,5 +74,23 @@ describe("renderClaimsTable", () => {
     expect(out).toContain("cursor-bob");
     expect(out).toContain("AuthService.verify");
     expect(out).toContain("replace JWT");
+  });
+});
+
+describe("actionable options menu", () => {
+  it("hard collisions point at the real commands", () => {
+    const conflicts: Conflict[] = [
+      {
+        claimId: "c1",
+        agentId: "cursor-bob",
+        severity: "hard",
+        reason: "same symbol",
+        overlap: [{ file: "src/auth.ts", symbol: "AuthService.verify" }],
+      },
+    ];
+    const outText = renderConflicts(conflicts, () => claim(), 1_000);
+    expect(outText).toContain("tower next-task");
+    expect(outText).toContain("--force");
+    expect(outText).toContain("[w] wait");
   });
 });

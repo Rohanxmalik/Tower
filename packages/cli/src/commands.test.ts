@@ -207,3 +207,42 @@ describe("cmdInit", () => {
     expect(lines.join("\n")).toContain("already exists");
   });
 });
+
+describe("cmdGuard --force", () => {
+  it("proceeds past a hard collision, registers the claim, and says it was forced", async () => {
+    await cmdGuard(dir, bob, () => {});
+    const { out, lines } = collect();
+    const { cmdGuard: guard } = await import("./commands.js");
+    const blocked = await guard(dir, { ...bob, agentId: "claude-a", force: true }, out);
+    expect(blocked).toBe(false);
+    expect(lines.join("\n")).toContain("FORCED");
+    const status = collect();
+    await cmdStatus(dir, status.out);
+    expect(status.lines.join("\n")).toContain("claude-a");
+  });
+});
+
+describe("cmdNextTask", () => {
+  it("suggests a module that is safe to start given active claims", async () => {
+    mkdirSync(join(dir, ".tower"), { recursive: true });
+    writeFileSync(
+      join(dir, ".tower", "policy.yaml"),
+      'modules:\n  auth: { path: "src/auth/**" }\n  api: { path: "src/api/**", depends_on: [auth] }\n  docs: { path: "docs/**" }\nlimits:\n  max_agents_per_module: 1\n',
+    );
+    // auth is busy → api is blocked (depends on auth), docs is free… but auth itself
+    // is also busy, so the first clear module is docs.
+    await cmdClaim(dir, { ...bob, files: ["src/auth/login.ts"], symbols: [] }, () => {});
+    const { out, lines } = collect();
+    const { cmdNextTask } = await import("./commands.js");
+    await cmdNextTask(dir, { agentId: "claude-a", repo: "acme/app" }, out);
+    const text = lines.join("\n");
+    expect(text).toContain("docs");
+  });
+
+  it("explains itself when no policy modules exist", async () => {
+    const { out, lines } = collect();
+    const { cmdNextTask } = await import("./commands.js");
+    await cmdNextTask(dir, { agentId: "claude-a", repo: "acme/app" }, out);
+    expect(lines.join("\n").toLowerCase()).toContain("no candidate");
+  });
+});

@@ -8,6 +8,7 @@ import type {
   CheckCollisionOutput,
   ClaimIntentOutput,
   ListClaimsOutput,
+  NextTaskOutput,
   OkOutput,
 } from "@tower/shared";
 import { renderConflicts, renderClaimsTable } from "./render.js";
@@ -81,6 +82,8 @@ export interface ClaimArgs {
   symbols: string[];
   purpose: string;
   etaMinutes?: number;
+  /** guard only: proceed past a hard collision (the [f] option), claiming anyway. */
+  force?: boolean;
 }
 
 function parseSymbols(entries: string[]): { file: string; symbol: string }[] {
@@ -177,34 +180,77 @@ export async function cmdGuard(
   const cleared = (claimId: string, where: string): void =>
     out(`✅ CLEAR — no conflicting claims. Registered claim ${claimId.slice(0, 8)}${where}.`);
 
+  const forced = (n: number): void =>
+    out(`⚠️  FORCED past ${n} hard conflict(s) — claim registered; you own the merge risk.`);
+
   const remote = remoteConfig();
   if (remote) {
     return withRemote(remote, async (call) => {
       const { conflicts } = (await call("check_collision", scope)) as CheckCollisionOutput;
-      if (conflicts.some((c) => c.severity === "hard")) {
+      const hardCount = conflicts.filter((c) => c.severity === "hard").length;
+      if (hardCount > 0) {
         out(renderConflicts(conflicts, await remoteClaimLookup(call, args.repo, args.branch)));
-        return true;
+        if (!args.force) return true;
+        forced(hardCount);
       }
       const { claimId } = (await call("claim_intent", intent)) as ClaimIntentOutput;
       writeClaimId(cwd, claimId);
-      cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
+      if (hardCount === 0) cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
       return false;
     });
   }
 
   const service = buildService(cwd, build);
   const { conflicts } = service.checkCollision(scope);
-  const hard = conflicts.some((c) => c.severity === "hard");
-  if (hard) {
+  const hardCount = conflicts.filter((c) => c.severity === "hard").length;
+  if (hardCount > 0) {
     out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
-    service.store.close();
-    return true; // block; do not register a claim for an edit we're stopping
+    if (!args.force) {
+      service.store.close();
+      return true; // block; do not register a claim for an edit we're stopping
+    }
+    forced(hardCount);
   }
   const { claimId } = service.claimIntent(intent);
   writeClaimId(cwd, claimId);
-  cleared(claimId, ` for ${args.agentId}`);
+  if (hardCount === 0) cleared(claimId, ` for ${args.agentId}`);
   service.store.close();
   return false;
+}
+
+export interface NextTaskArgs {
+  agentId: string;
+  repo: string;
+}
+
+/**
+ * The [d] option made real: ask the sequencer for a module that is safe to start now
+ * (dependencies idle, under the per-module agent limit), given everyone's active claims.
+ * Candidates come from `.tower/policy.yaml` modules.
+ */
+export async function cmdNextTask(
+  cwd: string,
+  args: NextTaskArgs,
+  out: Writer = stdout,
+  build?: BuildOptions,
+): Promise<void> {
+  const input = { agentId: args.agentId, repo: args.repo, candidates: [] };
+  const remote = remoteConfig();
+  const result = remote
+    ? ((await withRemote(remote, (call) => call("next_task", input))) as NextTaskOutput)
+    : (() => {
+        const service = buildService(cwd, build);
+        const r = service.nextTask(input);
+        service.store.close();
+        return r;
+      })();
+  if (result.task) {
+    out(`▶ Next task: ${result.task.id} (module "${result.task.module}")`);
+    out(`  ${result.reason}`);
+  } else {
+    out(`✋ Nothing safe to start: ${result.reason}`);
+    out(`  (Modules are declared in .tower/policy.yaml — see "tower init".)`);
+  }
 }
 
 /** Complete (release on commit) a claim by id, optionally recording the commit sha. */

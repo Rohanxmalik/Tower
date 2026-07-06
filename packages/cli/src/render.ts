@@ -37,7 +37,11 @@ export function renderConflicts(
       return [
         `⛔ COLLISION — ${targetLabel(c)}`,
         context,
-        `   Options:  [w] wait   [d] take dependent task   [b] branch from their WIP   [f] force`,
+        `   Options:`,
+        `     [w] wait      — retry in a few minutes; their claim expires without heartbeats`,
+        `     [d] dependent — run: tower next-task  (a module that's safe to start now)`,
+        `     [b] branch    — build on their WIP instead of racing them`,
+        `     [f] force     — re-run guard with --force; you own the merge risk`,
       ].join("\n");
     }
     if (c.severity === "soft") {

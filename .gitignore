@@ -9,3 +9,8 @@ coverage/
 .tower/tower.db
 .tower/*.db
 .tower/claim-id
+
+# Local secrets / machine-specific config — never commit
+.env
+.env.*
+.claude/settings.json

@@ -108,6 +108,39 @@ describe("HTTP transport", () => {
     expect(status).toBe(403);
   });
 
+  it("locks out an IP after repeated failed auth attempts (brute-force guard)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const wrong = () =>
+      fetch(url(httpServer!), {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer nope" },
+        body: "{}",
+      });
+    for (let i = 0; i < 10; i++) expect((await wrong()).status).toBe(401);
+    // Locked out now — even a correct token from this IP is refused until the window resets.
+    expect((await wrong()).status).toBe(429);
+    const good = await fetch(url(httpServer), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret" },
+      body: "{}",
+    });
+    expect(good.status).toBe(429);
+  });
+
+  it("does not count successful auth towards the lockout", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    for (let i = 0; i < 15; i++) {
+      const res = await fetch(url(httpServer), {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer secret" },
+        body: "{}",
+      });
+      expect(res.status).not.toBe(429);
+    }
+  });
+
   it("still serves localhost requests in token-less mode", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0 });

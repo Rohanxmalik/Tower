@@ -29,6 +29,41 @@ function isLocalHost(hostHeader: string | undefined): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
 }
 
+/**
+ * Brute-force guard: after MAX_AUTH_FAILURES failed auth attempts from one IP within
+ * WINDOW_MS, refuse all its requests (429) until the window resets. Correct tokens never
+ * accumulate failures, so legitimate teammates are unaffected.
+ */
+const MAX_AUTH_FAILURES = 10;
+const AUTH_WINDOW_MS = 60_000;
+
+class AuthThrottle {
+  private readonly failures = new Map<string, { count: number; resetAt: number }>();
+
+  private entry(ip: string): { count: number; resetAt: number } | undefined {
+    const e = this.failures.get(ip);
+    if (e && e.resetAt <= Date.now()) {
+      this.failures.delete(ip);
+      return undefined;
+    }
+    return e;
+  }
+
+  isLocked(ip: string): boolean {
+    const e = this.entry(ip);
+    return e !== undefined && e.count >= MAX_AUTH_FAILURES;
+  }
+
+  recordFailure(ip: string): void {
+    const e = this.entry(ip);
+    if (e) {
+      this.failures.set(ip, { count: e.count + 1, resetAt: e.resetAt });
+    } else {
+      this.failures.set(ip, { count: 1, resetAt: Date.now() + AUTH_WINDOW_MS });
+    }
+  }
+}
+
 /** Connect a Tower MCP server to stdio (local single-machine use). */
 export async function startStdio(service: TowerService): Promise<void> {
   const server = buildMcpServer(service);
@@ -56,10 +91,18 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
     res.json({ ok: true, service: "tower" });
   });
 
+  const throttle = new AuthThrottle();
+
   app.post("/mcp", async (req, res) => {
     if (opts.token) {
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (throttle.isLocked(ip)) {
+        res.status(429).json({ error: "too many failed auth attempts — try again later" });
+        return;
+      }
       const header = req.header("authorization") ?? "";
       if (!safeEqual(header, `Bearer ${opts.token}`)) {
+        throttle.recordFailure(ip);
         res.status(401).json({ error: "unauthorized" });
         return;
       }

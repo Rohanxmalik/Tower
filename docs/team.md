@@ -156,9 +156,27 @@ vars — when `TOWER_URL` is set, `guard` / `claim` / `complete` / `status` all 
 hosted Tower instead of the local file:
 
 ```bash
+# macOS / Linux (bash, zsh)
 export TOWER_URL=https://tower.yourteam.dev/mcp
 export TOWER_TOKEN=your-shared-secret        # if the server requires a token
 ```
+
+```powershell
+# Windows PowerShell — `set` does NOT work here; it silently does nothing useful,
+# and the CLI falls back to local mode ("No collisions" against an empty local DB).
+$env:TOWER_URL = "https://tower.yourteam.dev/mcp"
+$env:TOWER_TOKEN = "your-shared-secret"
+```
+
+```bat
+:: Windows cmd (the old black window)
+set TOWER_URL=https://tower.yourteam.dev/mcp
+set TOWER_TOKEN=your-shared-secret
+```
+
+**Sanity check you're in remote mode:** `claim`/`guard` output ends with
+`(… on https://tower.yourteam.dev/mcp)`. No `on <url>` = the env var didn't take and
+you're coordinating with yourself locally.
 
 Set those in the shell that launches your editor (so the hook inherits them), enable the
 hook, and now Developer B's `Edit` is **blocked** while Developer A holds the file. Repo

@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/**/*.test.ts"],
+    include: ["packages/**/*.test.ts", "action/**/*.test.mjs"],
     server: {
       deps: {
         // node:sqlite is a newer builtin vitest doesn't auto-externalize yet.

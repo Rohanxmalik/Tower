@@ -1,8 +1,37 @@
-# Enforcement (Claude Code hook)
+# Enforcement — every editor, three layers
 
 Asking an agent to "please call `claim_intent` before editing" is a suggestion — LLMs
-forget. The **PreToolUse hook** makes it a guarantee: Claude physically cannot edit a file
-another active agent is mid-change on.
+forget. Enforcement makes it a guarantee. Tower gives you three layers; stack them:
+
+| Layer                              | Blocks at   | Works in                                 |
+| ---------------------------------- | ----------- | ---------------------------------------- |
+| **1. MCP tools + rules file**      | intent time | every MCP agent (Claude, Cursor, Codex…) |
+| **2. Claude Code PreToolUse hook** | edit time   | Claude Code                              |
+| **3. git `pre-commit` guard**      | commit time | **everything** — any agent, any editor   |
+
+Layer 2 is the strongest (the edit physically can't happen) but is Claude Code-only —
+Cursor and Codex don't expose a blocking file-edit hook yet. Layer 3 is the universal
+backstop: whatever tool wrote the code, the **commit is refused** while a teammate's agent
+holds a hard-conflicting claim.
+
+## Layer 3: the universal pre-commit guard (Cursor, Codex, anything)
+
+```bash
+cp examples/git-hooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+On every commit it runs `tower guard` on the staged files. Hard conflict → commit blocked
+with who/what/why; clear → a claim is registered for you. Set `TOWER_URL` + `TOWER_TOKEN`
+and it enforces against your **team's** hosted Tower ([team.md](./team.md)). Escape hatch:
+`git commit --no-verify`.
+
+For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
+
+> Before editing any file, call the `claim_intent` tool on the `tower` MCP server with the
+> files and symbols you'll change. If a `hard` conflict returns, stop and ask the user.
+
+## Layer 2: the Claude Code PreToolUse hook
 
 ## How it works
 

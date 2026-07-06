@@ -1,0 +1,16 @@
+# Dogfood: Tower's own PRs get a collision report from the in-repo action.
+name: PR collisions
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./action

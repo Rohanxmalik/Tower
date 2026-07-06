@@ -144,3 +144,33 @@ describe("detectCollisions — multiple claims & ranking", () => {
     expect(conflicts[0]!.severity).toBe("hard");
   });
 });
+
+describe("pairwiseCollisions (board)", () => {
+  it("finds hard pairs among active claims in the same repo/branch", async () => {
+    const { pairwiseCollisions } = await import("./collision.js");
+    const a = activeClaim({ id: "A", agentId: "alice" });
+    const b = activeClaim({ id: "B", agentId: "bob" });
+    const pairs = pairwiseCollisions([a, b]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]!.severity).toBe("hard");
+    expect([pairs[0]!.aClaimId, pairs[0]!.bClaimId].sort()).toEqual(["A", "B"]);
+    expect(pairs[0]!.aAgentId).not.toBe(pairs[0]!.bAgentId);
+  });
+
+  it("ignores claims in different repos or branches and same-agent pairs", async () => {
+    const { pairwiseCollisions } = await import("./collision.js");
+    const a = activeClaim({ id: "A", agentId: "alice" });
+    const otherRepo = activeClaim({ id: "B", agentId: "bob", repo: "acme/other" });
+    const otherBranch = activeClaim({ id: "C", agentId: "bob", branch: "dev" });
+    const sameAgent = activeClaim({ id: "D", agentId: "alice" });
+    expect(pairwiseCollisions([a, otherRepo, otherBranch, sameAgent])).toHaveLength(0);
+  });
+
+  it("reports each conflicting pair once", async () => {
+    const { pairwiseCollisions } = await import("./collision.js");
+    const a = activeClaim({ id: "A", agentId: "alice" });
+    const b = activeClaim({ id: "B", agentId: "bob" });
+    const c = activeClaim({ id: "C", agentId: "carol" });
+    expect(pairwiseCollisions([a, b, c])).toHaveLength(3); // AB, AC, BC
+  });
+});

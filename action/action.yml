@@ -1,0 +1,22 @@
+name: "Tower PR collision report"
+description: >-
+  Comments on a pull request when it touches the same files (and overlapping lines) as
+  other open PRs — and, if you run a hosted Tower, when an AI agent is editing those
+  files right now. Catch merge conflicts before they happen.
+author: "Rohanxmalik"
+branding:
+  icon: "alert-triangle"
+  color: "orange"
+inputs:
+  github-token:
+    description: "Token used to read PRs and post the report comment."
+    default: ${{ github.token }}
+  tower-url:
+    description: "Optional: your hosted Tower base URL (e.g. https://tower-xxxx.onrender.com) to include live agent claims."
+    required: false
+  tower-token:
+    description: "Optional: TOWER_TOKEN for the hosted Tower."
+    required: false
+runs:
+  using: "node20"
+  main: "main.mjs"

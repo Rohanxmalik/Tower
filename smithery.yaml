@@ -1,0 +1,8 @@
+# Smithery (smithery.ai) launch config — lets Smithery run Tower as a stdio MCP server.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+  commandFunction: |-
+    () => ({ command: "npx", args: ["-y", "tower-mcp", "serve"] })

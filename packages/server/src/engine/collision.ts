@@ -95,6 +95,48 @@ export function detectCollisions(
   return conflicts.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 }
 
+/** A collision between two live claims, as shown on the board. */
+export interface PairConflict {
+  aClaimId: string;
+  aAgentId: string;
+  bClaimId: string;
+  bAgentId: string;
+  severity: Severity;
+  reason: string;
+  overlap: SymbolRef[];
+}
+
+/**
+ * All collisions among a set of active claims, one entry per conflicting pair.
+ * Claims only collide within the same repo+branch, and never with the same agent.
+ * Powers the live board.
+ */
+export function pairwiseCollisions(claims: Claim[]): PairConflict[] {
+  const pairs: PairConflict[] = [];
+  for (let i = 0; i < claims.length; i++) {
+    for (let j = i + 1; j < claims.length; j++) {
+      const a = claims[i]!;
+      const b = claims[j]!;
+      if (a.repo !== b.repo || a.branch !== b.branch) continue;
+      const [conflict] = detectCollisions(
+        { agentId: a.agentId, files: a.files, symbols: a.symbols },
+        [b],
+      );
+      if (!conflict) continue;
+      pairs.push({
+        aClaimId: a.id,
+        aAgentId: a.agentId,
+        bClaimId: b.id,
+        bAgentId: b.agentId,
+        severity: conflict.severity,
+        reason: conflict.reason,
+        overlap: conflict.overlap,
+      });
+    }
+  }
+  return pairs.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+}
+
 function dedupeSymbols(symbols: SymbolRef[]): SymbolRef[] {
   const seen = new Set<string>();
   const out: SymbolRef[] = [];

@@ -4,6 +4,7 @@ import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import { buildMcpServer } from "./mcp.js";
+import { BOARD_HTML } from "./board.js";
 import { TowerService } from "./service.js";
 
 /** Constant-time string comparison; length mismatch still compares a full buffer. */
@@ -93,24 +94,45 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
 
   const throttle = new AuthThrottle();
 
-  app.post("/mcp", async (req, res) => {
+  /** Shared gate for /mcp and /api/board: bearer token (with brute-force lockout) or,
+   * in token-less local mode, the DNS-rebinding Host guard. Sends the error response
+   * itself and returns false when the request must not proceed. */
+  const authorize = (req: express.Request, res: express.Response): boolean => {
     if (opts.token) {
       const ip = req.socket.remoteAddress ?? "unknown";
       if (throttle.isLocked(ip)) {
         res.status(429).json({ error: "too many failed auth attempts — try again later" });
-        return;
+        return false;
       }
       const header = req.header("authorization") ?? "";
       if (!safeEqual(header, `Bearer ${opts.token}`)) {
         throttle.recordFailure(ip);
         res.status(401).json({ error: "unauthorized" });
-        return;
+        return false;
       }
-    } else if (!isLocalHost(req.header("host"))) {
+      return true;
+    }
+    if (!isLocalHost(req.header("host"))) {
       // Token-less mode is for local use only; block DNS-rebinding from browsers.
       res.status(403).json({ error: "host not allowed without a token — set TOWER_TOKEN" });
-      return;
+      return false;
     }
+    return true;
+  };
+
+  // The live radar board. The page itself carries no data (safe to serve unauthenticated);
+  // it polls /api/board with the token the operator enters.
+  app.get("/board", (_req, res) => {
+    res.type("html").send(BOARD_HTML);
+  });
+
+  app.get("/api/board", (req, res) => {
+    if (!authorize(req, res)) return;
+    res.json(service.boardSnapshot());
+  });
+
+  app.post("/mcp", async (req, res) => {
+    if (!authorize(req, res)) return;
     const server = buildMcpServer(service);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {

@@ -17,9 +17,18 @@ import type {
   NextTaskInput,
   NextTaskOutput,
 } from "@tower/shared";
+import type { Claim } from "@tower/shared";
 import { TowerStore } from "./store/sqlite.js";
-import { detectCollisions } from "./engine/collision.js";
+import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
+
+/** What the live board renders: every active claim + the collisions between them. */
+export interface BoardSnapshot {
+  claims: Claim[];
+  conflicts: PairConflict[];
+  /** Server clock (ms) so the board can render TTL countdowns without clock skew. */
+  now: number;
+}
 
 const EMPTY_POLICY: Policy = { modules: [], maxAgentsPerModule: null };
 
@@ -100,6 +109,11 @@ export class TowerService {
 
   getDecisions(input: GetDecisionsInput): GetDecisionsOutput {
     return { decisions: this.store.getDecisions(input) };
+  }
+
+  boardSnapshot(): BoardSnapshot {
+    const claims = this.store.listClaims({ status: "active" });
+    return { claims, conflicts: pairwiseCollisions(claims), now: Date.now() };
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {

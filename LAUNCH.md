@@ -49,17 +49,33 @@ vhs examples/two-agents-demo/demo.tape   # → docs/demo.gif
 Then swap `docs/demo.svg` → `docs/demo.gif` in `README.md` and `site/index.html`. (The
 animated SVG is a solid stand-in if you skip this.)
 
-## 4. Submit to MCP directories (do this FIRST — approvals are async)
+## 4. Submit to MCP directories (do this FIRST — approvals are async) **[you]**
 
 These are where MCP users actually discover servers; they drive real installs + stars.
+Copy-paste content is below — each takes ~3 minutes.
 
-- **Official list** — PR to `modelcontextprotocol/servers` (add Tower under community servers).
-- **mcp.so** — https://mcp.so/submit
-- **Smithery** — https://smithery.ai (add server)
-- **Glama** — https://glama.ai/mcp/servers (submit)
-- **PulseMCP** — https://www.pulsemcp.com (submit a server)
-- **Cursor MCP directory** — https://docs.cursor.com/ (community MCP list)
-- **Awesome MCP Servers** — PR to `punkpeye/awesome-mcp-servers`.
+**One-line description (use everywhere):**
+
+> Air-traffic control for AI agents editing a shared repo — semantic pre-flight collision
+> detection over MCP. Model-agnostic (Claude Code, Cursor, Codex).
+
+- **Official list** — fork `modelcontextprotocol/servers`, add this line alphabetically to
+  the community section of `README.md`, open a PR:
+
+  ```markdown
+  - **[Tower](https://github.com/Rohanxmalik/Tower)** - Stops parallel AI agents from colliding on the same code: agents claim files/symbols before editing and get semantic (tree-sitter) collision warnings before a token is spent.
+  ```
+
+- **Awesome MCP Servers** — fork `punkpeye/awesome-mcp-servers`, add under _Developer
+  Tools_ (same line as above, their format: `[Rohanxmalik/Tower](...) 🏎️ ☁️ 🖥️ - ...`).
+- **mcp.so** — https://mcp.so → Submit → paste the GitHub URL (it auto-imports).
+- **Smithery** — https://smithery.ai → Add server → point at the repo
+  (`smithery.yaml` is already in the repo root, so it lists cleanly).
+- **Glama** — https://glama.ai/mcp/servers — it indexes npm/GitHub automatically; claim
+  the listing by signing in with GitHub.
+- **PulseMCP** — https://www.pulsemcp.com → Submit a server.
+- **Cursor directory** — https://cursor.directory/mcp → submit (Tower works in Cursor
+  via `.cursor/mcp.json`, same npx command).
 
 ## 5. Launch posts **[you — your accounts]**
 
@@ -72,23 +88,36 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
 
 **Body:**
 
-> I run several coding agents in parallel now (Claude Code, Cursor) and they kept colliding
-> on the same files — I'd only find out at merge, after both had done the work.
+> My co-founder and I both run coding agents on the same repo (me Claude Code, him Codex)
+> and they kept colliding on the same files — we'd only find out at merge, after both had
+> burned the tokens and done the work.
 >
 > Tower is a small MCP server that fixes the write side. Before an agent edits, it declares
 > the files/symbols it's about to change; Tower detects _semantic_ overlap (tree-sitter, so
-> `AuthService.verify` conflicts even across different diff hunks) with other active agents
-> and warns before the keystroke. There's a Claude Code PreToolUse hook that actually
-> _blocks_ a conflicting edit, and a hosted mode so a team on different machines shares one
-> Tower.
+> `AuthService.verify` conflicts even across different diff hunks) with every other active
+> agent — across the whole team — and flags it before a token is spent. Three enforcement
+> layers: MCP tools any agent can call, a Claude Code hook that physically _blocks_ a
+> conflicting edit, and a git pre-commit guard that works with anything. There's a live
+> radar board (`/board`) showing every agent's claims in real time, and a GitHub Action
+> that comments when two open PRs touch overlapping lines.
 >
 > Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). Install is
-> `npx -y tower-mcp serve`. MIT.
+> `npx -y tower-mcp serve`; team mode is one click on Render. MIT.
 >
 > Repo: https://github.com/Rohanxmalik/Tower · Site: https://rohanxmalik.github.io/Tower/
 >
 > It's early — the honest gaps are in the README. Would love feedback on the collision
-> model and whether the enforcement hook is the right call.
+> model and whether hard-blocking is the right default.
+
+**Objection cheatsheet (reply fast, concede honestly):**
+
+| They'll say                                   | You say                                                                                                                                         |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Just use git branches/worktrees"             | Branches don't stop wasted work — both agents still do the task, you pay twice and merge once. Tower stops the second agent _before it starts_. |
+| "Locking is what databases did in the 90s"    | Fair — it's advisory intent, not a lock. Soft conflicts only warn; hard blocks are opt-in via the hook, with a `--no-verify` escape everywhere. |
+| "Agents should just coordinate via the model" | They can't see each other across editors/machines/vendors. MCP is the only surface they all share today — that's why Tower is an MCP server.    |
+| "This should be an editor feature"            | Probably will be, someday, per-editor. Tower is cross-editor and cross-vendor now, and MIT — editors are welcome to absorb the idea.            |
+| "tree-sitter isn't semantic enough"           | Agreed, it's symbol-level, not type-aware. It catches the 80% (same function/class); the README roadmap has the honest gaps.                    |
 
 ### X / Twitter thread
 

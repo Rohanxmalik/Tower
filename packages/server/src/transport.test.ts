@@ -149,3 +149,68 @@ describe("HTTP transport", () => {
     expect(tools.length).toBe(9);
   });
 });
+
+describe("board", () => {
+  it("serves the board page without auth", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const res = await fetch(url(httpServer, "/board"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toContain("TOWER");
+  });
+
+  it("requires auth for /api/board when a token is set", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    expect((await fetch(url(httpServer, "/api/board"))).status).toBe(401);
+    const ok = await fetch(url(httpServer, "/api/board"), {
+      headers: { authorization: "Bearer secret" },
+    });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { claims: unknown[]; conflicts: unknown[]; now: number };
+    expect(body.claims).toEqual([]);
+    expect(body.conflicts).toEqual([]);
+    expect(typeof body.now).toBe("number");
+  });
+
+  it("returns claims and pairwise conflicts on /api/board", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const claim = (agentId: string) =>
+      service.claimIntent({
+        agentId,
+        repo: "acme/app",
+        branch: "main",
+        files: [],
+        symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify" }],
+        purpose: "work",
+      });
+    claim("alice");
+    claim("bob");
+    const res = await fetch(url(httpServer, "/api/board"));
+    const body = (await res.json()) as {
+      claims: { agentId: string }[];
+      conflicts: { severity: string }[];
+    };
+    expect(body.claims).toHaveLength(2);
+    expect(body.conflicts).toHaveLength(1);
+    expect(body.conflicts[0]!.severity).toBe("hard");
+  });
+
+  it("blocks non-local /api/board without a token (rebinding guard)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const port = (httpServer.address() as AddressInfo).port;
+    const { request } = await import("node:http");
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = request(
+        { host: "127.0.0.1", port, path: "/api/board", headers: { host: "evil.example.com" } },
+        (res) => resolve(res.statusCode ?? 0),
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    expect(status).toBe(403);
+  });
+});

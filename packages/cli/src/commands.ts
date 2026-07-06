@@ -285,6 +285,7 @@ export async function cmdServe(
     });
     server.on("close", () => service.store.close());
     log(`Tower listening on http://${host}:${port}/mcp${token ? " (token required)" : ""}`);
+    log(`Live board:      http://${host}:${port}/board`);
     return server;
   }
   log("Tower serving over stdio.");

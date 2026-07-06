@@ -114,18 +114,42 @@ tower CLI: init · serve · status · watch · claim · guard · complete   (+ g
 
 ## Enforcement (don't rely on the agent remembering)
 
-A tool call the agent _chooses_ to make isn't a safety net. The **Claude Code PreToolUse
-hook** makes it one: before any `Edit`/`Write`, Tower checks the file, and if another
-active agent holds a hard-conflicting claim the edit is **blocked** and the reason is fed
-back to Claude.
+A tool call the agent _chooses_ to make isn't a safety net. Tower has **three enforcement
+layers** — stack them:
 
-```bash
-npm run build
-cp .claude/settings.example.json .claude/settings.json   # then reload Claude Code
+1. **MCP tools + rules file** — every agent (Claude, Cursor, Codex) claims before editing.
+2. **Claude Code PreToolUse hook** — a conflicting `Edit`/`Write` is physically **blocked**:
+   ```bash
+   npm run build
+   cp .claude/settings.example.json .claude/settings.json   # then reload Claude Code
+   ```
+3. **Universal git pre-commit guard** — works with _any_ editor or agent; the commit itself
+   is refused while a teammate's agent holds a conflicting claim:
+   ```bash
+   cp examples/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+   ```
+
+Details + scope → [docs/enforcement.md](./docs/enforcement.md).
+
+## Live radar board
+
+Every `serve --http` Tower ships a real-time board at **`/board`**: every agent's claims as
+ATC flight strips, collisions flashing red, TTL countdowns. Open it next to your editor and
+watch your team's agents coordinate.
+
+![Tower live board — a collision between two agents on AuthService.verify](docs/board.png)
+
+## GitHub Action: PR collision reports
+
+No server needed — one workflow file comments on any PR that touches the same files
+(overlapping lines flagged) as another open PR, and shows live agent claims if you run a
+hosted Tower:
+
+```yaml
+- uses: Rohanxmalik/Tower/action@main
 ```
 
-Open two agent sessions on the same repo → the second is blocked when it reaches for a
-file the first is editing. Details + scope → [docs/enforcement.md](./docs/enforcement.md).
+Setup + screenshots → [docs/action.md](./docs/action.md).
 
 ## Team mode (whole team, different machines)
 
@@ -162,8 +186,9 @@ packages/shared   protocol types + zod schemas (source of truth)
 packages/server   collision engine, sequencer, SQLite store, MCP server, transports
 packages/cli      the `tower` command
 hooks/            Claude Code PreToolUse enforcement hook
-examples/         two-agents-demo, git-hooks
-docs/             quickstart, protocol, enforcement, team, waitlist (Cloud signup capture)
+action/           GitHub Action — PR collision reports
+examples/         two-agents-demo, git-hooks (pre-commit guard, post-commit release)
+docs/             quickstart, protocol, enforcement, team, action, waitlist
 Dockerfile        hosted team server
 ```
 

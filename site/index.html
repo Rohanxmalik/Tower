@@ -509,7 +509,8 @@
       (function () {
         const form = document.getElementById("wait");
         if (!form) return;
-        const ENDPOINT = "";
+        const ENDPOINT =
+          "https://script.google.com/macros/s/AKfycbxT1DAU1qHOmZmV7b1bvrPhJ8D4-hcn6WB7zbnioPF-BzjE-scUA07vrQZGFDqC4dfO1g/exec";
         const isAppsScript = /script\.google\.com/.test(ENDPOINT);
         form.addEventListener("submit", (e) => {
           e.preventDefault();

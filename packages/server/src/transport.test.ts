@@ -146,7 +146,7 @@ describe("HTTP transport", () => {
     httpServer = await startHttp(service, { port: 0 });
     const client = await mcpClient(httpServer); // Host: 127.0.0.1 — allowed
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(9);
+    expect(tools.length).toBe(11);
   });
 });
 
@@ -204,6 +204,25 @@ describe("board", () => {
     expect(body.claims).toHaveLength(2);
     expect(body.conflicts).toHaveLength(1);
     expect(body.conflicts[0]!.severity).toBe("hard");
+  });
+
+  it("includes the comms feed in /api/board and the COMMS panel in the page", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    service.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "cofounder",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting to /login",
+    });
+    const api = (await (await fetch(url(httpServer, "/api/board"))).json()) as {
+      messages: { body: string; kind: string }[];
+    };
+    expect(api.messages).toHaveLength(1);
+    expect(api.messages[0]!.kind).toBe("task");
+    const page = await (await fetch(url(httpServer, "/board"))).text();
+    expect(page).toContain("COMMS");
   });
 
   it("blocks non-local /api/board without a token (rebinding guard)", async () => {

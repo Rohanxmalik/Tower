@@ -16,16 +16,22 @@ import type {
   GetDecisionsOutput,
   NextTaskInput,
   NextTaskOutput,
+  SendMessageInput,
+  SendMessageOutput,
+  FetchMessagesInput,
+  FetchMessagesOutput,
 } from "@tower/shared";
-import type { Claim } from "@tower/shared";
+import type { Claim, Message } from "@tower/shared";
 import { TowerStore } from "./store/sqlite.js";
 import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
 
-/** What the live board renders: every active claim + the collisions between them. */
+/** What the live board renders: claims, the collisions between them, and the comms feed. */
 export interface BoardSnapshot {
   claims: Claim[];
   conflicts: PairConflict[];
+  /** Recent agent-to-agent messages, newest first. */
+  messages: Message[];
   /** Server clock (ms) so the board can render TTL countdowns without clock skew. */
   now: number;
 }
@@ -70,7 +76,10 @@ export class TowerService {
       purpose: input.purpose,
       ...(input.etaMinutes != null ? { etaMinutes: input.etaMinutes } : {}),
     });
-    return { claimId: claim.id, conflicts };
+    // "You've got mail" rides along on every claim, so agents notice their inbox
+    // without polling (MCP has no push channel).
+    const unread = this.store.unreadCount(input.agentId);
+    return { claimId: claim.id, conflicts, ...(unread > 0 ? { unreadMessages: unread } : {}) };
   }
 
   checkCollision(input: CheckCollisionInput): CheckCollisionOutput {
@@ -113,7 +122,20 @@ export class TowerService {
 
   boardSnapshot(): BoardSnapshot {
     const claims = this.store.listClaims({ status: "active" });
-    return { claims, conflicts: pairwiseCollisions(claims), now: Date.now() };
+    return {
+      claims,
+      conflicts: pairwiseCollisions(claims),
+      messages: this.store.listMessages({ limit: 50 }),
+      now: Date.now(),
+    };
+  }
+
+  sendMessage(input: SendMessageInput): SendMessageOutput {
+    return { id: this.store.sendMessage(input).id };
+  }
+
+  fetchMessages(input: FetchMessagesInput): FetchMessagesOutput {
+    return { messages: this.store.fetchMessages(input) };
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {

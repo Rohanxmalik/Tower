@@ -71,6 +71,26 @@ export const Task = z.object({
 });
 export type Task = z.infer<typeof Task>;
 
+/** Message kinds: chat, a task request for another agent, or a status update on one. */
+export const MessageKind = z.enum(["message", "task", "task_update"]);
+export type MessageKind = z.infer<typeof MessageKind>;
+
+/** An async agent-to-agent message (the "Slack" in Slack-for-agents). */
+export const Message = z.object({
+  id: z.string(),
+  repo: z.string().min(1),
+  fromAgentId: z.string().min(1),
+  /** Target agent id, or "*" to broadcast to everyone on the repo. */
+  toAgentId: z.string().min(1),
+  kind: MessageKind,
+  body: z.string().min(1),
+  /** Thread parent (e.g. a task_update pointing at the original task). */
+  replyTo: z.string().optional(),
+  createdAt: z.number().int(),
+  readAt: z.number().int().optional(),
+});
+export type Message = z.infer<typeof Message>;
+
 // ---------------------------------------------------------------------------
 // MCP tool I/O contracts (9 tools)
 // ---------------------------------------------------------------------------
@@ -89,6 +109,8 @@ export type ClaimIntentInput = z.infer<typeof ClaimIntentInput>;
 export const ClaimIntentOutput = z.object({
   claimId: z.string(),
   conflicts: z.array(Conflict),
+  /** Unread inbox count for the claiming agent — "you've got mail" on every claim. */
+  unreadMessages: z.number().int().nonnegative().optional(),
 });
 export type ClaimIntentOutput = z.infer<typeof ClaimIntentOutput>;
 
@@ -167,6 +189,30 @@ export const NextTaskOutput = z.object({
 });
 export type NextTaskOutput = z.infer<typeof NextTaskOutput>;
 
+export const SendMessageInput = z.object({
+  fromAgentId: z.string().min(1),
+  toAgentId: z.string().min(1),
+  repo: z.string().min(1),
+  body: z.string().min(1),
+  kind: MessageKind.default("message"),
+  replyTo: z.string().optional(),
+});
+export type SendMessageInput = z.infer<typeof SendMessageInput>;
+
+export const SendMessageOutput = z.object({ id: z.string() });
+export type SendMessageOutput = z.infer<typeof SendMessageOutput>;
+
+export const FetchMessagesInput = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().optional(),
+  /** Default true: only unread; fetching marks them read. */
+  unreadOnly: z.boolean().default(true),
+});
+export type FetchMessagesInput = z.infer<typeof FetchMessagesInput>;
+
+export const FetchMessagesOutput = z.object({ messages: z.array(Message) });
+export type FetchMessagesOutput = z.infer<typeof FetchMessagesOutput>;
+
 /** Registry consumed by the MCP server to declare tools. */
 export const TOOL_SCHEMAS = {
   claim_intent: { input: ClaimIntentInput, output: ClaimIntentOutput },
@@ -178,6 +224,8 @@ export const TOOL_SCHEMAS = {
   log_decision: { input: LogDecisionInput, output: LogDecisionOutput },
   get_decisions: { input: GetDecisionsInput, output: GetDecisionsOutput },
   next_task: { input: NextTaskInput, output: NextTaskOutput },
+  send_message: { input: SendMessageInput, output: SendMessageOutput },
+  fetch_messages: { input: FetchMessagesInput, output: FetchMessagesOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

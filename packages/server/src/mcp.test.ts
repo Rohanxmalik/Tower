@@ -27,11 +27,12 @@ describe("MCP server", () => {
     client = await connect(service);
   });
 
-  it("lists all 9 Tower tools", async () => {
+  it("lists all 11 Tower tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         "check_collision",
+        "fetch_messages",
         "claim_intent",
         "complete_claim",
         "get_decisions",
@@ -40,6 +41,7 @@ describe("MCP server", () => {
         "log_decision",
         "next_task",
         "release_claim",
+        "send_message",
       ].sort(),
     );
   });

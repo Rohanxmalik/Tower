@@ -12,6 +12,8 @@ import type {
   Decision,
   ListClaimsInput,
   GetDecisionsInput,
+  Message,
+  MessageKind,
   SymbolRef,
 } from "@tower/shared";
 
@@ -29,6 +31,12 @@ CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL,
   tags TEXT NOT NULL, relatedFiles TEXT NOT NULL, createdAt INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
+  kind TEXT NOT NULL, body TEXT NOT NULL, replyTo TEXT, createdAt INTEGER NOT NULL,
+  readAt INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (toAgentId, readAt);
 `;
 
 export interface StoreOptions {
@@ -63,6 +71,32 @@ interface ClaimRow {
   createdAt: number;
   expiresAt: number;
   commitSha: string | null;
+}
+
+interface MessageRow {
+  id: string;
+  repo: string;
+  fromAgentId: string;
+  toAgentId: string;
+  kind: string;
+  body: string;
+  replyTo: string | null;
+  createdAt: number;
+  readAt: number | null;
+}
+
+function rowToMessage(r: MessageRow): Message {
+  return {
+    id: r.id,
+    repo: r.repo,
+    fromAgentId: r.fromAgentId,
+    toAgentId: r.toAgentId,
+    kind: r.kind as MessageKind,
+    body: r.body,
+    ...(r.replyTo != null ? { replyTo: r.replyTo } : {}),
+    createdAt: r.createdAt,
+    ...(r.readAt != null ? { readAt: r.readAt } : {}),
+  };
 }
 
 interface DecisionRow {
@@ -227,6 +261,93 @@ export class TowerStore {
       .prepare(`UPDATE claims SET status = 'released' WHERE id = ? AND status = 'active'`)
       .run(id);
     return Number(res.changes) > 0;
+  }
+
+  // -- messages (agent inbox) -------------------------------------------------
+
+  sendMessage(input: {
+    fromAgentId: string;
+    toAgentId: string;
+    repo: string;
+    kind: MessageKind;
+    body: string;
+    replyTo?: string;
+  }): Message {
+    const msg: Message = {
+      id: randomUUID(),
+      repo: input.repo,
+      fromAgentId: input.fromAgentId,
+      toAgentId: input.toAgentId,
+      kind: input.kind,
+      body: input.body,
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+      createdAt: this.now(),
+    };
+    this.db
+      .prepare(
+        `INSERT INTO messages (id,repo,fromAgentId,toAgentId,kind,body,replyTo,createdAt,readAt)
+         VALUES (?,?,?,?,?,?,?,?,NULL)`,
+      )
+      .run(
+        msg.id,
+        msg.repo,
+        msg.fromAgentId,
+        msg.toAgentId,
+        msg.kind,
+        msg.body,
+        msg.replyTo ?? null,
+        msg.createdAt,
+      );
+    return msg;
+  }
+
+  /** Unread messages addressed to the agent (directly or broadcast), excluding their own. */
+  unreadCount(agentId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM messages
+         WHERE readAt IS NULL AND fromAgentId != ? AND (toAgentId = ? OR toAgentId = '*')`,
+      )
+      .get(agentId, agentId) as unknown as { n: number };
+    return Number(row.n);
+  }
+
+  /**
+   * The agent's inbox. `unreadOnly` (default) also marks the fetched messages read.
+   * v1 tradeoff: a broadcast ("*") is marked read by its first reader.
+   */
+  fetchMessages(filter: { agentId: string; repo?: string; unreadOnly?: boolean }): Message[] {
+    const unreadOnly = filter.unreadOnly ?? true;
+    const clauses = [`fromAgentId != ?`, `(toAgentId = ? OR toAgentId = '*')`];
+    const params: (string | number)[] = [filter.agentId, filter.agentId];
+    if (unreadOnly) clauses.push("readAt IS NULL");
+    if (filter.repo) {
+      clauses.push("repo = ?");
+      params.push(filter.repo);
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM messages WHERE ${clauses.join(" AND ")} ORDER BY createdAt ASC`)
+      .all(...params) as unknown as MessageRow[];
+    const messages = rows.map(rowToMessage);
+    if (unreadOnly && messages.length) {
+      const readAt = this.now();
+      const mark = this.db.prepare(`UPDATE messages SET readAt = ? WHERE id = ?`);
+      for (const m of messages) mark.run(readAt, m.id);
+    }
+    return messages;
+  }
+
+  /** Recent messages across all agents, newest first — the board's comms feed. */
+  listMessages(filter: { repo?: string; limit?: number } = {}): Message[] {
+    const limit = filter.limit ?? 50;
+    const rows = (filter.repo
+      ? this.db
+          .prepare(`SELECT * FROM messages WHERE repo = ? ORDER BY createdAt DESC LIMIT ?`)
+          .all(filter.repo, limit)
+      : this.db
+          .prepare(`SELECT * FROM messages ORDER BY createdAt DESC LIMIT ?`)
+          .all(limit)) as unknown as MessageRow[];
+    return rows.map(rowToMessage);
   }
 
   // -- decisions ------------------------------------------------------------

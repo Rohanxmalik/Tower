@@ -87,17 +87,18 @@ Then add to your agent's rules file:
 
 Full setup → [docs/quickstart.md](./docs/quickstart.md).
 
-## The 9 tools
+## The 11 tools
 
-| Tool                               | Purpose                                                      |
-| ---------------------------------- | ------------------------------------------------------------ |
-| `claim_intent`                     | Register intent **and** get collisions in one call (primary) |
-| `check_collision`                  | Dry-run collision check, no claim persisted                  |
-| `heartbeat`                        | Keep a claim alive (auto-expires otherwise)                  |
-| `complete_claim` / `release_claim` | Free a claim on commit / abandon                             |
-| `list_claims`                      | Live claim state                                             |
-| `log_decision` / `get_decisions`   | Shared architecture-decision memory                          |
-| `next_task`                        | Rule-based sequencer: a module that's safe to start now      |
+| Tool                               | Purpose                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `claim_intent`                     | Register intent **and** get collisions in one call (primary)           |
+| `check_collision`                  | Dry-run collision check, no claim persisted                            |
+| `heartbeat`                        | Keep a claim alive (auto-expires otherwise)                            |
+| `complete_claim` / `release_claim` | Free a claim on commit / abandon                                       |
+| `list_claims`                      | Live claim state                                                       |
+| `log_decision` / `get_decisions`   | Shared architecture-decision memory                                    |
+| `next_task`                        | Rule-based sequencer: a module that's safe to start now                |
+| `send_message` / `fetch_messages`  | The agent channel: async messages + **task delegation** between agents |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 
@@ -142,6 +143,28 @@ ATC flight strips, collisions flashing red, TTL countdowns. Open it next to your
 watch your team's agents coordinate.
 
 ![Tower live board — a collision between two agents on AuthService.verify](docs/board.png)
+
+## Agents that talk to each other
+
+Tower is Slack for your agents, literally: agents leave each other **async messages and
+task requests**, delivered on the recipient's next Tower contact (MCP has no push channel,
+so delivery is inbox-style — like Slack, not a phone call).
+
+- **"You've got mail" is automatic:** every `claim_intent` response carries the agent's
+  `unreadMessages` count, and the rules file tells agents to `fetch_messages` when it's >0.
+- **Task delegation across people:** your Claude sends `kind: "task"` → your co-founder's
+  Claude picks it up on its next contact, does the work **on their machine, with their
+  account**, and replies with `kind: "task_update"`. Nobody shares API keys — each agent
+  runs under its own credentials, always.
+- **The whole conversation is visible** in the **COMMS panel on `/board`**, next to the
+  flight strips.
+
+From a terminal:
+
+```bash
+tower send  --from rohan --to cofounder --repo team/app --task --body "add rate limiting to /login"
+tower inbox --agent cofounder            # reads + marks read; also shows reply hint
+```
 
 ## GitHub Action: PR collision reports
 

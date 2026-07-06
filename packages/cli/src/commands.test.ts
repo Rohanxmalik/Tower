@@ -246,3 +246,27 @@ describe("cmdNextTask", () => {
     expect(lines.join("\n").toLowerCase()).toContain("no candidate");
   });
 });
+
+describe("cmdSend / cmdInbox (agent comms)", () => {
+  it("sends a task and the recipient reads it once", async () => {
+    const { cmdSend, cmdInbox } = await import("./commands.js");
+    const sent = collect();
+    await cmdSend(
+      dir,
+      { from: "rohan", to: "cofounder", repo: "team/app", body: "add rate limiting", task: true },
+      sent.out,
+    );
+    expect(sent.lines.join("\n")).toContain("Sent task");
+
+    const inbox = collect();
+    await cmdInbox(dir, { agentId: "cofounder" }, inbox.out);
+    const text = inbox.lines.join("\n");
+    expect(text).toContain("rohan");
+    expect(text).toContain("add rate limiting");
+    expect(text).toContain("TASK");
+
+    const again = collect();
+    await cmdInbox(dir, { agentId: "cofounder" }, again.out);
+    expect(again.lines.join("\n")).toContain("empty");
+  });
+});

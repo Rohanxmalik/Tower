@@ -123,7 +123,7 @@ describe("other tool inputs", () => {
 });
 
 describe("TOOL_SCHEMAS registry", () => {
-  it("exposes exactly the 9 MVP tools", () => {
+  it("exposes exactly the 11 tools", () => {
     expect(Object.keys(TOOL_SCHEMAS).sort()).toEqual(
       [
         "check_collision",
@@ -135,6 +135,8 @@ describe("TOOL_SCHEMAS registry", () => {
         "log_decision",
         "next_task",
         "release_claim",
+        "send_message",
+        "fetch_messages",
       ].sort(),
     );
   });

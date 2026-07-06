@@ -12,10 +12,12 @@ import type {
   LogDecisionInput,
   GetDecisionsInput,
   NextTaskInput,
+  SendMessageInput,
+  FetchMessagesInput,
 } from "@tower/shared";
 import { TowerService } from "./service.js";
 
-const SERVER_INFO = { name: "tower", version: "0.2.2" } as const;
+const SERVER_INFO = { name: "tower", version: "0.3.0" } as const;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:
@@ -29,6 +31,10 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
     "Record an architecture decision and WHY it was made, for the team's shared memory.",
   get_decisions: "Recall past architecture decisions before acting.",
   next_task: "Ask the sequencer for a task whose module is safe to start right now.",
+  send_message:
+    "Send an async message or task to another agent (toAgentId, or '*' to broadcast). Delivered on their next Tower contact. kind 'task' delegates work; reply with kind 'task_update' (replyTo=the task id) when done.",
+  fetch_messages:
+    "Read your inbox (marks messages read). Call whenever claim_intent reports unreadMessages > 0.",
 };
 
 function summarize(tool: string, result: unknown): string {
@@ -44,7 +50,7 @@ function summarize(tool: string, result: unknown): string {
   return JSON.stringify(result);
 }
 
-/** Build an MCP server exposing Tower's 9 tools, delegating to the given service. */
+/** Build an MCP server exposing Tower's 11 tools, delegating to the given service. */
 export function buildMcpServer(service: TowerService): McpServer {
   const server = new McpServer(SERVER_INFO);
 
@@ -60,6 +66,8 @@ export function buildMcpServer(service: TowerService): McpServer {
     log_decision: (a) => service.logDecision(a as LogDecisionInput),
     get_decisions: (a) => service.getDecisions(a as GetDecisionsInput),
     next_task: (a) => service.nextTask(a as NextTaskInput),
+    send_message: (a) => service.sendMessage(a as SendMessageInput),
+    fetch_messages: (a) => service.fetchMessages(a as FetchMessagesInput),
   };
 
   for (const name of Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[]) {

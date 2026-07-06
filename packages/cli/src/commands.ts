@@ -8,10 +8,13 @@ import type {
   CheckCollisionOutput,
   ClaimIntentOutput,
   ListClaimsOutput,
+  Message,
   NextTaskOutput,
   OkOutput,
+  SendMessageOutput,
+  FetchMessagesOutput,
 } from "@tower/shared";
-import { renderConflicts, renderClaimsTable } from "./render.js";
+import { renderConflicts, renderClaimsTable, formatAgo } from "./render.js";
 import { remoteConfig, withRemote, type RemoteCall } from "./remote.js";
 import {
   buildService,
@@ -342,6 +345,77 @@ export async function cmdServe(
   log("Tower serving over stdio.");
   await startStdio(service);
   return undefined;
+}
+
+export interface SendArgs {
+  from: string;
+  to: string;
+  repo: string;
+  body: string;
+  /** Send as a task request instead of a plain message. */
+  task?: boolean;
+  replyTo?: string;
+}
+
+/** Send an async message/task to another agent (the agent channel, from the terminal). */
+export async function cmdSend(
+  cwd: string,
+  args: SendArgs,
+  out: Writer = stdout,
+  build?: BuildOptions,
+): Promise<void> {
+  const input = {
+    fromAgentId: args.from,
+    toAgentId: args.to,
+    repo: args.repo,
+    body: args.body,
+    kind: (args.task ? "task" : "message") as "task" | "message",
+    ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+  };
+  const remote = remoteConfig();
+  const { id } = remote
+    ? ((await withRemote(remote, (call) => call("send_message", input))) as SendMessageOutput)
+    : (() => {
+        const service = buildService(cwd, build);
+        const r = service.sendMessage(input);
+        service.store.close();
+        return r;
+      })();
+  out(`📨 Sent ${args.task ? "task" : "message"} ${id.slice(0, 8)} → ${args.to}`);
+}
+
+function renderMessages(messages: Message[], now: number): string {
+  if (!messages.length) return "Inbox empty.";
+  return messages
+    .map((m) => {
+      const tag = m.kind === "task" ? "TASK" : m.kind === "task_update" ? "DONE" : "MSG ";
+      return `[${tag}] ${m.fromAgentId} → ${m.toAgentId} (${formatAgo(now - m.createdAt)})\n       ${m.body}${m.replyTo ? `\n       ↪ re: ${m.replyTo.slice(0, 8)}` : ""}\n       (reply: tower send --reply-to ${m.id.slice(0, 8)}… )`;
+    })
+    .join("\n");
+}
+
+/** Read (and mark read) an agent's inbox. */
+export async function cmdInbox(
+  cwd: string,
+  args: { agentId: string; repo?: string },
+  out: Writer = stdout,
+  build?: BuildOptions,
+): Promise<void> {
+  const input = {
+    agentId: args.agentId,
+    ...(args.repo ? { repo: args.repo } : {}),
+    unreadOnly: true,
+  };
+  const remote = remoteConfig();
+  const { messages } = remote
+    ? ((await withRemote(remote, (call) => call("fetch_messages", input))) as FetchMessagesOutput)
+    : (() => {
+        const service = buildService(cwd, build);
+        const r = service.fetchMessages(input);
+        service.store.close();
+        return r;
+      })();
+  out(renderMessages(messages, Date.now()));
 }
 
 /** Poll the active-claims table until interrupted. */

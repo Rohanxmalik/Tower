@@ -144,3 +144,54 @@ describe("TowerService — decisions & sequencer", () => {
     expect(res.task).toBeNull();
   });
 });
+
+describe("messaging", () => {
+  it("send + fetch roundtrip through the service", () => {
+    const service = new TowerService();
+    const { id } = service.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "cofounder",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting",
+    });
+    expect(id).toBeTruthy();
+    const { messages } = service.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.fromAgentId).toBe("rohan");
+  });
+
+  it("claim_intent reports the unread inbox count (you've got mail)", () => {
+    const service = new TowerService();
+    service.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "cofounder",
+      repo: "team/app",
+      kind: "message",
+      body: "heads up",
+    });
+    const res = service.claimIntent({
+      agentId: "cofounder",
+      repo: "team/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/x.ts", symbol: "X" }],
+      purpose: "work",
+    });
+    expect(res.unreadMessages).toBe(1);
+  });
+
+  it("boardSnapshot includes the recent message feed", () => {
+    const service = new TowerService();
+    service.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "*",
+      repo: "team/app",
+      kind: "message",
+      body: "deploy at 5pm",
+    });
+    const snap = service.boardSnapshot();
+    expect(snap.messages).toHaveLength(1);
+    expect(snap.messages[0]!.body).toBe("deploy at 5pm");
+  });
+});

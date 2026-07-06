@@ -55,7 +55,28 @@ export const BOARD_HTML = `<!doctype html>
   @media (prefers-reduced-motion: reduce) { .alert { animation: none; } }
   .alert b { color: #fff; }
   .alert .why { color: var(--muted); display: block; margin-top: 0.2rem; }
+  .cols { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
   #strips { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.8rem; }
+  /* COMMS — the agent-to-agent conversation feed */
+  #comms {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.7rem 0.9rem; font-size: 0.74rem; max-height: 78vh; overflow-y: auto;
+  }
+  #comms h2 { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.25em; margin-bottom: 0.6rem; }
+  .msg { border-top: 1px solid var(--line); padding: 0.45rem 0; }
+  .msg:first-of-type { border-top: 0; }
+  .msg .who { color: #fff; }
+  .msg .who .to { color: var(--cyan); }
+  .msg .body { color: var(--ink); margin-top: 0.15rem; white-space: pre-wrap; word-break: break-word; }
+  .msg .when { color: var(--muted); font-size: 0.65rem; }
+  .kind {
+    display: inline-block; border-radius: 3px; padding: 0 0.35rem; font-size: 0.62rem;
+    border: 1px solid var(--line); color: var(--muted); margin-right: 0.35rem; vertical-align: 1px;
+  }
+  .kind.task { border-color: var(--amber); color: var(--amber); }
+  .kind.task_update { border-color: var(--green); color: var(--green); }
+  #comms .empty { color: var(--muted); }
   .strip {
     background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--green);
     border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.78rem;
@@ -87,8 +108,16 @@ export const BOARD_HTML = `<!doctype html>
   <span id="tokenwrap"><input id="token" type="password" placeholder="TOWER_TOKEN (if required)" autocomplete="off" /></span>
 </header>
 <div id="alerts"></div>
-<div id="strips"></div>
-<div id="empty" hidden><div class="big">ALL CLEAR</div>no active claims — agents are safe to proceed</div>
+<div class="cols">
+  <div>
+    <div id="strips"></div>
+    <div id="empty" hidden><div class="big">ALL CLEAR</div>no active claims — agents are safe to proceed</div>
+  </div>
+  <div id="comms">
+    <h2>COMMS — AGENT CHANNEL</h2>
+    <div id="feed"><span class="empty">No messages yet. Agents talk here (send_message / tower send).</span></div>
+  </div>
+</div>
 <script>
 (function () {
   "use strict";
@@ -176,6 +205,24 @@ export const BOARD_HTML = `<!doctype html>
       stripsEl.appendChild(s);
     });
     emptyEl.hidden = data.claims.length > 0;
+
+    var feed = document.getElementById("feed");
+    feed.replaceChildren();
+    if (!data.messages || !data.messages.length) {
+      feed.appendChild(el("span", "empty", "No messages yet. Agents talk here (send_message / tower send)."));
+    } else {
+      data.messages.forEach(function (m) {
+        var box = el("div", "msg");
+        var who = el("div", "who");
+        who.appendChild(el("span", "kind " + m.kind, m.kind === "task_update" ? "DONE" : m.kind.toUpperCase()));
+        who.appendChild(el("b", "", m.fromAgentId));
+        who.appendChild(el("span", "to", " → " + m.toAgentId));
+        who.appendChild(el("span", "when", "  " + fmtAge(data.now - m.createdAt) + " ago"));
+        box.appendChild(who);
+        box.appendChild(el("div", "body", m.body));
+        feed.appendChild(box);
+      });
+    }
   }
 
   function poll() {

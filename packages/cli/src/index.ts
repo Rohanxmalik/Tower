@@ -8,6 +8,8 @@ import {
   cmdWatch,
   cmdComplete,
   cmdNextTask,
+  cmdSend,
+  cmdInbox,
   type ClaimArgs,
 } from "./commands.js";
 
@@ -29,6 +31,10 @@ Commands:
   next-task --agent <id> --repo <r>
                              The [d] option: a module that's safe to start right now
                              (needs modules in .tower/policy.yaml)
+  send --from <id> --to <id|*> --repo <r> --body <text> [--task] [--reply-to <id>]
+                             Message another agent (--task = delegate work to them)
+  inbox --agent <id> [--repo r]
+                             Read your messages (marks them read)
 
 Run with no command to print this help.`;
 
@@ -146,6 +152,51 @@ export async function run(argv: string[]): Promise<number> {
         return 1;
       }
       await cmdNextTask(cwd, { agentId: values.agent, repo: values.repo });
+      return 0;
+    }
+
+    case "send": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          from: { type: "string" },
+          to: { type: "string" },
+          repo: { type: "string" },
+          body: { type: "string" },
+          task: { type: "boolean" },
+          "reply-to": { type: "string" },
+        },
+        allowPositionals: false,
+      });
+      if (!values.from || !values.to || !values.repo || !values.body) {
+        process.stderr.write("send requires --from, --to, --repo and --body\n");
+        return 1;
+      }
+      await cmdSend(cwd, {
+        from: values.from,
+        to: values.to,
+        repo: values.repo,
+        body: values.body,
+        ...(values.task ? { task: true } : {}),
+        ...(values["reply-to"] ? { replyTo: values["reply-to"] } : {}),
+      });
+      return 0;
+    }
+
+    case "inbox": {
+      const { values } = parseArgs({
+        args: rest,
+        options: { agent: { type: "string" }, repo: { type: "string" } },
+        allowPositionals: false,
+      });
+      if (!values.agent) {
+        process.stderr.write("inbox requires --agent\n");
+        return 1;
+      }
+      await cmdInbox(cwd, {
+        agentId: values.agent,
+        ...(values.repo ? { repo: values.repo } : {}),
+      });
       return 0;
     }
 

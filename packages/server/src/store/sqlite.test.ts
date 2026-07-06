@@ -168,3 +168,64 @@ describe("TowerStore — decisions", () => {
     expect(store.getDecisions({ relatedFiles: ["src/ui.ts"] })).toHaveLength(1);
   });
 });
+
+describe("TowerStore — messages (agent inbox)", () => {
+  let store: TowerStore;
+  beforeEach(() => {
+    store = new TowerStore({ now: () => 1000 });
+  });
+
+  const send = (over = {}) =>
+    store.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "cofounder",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting to /login",
+      ...over,
+    });
+
+  it("stores and fetches unread messages for an agent, marking them read", () => {
+    send();
+    expect(store.unreadCount("cofounder")).toBe(1);
+    const msgs = store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.body).toContain("rate limiting");
+    expect(msgs[0]!.kind).toBe("task");
+    // fetched once → read; second unread fetch is empty
+    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(0);
+    expect(store.unreadCount("cofounder")).toBe(0);
+  });
+
+  it("delivers broadcasts (*) to any agent without marking read for others", () => {
+    send({ toAgentId: "*", kind: "message", body: "deploy at 5pm" });
+    expect(store.unreadCount("cofounder")).toBe(1);
+    expect(store.unreadCount("alice")).toBe(1);
+  });
+
+  it("does not deliver an agent's own messages back to them", () => {
+    send({ toAgentId: "*" });
+    expect(store.unreadCount("rohan")).toBe(0);
+  });
+
+  it("lists recent messages for the board feed regardless of read state", () => {
+    send();
+    send({ body: "second", kind: "message" });
+    store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    expect(store.listMessages({ limit: 10 })).toHaveLength(2);
+    expect(store.listMessages({ limit: 1 })).toHaveLength(1);
+  });
+
+  it("threads replies via replyTo", () => {
+    const { id } = send();
+    const reply = store.sendMessage({
+      fromAgentId: "cofounder",
+      toAgentId: "rohan",
+      repo: "team/app",
+      kind: "task_update",
+      body: "done in abc123",
+      replyTo: id,
+    });
+    expect(reply.replyTo).toBe(id);
+  });
+});

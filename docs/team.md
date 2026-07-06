@@ -73,7 +73,8 @@ a free tier and is the easiest — here's every click:**
 
 1. **Fork Tower** to your own GitHub (top-right **Fork** on
    [github.com/Rohanxmalik/Tower](https://github.com/Rohanxmalik/Tower)). Render deploys
-   from a repo you own.
+   from a repo you own. _(Already have Tower in your account — a fork or your own copy?
+   Skip this step.)_
 2. Go to **[render.com](https://render.com)** and sign up / log in **with GitHub** (so
    Render can see your fork).
 3. Click **New +** (top right) → **Blueprint**.

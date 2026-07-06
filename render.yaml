@@ -11,8 +11,10 @@ services:
       # Render generates a strong secret; copy it from the dashboard and share with the team.
       - key: TOWER_TOKEN
         generateValue: true
-    disk:
-      # Persist claims/decisions across restarts.
-      name: tower-data
-      mountPath: /app/.tower
-      sizeGB: 1
+    # NOTE: no disk — Render's free tier doesn't support them, so claims/decisions reset
+    # when the service restarts (fine: claims expire in 15 min anyway). On a paid
+    # instance, uncomment to persist decision history across restarts:
+    # disk:
+    #   name: tower-data
+    #   mountPath: /app/.tower
+    #   sizeGB: 1

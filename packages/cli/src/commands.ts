@@ -1,4 +1,4 @@
-import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import type { Server } from "node:http";
@@ -24,6 +24,8 @@ import {
   claimIdPath,
   EXAMPLE_POLICY,
   MCP_SNIPPET,
+  PRE_COMMIT_HOOK,
+  POST_COMMIT_HOOK_SCRIPT,
   type BuildOptions,
 } from "./lib.js";
 
@@ -110,6 +112,103 @@ export function cmdInit(cwd: string, out: Writer = stdout): void {
   }
   out("");
   out(MCP_SNIPPET);
+}
+
+export interface SetupOpts {
+  /** Team mode: point .mcp.json at a hosted Tower instead of a local npx server. */
+  url?: string;
+  token?: string;
+  /** Also install the pre-commit / post-commit git hooks. */
+  hooks?: boolean;
+}
+
+const TOWER_RULE = `## Tower (agent coordination)
+
+Before editing any file, call the \`claim_intent\` MCP tool on the \`tower\` server with
+the files and symbols you will change. If a \`hard\` conflict returns, stop and ask the
+user. If the response reports \`unreadMessages > 0\`, call \`fetch_messages\` — a teammate's
+agent may have delegated you a task; act on it and reply with a \`task_update\`.
+`;
+
+/** The tower entry for .mcp.json: hosted HTTP when a url is given, else local via npx. */
+function towerServerEntry(opts: SetupOpts): Record<string, unknown> {
+  if (opts.url) {
+    return {
+      type: "http",
+      url: opts.url,
+      ...(opts.token ? { headers: { Authorization: `Bearer ${opts.token}` } } : {}),
+    };
+  }
+  return { command: "npx", args: ["-y", "tower-mcp", "serve"] };
+}
+
+/** Write or merge .mcp.json, overwriting only the "tower" server entry. */
+function setupMcpJson(cwd: string, opts: SetupOpts, out: Writer): void {
+  const path = join(cwd, ".mcp.json");
+  let config: { mcpServers?: Record<string, unknown> } = {};
+  if (existsSync(path)) {
+    try {
+      config = JSON.parse(readFileSync(path, "utf8")) as { mcpServers?: Record<string, unknown> };
+    } catch {
+      out(`⚠️  .mcp.json exists but is invalid JSON — left untouched. Fix it, then re-run setup.`);
+      return;
+    }
+  }
+  const merged = {
+    ...config,
+    mcpServers: { ...(config.mcpServers ?? {}), tower: towerServerEntry(opts) },
+  };
+  writeFileSync(path, JSON.stringify(merged, null, 2) + "\n");
+  out(`✔ .mcp.json — tower server ${opts.url ? `→ ${opts.url}` : "(local, via npx)"}`);
+}
+
+/** Append the claim-first rule to a rules file; idempotent via the claim_intent marker. */
+function setupRulesFile(cwd: string, name: string, createIfMissing: boolean, out: Writer): void {
+  const path = join(cwd, name);
+  const exists = existsSync(path);
+  if (!exists && !createIfMissing) return;
+  const current = exists ? readFileSync(path, "utf8") : "";
+  if (current.includes("claim_intent")) {
+    out(`• ${name} already mentions claim_intent — skipped.`);
+    return;
+  }
+  const sep = current === "" ? "" : current.endsWith("\n") ? "\n" : "\n\n";
+  writeFileSync(path, current + sep + TOWER_RULE);
+  out(`✔ ${name} — claim-first rule ${exists ? "appended" : "created"}`);
+}
+
+/** Install one embedded git hook; never overwrites an existing hook file. */
+function installHook(hooksDir: string, name: string, content: string, out: Writer): void {
+  const path = join(hooksDir, name);
+  if (existsSync(path)) {
+    out(`⚠️  .git/hooks/${name} already exists — skipped (Tower never overwrites hooks).`);
+    return;
+  }
+  writeFileSync(path, content);
+  try {
+    chmodSync(path, 0o755);
+  } catch {
+    // Windows has no executable bit; Git for Windows runs hooks regardless.
+  }
+  out(`✔ .git/hooks/${name} installed`);
+}
+
+/** One-command onboarding: .mcp.json + agent rules (+ git hooks with --hooks). */
+export function cmdSetup(cwd: string, opts: SetupOpts, out: Writer = stdout): void {
+  setupMcpJson(cwd, opts, out);
+  setupRulesFile(cwd, "CLAUDE.md", true, out);
+  setupRulesFile(cwd, "AGENTS.md", false, out);
+  if (opts.hooks) {
+    const hooksDir = join(cwd, ".git", "hooks");
+    if (existsSync(hooksDir)) {
+      installHook(hooksDir, "pre-commit", PRE_COMMIT_HOOK, out);
+      installHook(hooksDir, "post-commit", POST_COMMIT_HOOK_SCRIPT, out);
+    } else {
+      out(`⚠️  --hooks: no .git/hooks directory here — skipped git hooks.`);
+    }
+  }
+  out("");
+  out("Done. Reload your editor to load the tower MCP server; then try: npx -y tower-mcp send");
 }
 
 /** Register a claim and print the collision prompt. Returns true if a hard collision was found. */

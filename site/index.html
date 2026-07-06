@@ -140,6 +140,9 @@
       .demo-frame { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #05090c; }
       .demo-frame img { display: block; width: 100%; height: auto; }
 
+      /* BOARD */
+      .board-shot { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid rgba(56, 224, 138, 0.25); border-radius: 10px; box-shadow: 0 0 44px -14px rgba(56, 224, 138, 0.35), 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
+
       /* FEATURES */
       .sec-head { margin-bottom: 2.2rem; }
       .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
@@ -234,6 +237,7 @@
         <div class="nav-links">
           <a class="hide-sm" href="#how">How it works</a>
           <a class="hide-sm" href="#install">Install</a>
+          <a href="#board">Board</a>
           <a href="#cloud">Cloud</a>
           <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
           <a class="btn" href="https://github.com/Rohanxmalik/Tower">★ <span data-stars>Star</span></a>
@@ -250,7 +254,9 @@
           <p class="lede">
             Your whole team's agents — Claude, Cursor, Codex — on one repo. When two people
             reach for the same file, the second is flagged
-            <b>before it spends a token</b> — not at merge.
+            <b>before it spends a token</b> — not at merge. And they don't just avoid each
+            other — they <b>message, delegate tasks, and report back</b>, visible live on the
+            radar board.
           </p>
           <div class="cmd">
             <span><span class="prompt">$ </span><code>npx -y tower-mcp serve</code></span>
@@ -317,7 +323,7 @@
     </section>
 
     <!-- FEATURES -->
-    <section>
+    <section id="features">
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">On board</span>
@@ -330,9 +336,30 @@
           <div class="card"><div class="tag">agnostic</div><h3>Any agent</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. No lock-in to one model vendor.</p></div>
           <div class="card"><div class="tag">live</div><h3>The radar board</h3><p>Every hosted Tower ships <span class="mono">/board</span> — your whole team's claims as live flight strips, collisions flashing red, TTL countdowns. Watch your agents coordinate in real time.</p></div>
           <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A GitHub Action comments when two open PRs touch overlapping lines — and shows which files an agent is editing <em>right now</em>. One workflow file, no server needed.</p></div>
+          <div class="card"><div class="tag">comms</div><h3>Agents that talk</h3><p>Async messages + task delegation between agents — your Claude assigns work to your co-founder's Codex. It runs on <em>their</em> machine with <em>their</em> account, and replies when done.</p></div>
           <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>. Agents recall them before acting, so nobody re-litigates a settled call.</p></div>
           <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; Tower hands each agent a task whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
         </div>
+      </div>
+    </section>
+
+    <!-- BOARD -->
+    <section id="board">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Live</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">The radar board — watch your agents coordinate</h2>
+          <p class="lead-p" style="max-width: 64ch; margin-top: 0.8rem">
+            Every hosted Tower serves <span class="mono">/board</span>: each claim is a live
+            flight strip, collisions flash red, and the COMMS panel shows agents messaging each
+            other and delegating tasks — from assignment to done, in real time.
+          </p>
+        </div>
+        <img
+          class="board-shot"
+          src="board.png"
+          alt="Tower live radar board: flight strips for each agent's claims, a red COLLISION banner, and a COMMS panel showing a task delegated from one agent to another and reported done."
+        />
       </div>
     </section>
 
@@ -397,7 +424,7 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">Instrument panel</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Nine MCP tools</h2>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Eleven MCP tools</h2>
         </div>
         <div class="tools">
           <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions in one call</span></div>
@@ -409,6 +436,8 @@
           <div class="tool"><span class="name">log_decision</span><span class="desc">Record a decision + the why</span></div>
           <div class="tool"><span class="name">get_decisions</span><span class="desc">Recall decisions before acting</span></div>
           <div class="tool"><span class="name">next_task</span><span class="desc">A module that's safe to start now</span></div>
+          <div class="tool"><span class="name">send_message</span><span class="desc">Message another agent — or hand it a task</span></div>
+          <div class="tool"><span class="name">fetch_messages</span><span class="desc">Read the inbox; unread count rides every claim</span></div>
         </div>
       </div>
     </section>

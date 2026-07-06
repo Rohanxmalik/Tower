@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { TowerStore } from "./sqlite.js";
+import { TowerStore, DEFAULT_PRUNE_MS } from "./sqlite.js";
 
 let clock = 1_000;
 const now = () => clock;
@@ -208,6 +208,30 @@ describe("TowerStore — messages (agent inbox)", () => {
     expect(store.unreadCount("rohan")).toBe(0);
   });
 
+  it("keeps a broadcast unread for other agents after one fetches it", () => {
+    send({ toAgentId: "*", kind: "message", body: "deploy at 5pm" });
+
+    // cofounder fetches — read for cofounder only
+    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(1);
+    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(0);
+
+    // alice STILL sees it unread and can fetch it herself
+    expect(store.unreadCount("alice")).toBe(1);
+    const aliceMsgs = store.fetchMessages({ agentId: "alice", unreadOnly: true });
+    expect(aliceMsgs).toHaveLength(1);
+    expect(aliceMsgs[0]!.body).toBe("deploy at 5pm");
+  });
+
+  it("counts drop to zero for every agent only after they each fetch a broadcast", () => {
+    send({ toAgentId: "*", kind: "message", body: "standup notes" });
+    store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    expect(store.unreadCount("cofounder")).toBe(0);
+    expect(store.unreadCount("alice")).toBe(1);
+    store.fetchMessages({ agentId: "alice", unreadOnly: true });
+    expect(store.unreadCount("cofounder")).toBe(0);
+    expect(store.unreadCount("alice")).toBe(0);
+  });
+
   it("lists recent messages for the board feed regardless of read state", () => {
     send();
     send({ body: "second", kind: "message" });
@@ -227,5 +251,83 @@ describe("TowerStore — messages (agent inbox)", () => {
       replyTo: id,
     });
     expect(reply.replyTo).toBe(id);
+  });
+});
+
+describe("TowerStore — prune", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const HOUR = 60 * 60 * 1000;
+
+  const sendOld = (store: TowerStore, body = "stale") =>
+    store.sendMessage({
+      fromAgentId: "rohan",
+      toAgentId: "cofounder",
+      repo: "team/app",
+      kind: "message",
+      body,
+    });
+
+  it("exports a 7-day default retention window", () => {
+    expect(DEFAULT_PRUNE_MS).toBe(7 * DAY);
+  });
+
+  it("deletes old finished claims and old messages but keeps active and recent rows", () => {
+    const store = makeStore(); // clock = 1_000
+    const oldDone = store.createClaim(baseClaim);
+    store.completeClaim(oldDone.id);
+    const oldActive = store.createClaim({ ...baseClaim, agentId: "keeper" });
+    sendOld(store, "old news");
+    store.fetchMessages({ agentId: "cofounder", unreadOnly: true }); // creates a read receipt
+
+    clock = 1_000 + 8 * DAY;
+    const recentDone = store.createClaim({ ...baseClaim, agentId: "recent" });
+    store.completeClaim(recentDone.id);
+    sendOld(store, "fresh");
+
+    const res = store.prune();
+    expect(res).toEqual({ claims: 1, messages: 1 });
+    expect(store.getClaim(oldDone.id)).toBeUndefined();
+    expect(store.getClaim(oldActive.id)).toBeDefined(); // active claims are never pruned
+    expect(store.getClaim(recentDone.id)).toBeDefined();
+    const remaining = store.listMessages();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.body).toBe("fresh");
+  });
+
+  it("honors a custom olderThanMs", () => {
+    const store = makeStore();
+    sendOld(store, "two days old");
+    clock = 1_000 + 2 * DAY;
+    expect(store.prune({ olderThanMs: 3 * DAY })).toEqual({ claims: 0, messages: 0 });
+    expect(store.prune({ olderThanMs: 1 * DAY })).toEqual({ claims: 0, messages: 1 });
+    expect(store.listMessages()).toHaveLength(0);
+  });
+
+  it("sweepExpired prunes opportunistically, at most once per hour", () => {
+    const store = makeStore();
+    const done = store.createClaim(baseClaim);
+    store.completeClaim(done.id);
+    sendOld(store);
+
+    clock = 1_000 + 8 * DAY;
+    store.sweepExpired(); // past the cutoff → opportunistic prune fires
+    expect(store.getClaim(done.id)).toBeUndefined();
+    expect(store.listMessages()).toHaveLength(0);
+
+    // rewind the injectable clock to plant fresh "old" rows
+    clock = 1_000;
+    const done2 = store.createClaim({ ...baseClaim, agentId: "b" });
+    store.completeClaim(done2.id);
+    sendOld(store, "stale again");
+
+    clock = 1_000 + 8 * DAY + 30 * 60 * 1000; // 30 min after last prune → throttled
+    store.sweepExpired();
+    expect(store.getClaim(done2.id)).toBeDefined();
+    expect(store.listMessages()).toHaveLength(1);
+
+    clock = 1_000 + 8 * DAY + 2 * HOUR; // over an hour later → prunes again
+    store.sweepExpired();
+    expect(store.getClaim(done2.id)).toBeUndefined();
+    expect(store.listMessages()).toHaveLength(0);
   });
 });

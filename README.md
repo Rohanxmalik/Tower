@@ -49,10 +49,25 @@ Two agents reach for the same symbol; the second is caught before its first keys
 Turn it into a GIF with [`vhs`](https://github.com/charmbracelet/vhs):
 `vhs examples/two-agents-demo/demo.tape`.
 
-## Quickstart
+## Quickstart (30 seconds)
 
-Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Add Tower to your
-agent's MCP config:
+Needs **Node 22+** (uses built-in `node:sqlite`, no native build). In your repo:
+
+```bash
+npx -y tower-mcp setup            # writes .mcp.json + agent rules; add --hooks for enforcement
+```
+
+Reload your editor — done. Joining a team server instead?
+
+```bash
+npx -y tower-mcp setup --url https://tower-xxxx.onrender.com/mcp --token <team-secret> --hooks
+```
+
+<details><summary>What setup does / manual config</summary>
+
+`setup` writes the `tower` entry into `.mcp.json` (merging with your existing servers),
+appends the claim-first + check-your-inbox rule to `CLAUDE.md` (and `AGENTS.md` if you
+have one), and with `--hooks` installs the git pre/post-commit guards. Manual equivalent:
 
 ```jsonc
 // Claude Code — .mcp.json
@@ -63,12 +78,12 @@ agent's MCP config:
 }
 ```
 
-Or drive it from the terminal:
-
 ```bash
 npx -y tower-mcp init      # writes .tower/policy.yaml + prints MCP setup
 npx -y tower-mcp serve     # MCP over stdio (or: serve --http --port 4319 --token <secret>)
 ```
+
+</details>
 
 <details><summary>From source (contributors)</summary>
 

@@ -10,6 +10,7 @@ import {
   cmdNextTask,
   cmdSend,
   cmdInbox,
+  cmdSetup,
   gatherSendArgs,
   gitDefaults,
   type ClaimArgs,
@@ -22,6 +23,7 @@ Usage: tower <command> [options]
 
 Commands:
   init                       Write .tower/policy.yaml + print MCP setup
+  setup [--url <https://...>] [--token t] [--hooks]   One-command onboarding: .mcp.json + rules + git hooks
   serve [--http] [--port n] [--token t]   Start the coordination server
   status                     Show active claims
   watch                      Live-poll active claims
@@ -87,6 +89,24 @@ export async function run(argv: string[]): Promise<number> {
     case "init":
       cmdInit(cwd);
       return 0;
+
+    case "setup": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          url: { type: "string" },
+          token: { type: "string" },
+          hooks: { type: "boolean" },
+        },
+        allowPositionals: false,
+      });
+      cmdSetup(cwd, {
+        ...(values.url ? { url: values.url } : {}),
+        ...(values.token ? { token: values.token } : {}),
+        ...(values.hooks ? { hooks: true } : {}),
+      });
+      return 0;
+    }
 
     case "status":
       await cmdStatus(cwd);

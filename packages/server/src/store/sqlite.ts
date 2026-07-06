@@ -20,6 +20,12 @@ import type {
 /** Default time-to-live for a claim before it auto-expires (ms). Refreshed by heartbeat. */
 export const DEFAULT_TTL_MS = 15 * 60 * 1000;
 
+/** Default retention window for `prune()`: rows older than this get deleted (ms). */
+export const DEFAULT_PRUNE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Minimum gap between opportunistic prunes triggered by `sweepExpired()` (ms). */
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+
 const DDL = `
 CREATE TABLE IF NOT EXISTS claims (
   id TEXT PRIMARY KEY, agentId TEXT NOT NULL, repo TEXT NOT NULL, branch TEXT NOT NULL,
@@ -37,6 +43,10 @@ CREATE TABLE IF NOT EXISTS messages (
   readAt INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (toAgentId, readAt);
+CREATE TABLE IF NOT EXISTS message_reads (
+  messageId TEXT NOT NULL, agentId TEXT NOT NULL, readAt INTEGER NOT NULL,
+  PRIMARY KEY (messageId, agentId)
+);
 `;
 
 export interface StoreOptions {
@@ -73,6 +83,9 @@ interface ClaimRow {
   commitSha: string | null;
 }
 
+// NOTE: the legacy `messages.readAt` column still exists in the schema for
+// compatibility with old DB files, but read state now lives in `message_reads`
+// (per-agent), so the column is neither read nor written anymore.
 interface MessageRow {
   id: string;
   repo: string;
@@ -82,7 +95,6 @@ interface MessageRow {
   body: string;
   replyTo: string | null;
   createdAt: number;
-  readAt: number | null;
 }
 
 function rowToMessage(r: MessageRow): Message {
@@ -95,7 +107,6 @@ function rowToMessage(r: MessageRow): Message {
     body: r.body,
     ...(r.replyTo != null ? { replyTo: r.replyTo } : {}),
     createdAt: r.createdAt,
-    ...(r.readAt != null ? { readAt: r.readAt } : {}),
   };
 }
 
@@ -146,6 +157,8 @@ export class TowerStore {
   private readonly db: DatabaseSyncType;
   private readonly now: () => number;
   private readonly ttlMs: number;
+  /** Clock time of the last opportunistic prune run by sweepExpired(). */
+  private lastPruneAt = 0;
 
   constructor(opts: StoreOptions = {}) {
     this.db = new DatabaseSync(opts.path ?? ":memory:");
@@ -199,12 +212,44 @@ export class TowerStore {
     return row ? rowToClaim(row) : undefined;
   }
 
-  /** Marks any active claim whose TTL has elapsed as expired. Returns count swept. */
+  /**
+   * Marks any active claim whose TTL has elapsed as expired. Returns count swept.
+   * Also prunes stale rows opportunistically, at most once per hour (see {@link prune}).
+   */
   sweepExpired(): number {
+    const now = this.now();
     const res = this.db
       .prepare(`UPDATE claims SET status = 'expired' WHERE status = 'active' AND expiresAt < ?`)
-      .run(this.now());
+      .run(now);
+    if (now - this.lastPruneAt >= PRUNE_INTERVAL_MS) {
+      this.lastPruneAt = now;
+      this.prune();
+    }
     return Number(res.changes);
+  }
+
+  /**
+   * Deletes stale rows so long-running servers don't accumulate history forever:
+   * - claims: finished ones (status != 'active') created before the cutoff — an
+   *   old but still-active claim is never pruned;
+   * - messages: ALL messages created before the cutoff, regardless of read state.
+   *   Deliberate simplification: after the retention window a message has no
+   *   inbox or board value, so age alone decides;
+   * - message_reads: receipts whose message no longer exists.
+   *
+   * Cutoff is `now - olderThanMs` (default {@link DEFAULT_PRUNE_MS}, 7 days).
+   * Returns how many claims and messages were deleted.
+   */
+  prune(opts: { olderThanMs?: number } = {}): { claims: number; messages: number } {
+    const cutoff = this.now() - (opts.olderThanMs ?? DEFAULT_PRUNE_MS);
+    const claims = this.db
+      .prepare(`DELETE FROM claims WHERE status != 'active' AND createdAt < ?`)
+      .run(cutoff);
+    const messages = this.db.prepare(`DELETE FROM messages WHERE createdAt < ?`).run(cutoff);
+    this.db
+      .prepare(`DELETE FROM message_reads WHERE messageId NOT IN (SELECT id FROM messages)`)
+      .run();
+    return { claims: Number(claims.changes), messages: Number(messages.changes) };
   }
 
   /** Active, non-expired claims in a repo/branch scope (sweeps first). */
@@ -285,8 +330,8 @@ export class TowerStore {
     };
     this.db
       .prepare(
-        `INSERT INTO messages (id,repo,fromAgentId,toAgentId,kind,body,replyTo,createdAt,readAt)
-         VALUES (?,?,?,?,?,?,?,?,NULL)`,
+        `INSERT INTO messages (id,repo,fromAgentId,toAgentId,kind,body,replyTo,createdAt)
+         VALUES (?,?,?,?,?,?,?,?)`,
       )
       .run(
         msg.id,
@@ -301,26 +346,39 @@ export class TowerStore {
     return msg;
   }
 
-  /** Unread messages addressed to the agent (directly or broadcast), excluding their own. */
+  /**
+   * Unread messages addressed to the agent (directly or broadcast), excluding their own.
+   * Read state is per-agent (message_reads), so a broadcast stays unread for each
+   * teammate until they fetch it themselves.
+   */
   unreadCount(agentId: string): number {
     const row = this.db
       .prepare(
-        `SELECT COUNT(*) AS n FROM messages
-         WHERE readAt IS NULL AND fromAgentId != ? AND (toAgentId = ? OR toAgentId = '*')`,
+        `SELECT COUNT(*) AS n FROM messages m
+         WHERE m.fromAgentId != ? AND (m.toAgentId = ? OR m.toAgentId = '*')
+           AND NOT EXISTS (
+             SELECT 1 FROM message_reads r WHERE r.messageId = m.id AND r.agentId = ?
+           )`,
       )
-      .get(agentId, agentId) as unknown as { n: number };
+      .get(agentId, agentId, agentId) as unknown as { n: number };
     return Number(row.n);
   }
 
   /**
-   * The agent's inbox. `unreadOnly` (default) also marks the fetched messages read.
-   * v1 tradeoff: a broadcast ("*") is marked read by its first reader.
+   * The agent's inbox. `unreadOnly` (default) also marks the fetched messages read —
+   * for this agent only, via a message_reads receipt — so a broadcast ("*") remains
+   * unread for every other teammate until they fetch it too.
    */
   fetchMessages(filter: { agentId: string; repo?: string; unreadOnly?: boolean }): Message[] {
     const unreadOnly = filter.unreadOnly ?? true;
     const clauses = [`fromAgentId != ?`, `(toAgentId = ? OR toAgentId = '*')`];
     const params: (string | number)[] = [filter.agentId, filter.agentId];
-    if (unreadOnly) clauses.push("readAt IS NULL");
+    if (unreadOnly) {
+      clauses.push(
+        `NOT EXISTS (SELECT 1 FROM message_reads r WHERE r.messageId = messages.id AND r.agentId = ?)`,
+      );
+      params.push(filter.agentId);
+    }
     if (filter.repo) {
       clauses.push("repo = ?");
       params.push(filter.repo);
@@ -331,8 +389,10 @@ export class TowerStore {
     const messages = rows.map(rowToMessage);
     if (unreadOnly && messages.length) {
       const readAt = this.now();
-      const mark = this.db.prepare(`UPDATE messages SET readAt = ? WHERE id = ?`);
-      for (const m of messages) mark.run(readAt, m.id);
+      const mark = this.db.prepare(
+        `INSERT OR IGNORE INTO message_reads (messageId, agentId, readAt) VALUES (?,?,?)`,
+      );
+      for (const m of messages) mark.run(m.id, filter.agentId, readAt);
     }
     return messages;
   }

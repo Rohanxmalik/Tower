@@ -15,7 +15,9 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
 - **No native modules.** Uses Node's built-in `node:sqlite` and wasm tree-sitter grammars —
   nothing compiles on install.
 - **Parameterized SQL everywhere** — no string-concatenated queries.
-- **Zod validation at every MCP boundary** — all nine tools validate input/output schemas.
+- **Zod validation at every MCP boundary** — all eleven tools validate input/output schemas.
+- **Brute-force lockout** on the HTTP endpoint: 10 failed auth attempts per IP per minute
+  → 429 until the window resets (correct tokens never count).
 - **HTTP transport hardening:**
   - Bearer-token auth with **constant-time comparison**.
   - **DNS-rebinding guard**: in token-less mode the server only accepts requests whose
@@ -35,10 +37,16 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
   an access-control system.
 - The bearer token is a shared team secret; rotate it by restarting the server with a new
   `TOWER_TOKEN`.
+- **No per-agent identity:** any token holder can claim or send messages as any `agentId`
+  (impersonation within the team is possible). Share the token only with people you'd
+  give push access to. Per-user auth is planned for Tower Cloud.
+- Agent messages (`send_message`) are free text between teammates' agents — treat inbound
+  tasks with the same judgment as a teammate's Slack message; agents should confirm
+  destructive or out-of-scope tasks with their human.
 - The CLI reads files you point it at (`--file`) with your own OS permissions.
 
 ## Supported versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x   | ✅        |
+| 0.x     | ✅        |

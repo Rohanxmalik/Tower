@@ -129,7 +129,13 @@ the bearer token is sent in a header.
 
 ## Point each developer's agent at it
 
-Tower speaks MCP over HTTP, so every agent connects directly — no per-dev install:
+**One command per developer** (writes `.mcp.json`, the agent rules, and the git hooks):
+
+```bash
+npx -y tower-mcp setup --url https://tower.yourteam.dev/mcp --token your-shared-secret --hooks
+```
+
+Or configure by hand — Tower speaks MCP over HTTP, so every agent connects directly:
 
 ```jsonc
 // .mcp.json (Claude Code)
@@ -143,6 +149,17 @@ Tower speaks MCP over HTTP, so every agent connects directly — no per-dev inst
   },
 }
 ```
+
+**Codex CLI** speaks stdio-only MCP, so bridge it with
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.tower]
+command = "npx"
+args = ["-y", "mcp-remote", "https://tower.yourteam.dev/mcp", "--header", "Authorization: Bearer your-shared-secret"]
+```
+
+**Cursor** uses the same JSON shape as Claude Code in `.cursor/mcp.json`.
 
 Now when Developer A's agent calls `claim_intent`, Developer B's agent sees the claim on
 its next `check_collision` / `claim_intent`. This is the founding scenario: your Claude
@@ -233,5 +250,12 @@ agent is physically blocked from editing `auth.ts` while A is on it.
 ## Ops notes (early)
 
 - Claims auto-expire via TTL (default 15 min) if an agent stops heartbeating.
-- The SQLite DB grows with history; periodic pruning of old completed/expired claims is a
-  TODO. Fine for small teams; revisit at scale.
+- **Durability:** claims are transient by design, but **decisions and messages are meant
+  to be durable team memory** — and they live in SQLite on disk. On Render's **free tier
+  there is no persistent disk**, so every deploy/restart wipes them. Fine for trying Tower
+  out; for real use, upgrade to a paid instance and re-add the disk (see the commented
+  `disk:` block in [`render.yaml`](../render.yaml)) or self-host with the Docker volume.
+- Old completed/expired claims and old messages are pruned automatically after 7 days.
+- **Trust model:** one shared token = one team. Any token holder can act as any agent id
+  (there's no per-agent auth yet), so share the token only with people you'd give push
+  access to. Per-user identity is on the roadmap (Tower Cloud).

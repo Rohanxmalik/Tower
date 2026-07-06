@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -11,6 +11,7 @@ import {
   cmdComplete,
   cmdServe,
   cmdWatch,
+  cmdSetup,
   resolveSymbols,
   resolvePort,
   type ClaimArgs,
@@ -325,5 +326,120 @@ describe("git-derived defaults", () => {
     expect(normalizeRepoUrl("git@github.com:Acme/App.git")).toBe("github.com/acme/app");
     expect(normalizeRepoUrl("https://github.com/Acme/App.git")).toBe("github.com/acme/app");
     expect(normalizeRepoUrl("ssh://git@github.com/Acme/App")).toBe("github.com/acme/app");
+  });
+});
+
+describe("cmdSetup (one-command onboarding)", () => {
+  const readJson = (path: string): { mcpServers: Record<string, unknown> } =>
+    JSON.parse(readFileSync(path, "utf8")) as { mcpServers: Record<string, unknown> };
+
+  it("creates .mcp.json in local mode when absent and prints the next step", () => {
+    const { out, lines } = collect();
+    cmdSetup(dir, {}, out);
+    const config = readJson(join(dir, ".mcp.json"));
+    expect(config.mcpServers.tower).toEqual({
+      command: "npx",
+      args: ["-y", "tower-mcp", "serve"],
+    });
+    const text = lines.join("\n");
+    expect(text).toContain(".mcp.json");
+    expect(text).toContain("npx -y tower-mcp send");
+  });
+
+  it("writes team mode (type http + Authorization header) when --url and --token are given", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
+    const config = readJson(join(dir, ".mcp.json"));
+    expect(config.mcpServers.tower).toEqual({
+      type: "http",
+      url: "https://tower.example.com/mcp",
+      headers: { Authorization: "Bearer s3cret" },
+    });
+  });
+
+  it("omits headers in team mode when no token is given", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp" }, () => {});
+    const config = readJson(join(dir, ".mcp.json"));
+    expect(config.mcpServers.tower).toEqual({
+      type: "http",
+      url: "https://tower.example.com/mcp",
+    });
+  });
+
+  it("merges into an existing .mcp.json, preserving other servers", () => {
+    writeFileSync(
+      join(dir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { other: { command: "foo", args: ["bar"] } } }),
+    );
+    cmdSetup(dir, {}, () => {});
+    const config = readJson(join(dir, ".mcp.json"));
+    expect(config.mcpServers.other).toEqual({ command: "foo", args: ["bar"] });
+    expect(config.mcpServers.tower).toEqual({
+      command: "npx",
+      args: ["-y", "tower-mcp", "serve"],
+    });
+  });
+
+  it("refuses to touch an invalid-JSON .mcp.json and warns", () => {
+    writeFileSync(join(dir, ".mcp.json"), "{ this is not json");
+    const { out, lines } = collect();
+    cmdSetup(dir, {}, out);
+    expect(readFileSync(join(dir, ".mcp.json"), "utf8")).toBe("{ this is not json");
+    expect(lines.join("\n").toLowerCase()).toContain("invalid json");
+  });
+
+  it("creates CLAUDE.md with the claim-first rule and is idempotent on a second run", () => {
+    cmdSetup(dir, {}, () => {});
+    const content = readFileSync(join(dir, "CLAUDE.md"), "utf8");
+    expect(content).toContain("## Tower (agent coordination)");
+    expect(content).toContain("claim_intent");
+
+    const second = collect();
+    cmdSetup(dir, {}, second.out);
+    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(content);
+    expect(second.lines.join("\n").toLowerCase()).toContain("already");
+  });
+
+  it("appends the rule to AGENTS.md only when that file already exists", () => {
+    cmdSetup(dir, {}, () => {});
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+
+    writeFileSync(join(dir, "AGENTS.md"), "# Agents\n");
+    cmdSetup(dir, {}, () => {});
+    const agents = readFileSync(join(dir, "AGENTS.md"), "utf8");
+    expect(agents).toContain("# Agents");
+    expect(agents).toContain("claim_intent");
+  });
+
+  it("installs pre-commit and post-commit hooks with --hooks when .git/hooks exists", () => {
+    mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+    const { out, lines } = collect();
+    cmdSetup(dir, { hooks: true }, out);
+    expect(readFileSync(join(dir, ".git", "hooks", "pre-commit"), "utf8")).toContain(
+      "Tower pre-commit guard",
+    );
+    expect(readFileSync(join(dir, ".git", "hooks", "post-commit"), "utf8")).toContain(
+      "Tower post-commit hook",
+    );
+    expect(lines.join("\n")).toContain("pre-commit");
+  });
+
+  it("never overwrites an existing hook — skips with a warning", () => {
+    mkdirSync(join(dir, ".git", "hooks"), { recursive: true });
+    const sentinel = "#!/bin/sh\n# my precious hook\n";
+    writeFileSync(join(dir, ".git", "hooks", "pre-commit"), sentinel);
+    const { out, lines } = collect();
+    cmdSetup(dir, { hooks: true }, out);
+    expect(readFileSync(join(dir, ".git", "hooks", "pre-commit"), "utf8")).toBe(sentinel);
+    expect(readFileSync(join(dir, ".git", "hooks", "post-commit"), "utf8")).toContain(
+      "Tower post-commit hook",
+    );
+    expect(lines.join("\n").toLowerCase()).toContain("skip");
+  });
+
+  it("skips git hooks with a warning when .git/hooks does not exist", () => {
+    const { out, lines } = collect();
+    cmdSetup(dir, { hooks: true }, out);
+    expect(existsSync(join(dir, ".git", "hooks", "pre-commit"))).toBe(false);
+    expect(lines.join("\n").toLowerCase()).toContain("skip");
   });
 });

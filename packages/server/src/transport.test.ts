@@ -151,6 +151,14 @@ describe("HTTP transport", () => {
 });
 
 describe("board", () => {
+  it("redirects the root URL to the board", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const res = await fetch(url(httpServer, "/"), { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/board");
+  });
+
   it("serves the board page without auth", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0, token: "secret" });

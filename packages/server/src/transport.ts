@@ -121,7 +121,11 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   };
 
   // The live radar board. The page itself carries no data (safe to serve unauthenticated);
-  // it polls /api/board with the token the operator enters.
+  // it polls /api/board with the token the operator enters. The bare domain is what
+  // people paste around, so send it to the board instead of "Cannot GET /".
+  app.get("/", (_req, res) => {
+    res.redirect("/board");
+  });
   app.get("/board", (_req, res) => {
     res.type("html").send(BOARD_HTML);
   });

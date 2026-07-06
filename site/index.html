@@ -16,7 +16,7 @@
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
-    <meta property="og:image" content="https://raw.githubusercontent.com/Rohanxmalik/Tower/main/site/demo.svg" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/Rohanxmalik/Tower/main/site/board.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -95,6 +95,7 @@
       .lede { font-size: clamp(1.02rem, 1.5vw, 1.22rem); color: var(--muted); max-width: 40ch; }
       .lede b { color: var(--ink); font-weight: 600; }
       .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.6rem; }
+      .trust { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); margin-top: 1rem; }
       .cmd {
         display: flex; align-items: center; justify-content: space-between; gap: 1rem;
         font-family: var(--mono); font-size: 0.95rem;
@@ -155,7 +156,22 @@
       .card p { margin: 0; color: var(--muted); font-size: 0.94rem; }
 
       /* STEPS */
-      .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+      @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+      /* Two-terminal comms demo */
+      .terms { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.8rem; }
+      @media (max-width: 860px) { .terms { grid-template-columns: 1fr; } }
+      .term { background: #05090c; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .term-head { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em; color: var(--muted); padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+      .term-body { padding: 0.9rem 1rem 1.1rem; font-family: var(--mono); font-size: 0.82rem; line-height: 1.75; }
+      .tl { opacity: 0; animation: fadein 0.35s ease-out forwards; white-space: pre-wrap; word-break: break-word; }
+      .tl .p { color: var(--phosphor); }
+      .tl .q { color: var(--muted); }
+      .tl .a { color: #fff; }
+      .tl.sent { color: var(--cyan); }
+      .tl.task-in { color: var(--amber); }
+      .tl.done { color: var(--phosphor); }
+      @media (prefers-reduced-motion: reduce) { .tl { animation: none; opacity: 1; } }
       .step { border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; background: var(--panel); }
       .step .num { font-family: var(--mono); font-size: 0.75rem; color: var(--amber); letter-spacing: 0.15em; }
       .step h3 { color: #fff; font-size: 1.15rem; margin: 0.5rem 0 0.4rem; }
@@ -261,13 +277,14 @@
             board.
           </p>
           <div class="cmd">
-            <span><span class="prompt">$ </span><code>npx -y tower-mcp serve</code></span>
-            <button class="copy" data-copy="npx -y tower-mcp serve">copy</button>
+            <span><span class="prompt">$ </span><code>npx -y tower-mcp setup</code></span>
+            <button class="copy" data-copy="npx -y tower-mcp setup">copy</button>
           </div>
           <div class="cta-row">
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
-            <a class="btn" href="#install">Add to Claude Code</a>
+            <a class="btn" href="#install">30-second setup</a>
           </div>
+          <div class="trust">MIT · 156 tests · zero native deps · no telemetry · Node 22+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
@@ -300,7 +317,9 @@
           <p class="lead-p">
             Git catches <b>text</b> conflicts at merge — after everyone's agents have already
             burned tokens doing the work. Two teammates, five agents each, one codebase: the
-            real cost is <b>wasted parallel effort</b> discovered far too late.
+            real cost is <b>wasted parallel effort</b> discovered far too late. Worse, your
+            agents are <b>deaf to each other</b> — none of them can ask
+            <em>"who's got auth?"</em> before diving in.
           </p>
           <p class="lead-p">
             Tower is the missing <b>write-side coordination</b> layer. Every agent declares
@@ -366,17 +385,57 @@
       </div>
     </section>
 
+    <!-- COMMS DEMO — two machines, one conversation -->
+    <section id="comms">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Agent channel</span>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">
+            Two machines. One conversation.
+          </h2>
+          <p class="lead-p" style="margin-top: 0.8rem">
+            You delegate from your terminal; their agent picks it up on <b>their</b> machine,
+            with <b>their</b> account — no API keys shared, ever.
+          </p>
+        </div>
+        <div class="terms" aria-label="Terminal demo: sending a task from one machine and receiving it on another">
+          <div class="term">
+            <div class="term-head">YOUR MACHINE — rohan</div>
+            <div class="term-body">
+              <div class="tl" style="animation-delay: 0.3s"><span class="p">$ </span><span class="a">npx -y tower-mcp send</span></div>
+              <div class="tl" style="animation-delay: 1.0s"><span class="q">To (agent id, or * for everyone): </span><span class="a">cofounder</span></div>
+              <div class="tl" style="animation-delay: 1.8s"><span class="q">Message: </span><span class="a">add rate limiting to /login</span></div>
+              <div class="tl" style="animation-delay: 2.6s"><span class="q">Is this a task for them? [y/N]: </span><span class="a">y</span></div>
+              <div class="tl sent" style="animation-delay: 3.3s">📨 Sent task c78094d1 → cofounder</div>
+              <div class="tl done" style="animation-delay: 6.6s">[DONE] cofounder → rohan — “rate limit 30/min on /login, merged in ab12f3.”</div>
+            </div>
+          </div>
+          <div class="term">
+            <div class="term-head">THEIR MACHINE — cofounder</div>
+            <div class="term-body">
+              <div class="tl" style="animation-delay: 4.1s"><span class="p">$ </span><span class="a">npx -y tower-mcp inbox</span></div>
+              <div class="tl task-in" style="animation-delay: 4.8s">[TASK] rohan → cofounder (2s ago)</div>
+              <div class="tl" style="animation-delay: 4.8s"><span class="a">       add rate limiting to /login</span></div>
+              <div class="tl" style="animation-delay: 5.6s"><span class="q">…their Claude does the work — on their machine, their token…</span></div>
+              <div class="tl sent" style="animation-delay: 6.2s">📨 Sent task_update → rohan</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- HOW -->
     <section id="how">
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">The pattern</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Claim → detect → clear or hold</h2>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Claim → detect → hold → talk</h2>
         </div>
         <div class="steps">
           <div class="step"><div class="num">STEP 01</div><h3>Claim intent</h3><p>Before editing, the agent calls <span class="mono">claim_intent</span> with the files and symbols it's about to touch.</p></div>
           <div class="step"><div class="num">STEP 02</div><h3>Detect overlap</h3><p>Tower compares the intent against every active claim and grades the overlap: hard, soft, or clear.</p></div>
           <div class="step"><div class="num">STEP 03</div><h3>Clear or hold</h3><p>No overlap → proceed. Hard conflict → the edit is held and the agent is told who holds it and why.<div class="verdict"><span class="v-clear">✔ CLEARED</span> &nbsp; or &nbsp; <span class="v-hold">⛔ HOLD</span></div></p></div>
+          <div class="step"><div class="num">STEP 04</div><h3>Talk it out</h3><p>Held? The agents negotiate: <span class="mono">send_message</span> hands off a task ("take billing"), and the other agent replies with a <span class="mono">task_update</span> when it's merged.</p></div>
         </div>
       </div>
     </section>
@@ -391,19 +450,20 @@
         <div class="tabs">
           <button class="tab active" data-tab="cc">Claude Code</button>
           <button class="tab" data-tab="cursor">Cursor</button>
+          <button class="tab" data-tab="codex">Codex</button>
           <button class="tab" data-tab="src">From source</button>
         </div>
         <div class="tabpanel active" id="cc">
-          <pre><span class="c"># .mcp.json</span>
-{
-  <span class="k">"mcpServers"</span>: {
-    <span class="k">"tower"</span>: { <span class="k">"command"</span>: <span class="g">"npx"</span>, <span class="k">"args"</span>: [<span class="g">"-y"</span>, <span class="g">"tower-mcp"</span>, <span class="g">"serve"</span>] }
-  }
-}</pre>
+          <pre><span class="c"># In your repo — writes .mcp.json, agent rules, and (with --hooks) enforcement:</span>
+<span class="g">npx</span> -y tower-mcp setup
+
+<span class="c"># Joining a team server?</span>
+<span class="g">npx</span> -y tower-mcp setup --url https://tower-xxxx.onrender.com/mcp --token &lt;secret&gt; --hooks</pre>
           <p class="lead-p" style="margin-top: 1rem">
-            Then add to <span class="mono">CLAUDE.md</span>: <em>"Before editing any file, call
-            <span class="mono">claim_intent</span>. If a hard conflict returns, stop and ask."</em>
-            Want it enforced? Enable the <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/enforcement.md">PreToolUse hook</a>.
+            One command: it merges the <span class="mono">tower</span> server into
+            <span class="mono">.mcp.json</span> and adds the claim-first rule to
+            <span class="mono">CLAUDE.md</span>. Reload your editor — done. Details:
+            <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/enforcement.md">enforcement</a>.
           </p>
         </div>
         <div class="tabpanel" id="cursor">
@@ -413,6 +473,20 @@
     <span class="k">"tower"</span>: { <span class="k">"command"</span>: <span class="g">"npx"</span>, <span class="k">"args"</span>: [<span class="g">"-y"</span>, <span class="g">"tower-mcp"</span>, <span class="g">"serve"</span>] }
   }
 }</pre>
+          <p class="lead-p" style="margin-top: 1rem">
+            Team server? Use <span class="mono">"type": "http", "url": "…/mcp"</span> with an
+            <span class="mono">Authorization</span> header — same shape as Claude Code.
+          </p>
+        </div>
+        <div class="tabpanel" id="codex">
+          <pre><span class="c"># ~/.codex/config.toml — Codex speaks stdio, so bridge with mcp-remote:</span>
+[<span class="k">mcp_servers.tower</span>]
+<span class="k">command</span> = <span class="g">"npx"</span>
+<span class="k">args</span> = [<span class="g">"-y"</span>, <span class="g">"mcp-remote"</span>, <span class="g">"https://tower-xxxx.onrender.com/mcp"</span>, <span class="g">"--header"</span>, <span class="g">"Authorization: Bearer &lt;secret&gt;"</span>]</pre>
+          <p class="lead-p" style="margin-top: 1rem">
+            Then add the claim-first rule to <span class="mono">AGENTS.md</span> — your Codex
+            now sees (and talks to) everyone else's agents.
+          </p>
         </div>
         <div class="tabpanel" id="src">
           <pre><span class="g">git</span> clone https://github.com/Rohanxmalik/Tower && <span class="k">cd</span> Tower

@@ -4,3 +4,4 @@ docs/demo.svg
 # Build output.
 **/dist/
 coverage/
+team-claude.md

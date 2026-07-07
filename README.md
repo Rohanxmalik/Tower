@@ -4,18 +4,52 @@
 ![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-3fb950)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Air-traffic control for AI agents editing a shared repo — and the channel they talk on.**
+**Two AI agents. Two machines. One repo. Working together.**
 
 **[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — setup: `npx -y tower-mcp setup`
 
-Tower is an [MCP](https://modelcontextprotocol.io) server that connects your team's
-coding agents. Any agent — Claude Code, Cursor, Codex, Gemini — registers what it's
-_about to change_; Tower detects **semantic** overlap with every other active agent and
-holds the second one **before it spends a token**, not at merge time. And the agents
-don't just avoid each other: they **message, delegate tasks, and report back** through
-Tower's agent channel, visible live on the radar board.
+Tower is an [MCP](https://modelcontextprotocol.io) server that turns your team's coding
+agents — Claude Code, Cursor, Codex, on different machines and different accounts — into
+**one crew on one repo**. Your agent **delegates a task** to your teammate's agent; theirs
+does the work with _their_ tokens, commits it, and **reports back with the sha**. And
+because everyone declares intent before editing, no two agents ever burn tokens on the
+same code — collisions are held **before the first keystroke**, not found at merge.
 
-![Tower catches a collision before the edit](docs/demo.svg)
+```
+YOUR MACHINE — alice                          THEIR MACHINE — bob
+──────────────────────────────                ──────────────────────────────
+you: "swap JWT for sessions;
+      hand rate-limiting to bob"
+agent → send_message (task)      ─────────►   agent claims src/auth.ts
+                                              → "unreadMessages: 1" → fetch_messages
+                                              → does the task, their machine/tokens
+                                              → commits (hook completes the claim)
+[DONE] bob → alice:              ◄─────────   → send_message (task_update)
+"rate limit 30/min, merged in ab12f3"
+```
+
+![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
+
+> Status: **v0.4 — early, building in public.** Agent messaging/task delegation, semantic
+> collision detection, three enforcement layers, the live board, and the GitHub Action all
+> work end-to-end today (156 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+
+## Why
+
+Every vendor gives your agent tools and memory; **nobody connects your agent to your
+teammate's**. Two people, ten agents, one codebase — and the agents can't see each other,
+can't hand off work, and collide on the same files with nothing to show for it but a merge
+conflict. Tower is the missing collaboration layer: a shared tower every agent talks to.
+It sits _above_ git and _uses_ MCP; it doesn't replace either. Model-agnostic by
+construction — coordination only matters if the _other_ vendor's agent is in the room.
+
+## See a collision get stopped (5 seconds)
+
+```bash
+npm run demo
+```
+
+Two agents reach for the same symbol; the second is caught before its first keystroke:
 
 ```
 ⛔ COLLISION — AuthService.verify
@@ -26,31 +60,6 @@ Tower's agent channel, visible live on the radar board.
      [b] branch    — build on their WIP instead of racing them
      [f] force     — re-run guard with --force; you own the merge risk
 ```
-
-> The banner above is an animated SVG. Prefer a real terminal-recording GIF? Run
-> [`vhs`](https://github.com/charmbracelet/vhs): `vhs examples/two-agents-demo/demo.tape` → `docs/demo.gif`.
-
-> Status: **v0.4 — early, building in public.** Collision detection, three enforcement
-> layers, the live board, agent messaging/delegation, and the GitHub Action all work
-> end-to-end today (156 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
-
-## Why
-
-Memory, agent protocols (MCP/A2A), and observability dashboards are already solved. The
-unowned gap is **write-side coordination** — as teams run many agents per repo in parallel,
-the bottleneck becomes collisions and wasted work you only discover at merge. Tower is the
-model-agnostic layer that prevents that. It sits _above_ git and _uses_ MCP; it doesn't
-replace either.
-
-## See it (5 seconds)
-
-```bash
-npm run demo
-```
-
-Two agents reach for the same symbol; the second is caught before its first keystroke.
-Turn it into a GIF with [`vhs`](https://github.com/charmbracelet/vhs):
-`vhs examples/two-agents-demo/demo.tape`.
 
 ## Quickstart (30 seconds)
 
@@ -105,6 +114,29 @@ Then add to your agent's rules file:
 
 Full setup → [docs/quickstart.md](./docs/quickstart.md).
 
+## Delegate work across machines (the core loop)
+
+Two people, two machines, two accounts — one repo. This is what Tower is for:
+
+1. **Delegate** — you tell your agent _"hand the rate-limiting work to bob"_ (or it decides
+   itself, per your rules): it calls `send_message` with `kind: "task"`. Manual version
+   from any terminal: `tower send` (asks who + what; your identity and repo come from git).
+2. **Pick up** — the next time bob's agent touches Tower (any `claim_intent`), the response
+   says `unreadMessages: 1`; the rules file tells it to `fetch_messages` and act. Delivery
+   is inbox-style — MCP has no push channel — so it's asynchronous, like Slack, not a
+   phone call.
+3. **Do the work — their machine, their account.** Bob's agent claims the files (so nobody
+   collides with _it_), writes the code with **bob's** tokens and git identity. No API keys
+   ever cross machines.
+4. **Commit & close the loop** — on commit, the git post-commit hook completes the claim
+   with the sha; the agent replies `send_message { kind: "task_update", replyTo: <task> }`:
+   _"rate limit 30/min on /login, merged in ab12f3."_ Your agent sees it on its next
+   contact — and the whole exchange is on the board's COMMS panel the whole time.
+
+Trust model, plainly: an inbound task is code your teammate's agent will act on — treat the
+shared `TOWER_TOKEN` like push access, and agents should confirm out-of-scope tasks with
+their human ([SECURITY.md](./SECURITY.md)).
+
 ## The 11 tools
 
 | Tool                               | Purpose                                                                |
@@ -157,27 +189,12 @@ Details + scope → [docs/enforcement.md](./docs/enforcement.md).
 ## Live radar board
 
 Every `serve --http` Tower ships a real-time board at **`/board`**: every agent's claims as
-ATC flight strips, collisions flashing red, TTL countdowns. Open it next to your editor and
-watch your team's agents coordinate.
+ATC flight strips, collisions flashing red, TTL countdowns — and the **COMMS panel**
+showing every message and delegated task as it happens. Open it next to your editor and
+watch your team's agents work together (screenshot at the top of this README).
 
-![Tower live board — a collision between two agents on AuthService.verify](docs/board.png)
-
-## Agents that talk to each other
-
-Tower is Slack for your agents, literally: agents leave each other **async messages and
-task requests**, delivered on the recipient's next Tower contact (MCP has no push channel,
-so delivery is inbox-style — like Slack, not a phone call).
-
-- **"You've got mail" is automatic:** every `claim_intent` response carries the agent's
-  `unreadMessages` count, and the rules file tells agents to `fetch_messages` when it's >0.
-- **Task delegation across people:** your Claude sends `kind: "task"` → your co-founder's
-  Claude picks it up on its next contact, does the work **on their machine, with their
-  account**, and replies with `kind: "task_update"`. Nobody shares API keys — each agent
-  runs under its own credentials, always.
-- **The whole conversation is visible** in the **COMMS panel on `/board`**, next to the
-  flight strips.
-
-From a terminal — just run `send`; it asks the rest (who you are + the repo come from git):
+The agent channel from a terminal — just run `send`; it asks the rest (who you are + the
+repo come from git):
 
 ```
 $ npx -y tower-mcp send

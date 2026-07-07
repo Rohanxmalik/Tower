@@ -237,6 +237,24 @@ npx -y tower-mcp send
 npx -y tower-mcp inbox                 # read your messages (marks them read)
 ```
 
+## Delegate a task across machines (the full loop)
+
+The real workflow, once both editors are configured (previous section):
+
+1. **Alice** tells her agent: _"hand the rate-limiting work to bob's agent via tower"_ —
+   it calls `send_message` with `kind: "task"`. (Or she runs `tower send` herself.)
+2. **Bob's agent** learns it has mail on its next Tower contact — every `claim_intent`
+   response carries `unreadMessages` — fetches the task, and (per the rules file) confirms
+   with Bob, then does the work **on Bob's machine with Bob's account**.
+3. Bob's agent **claims the files while working** (so nobody collides with it), commits,
+   and the post-commit hook completes the claim with the sha.
+4. Bob's agent replies `task_update`: _"done, merged in ab12f3"_ — Alice's agent picks it
+   up on its next contact, and the whole exchange is visible on `/board` throughout.
+
+Delivery is asynchronous by design (MCP has no push channel): a task waits in the inbox
+until the recipient's agent next touches Tower. If Bob's editor is closed, the task waits —
+"always-on" pickup is what the roadmap's worker mode is for.
+
 For the real thing, both enable the PreToolUse hook and open Claude Code in the repo — B's
 agent is physically blocked from editing `auth.ts` while A is on it.
 

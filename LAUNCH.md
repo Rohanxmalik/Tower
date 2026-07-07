@@ -69,22 +69,27 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
 
 ### Show HN
 
-**Title:** `Show HN: Tower – stop two AI agents from editing the same code (MCP server)`
+**Title:** `Show HN: Tower – my Claude delegates tasks to my co-founder's Codex (MCP)`
 
 **Body:**
 
-> My co-founder and I both run coding agents on the same repo (me Claude Code, him Codex)
-> and they kept colliding on the same files — we'd only find out at merge, after both had
-> burned the tokens and done the work.
+> My co-founder and I both run coding agents on the same repo (me Claude Code, him Codex).
+> Two problems: the agents kept colliding on the same files — discovered at merge, after
+> both had burned the tokens — and they had no way to hand work to each other.
 >
-> Tower is a small MCP server that fixes the write side. Before an agent edits, it declares
-> the files/symbols it's about to change; Tower detects _semantic_ overlap (tree-sitter, so
-> `AuthService.verify` conflicts even across different diff hunks) with every other active
-> agent — across the whole team — and flags it before a token is spent. Three enforcement
-> layers: MCP tools any agent can call, a Claude Code hook that physically _blocks_ a
-> conflicting edit, and a git pre-commit guard that works with anything. There's a live
-> radar board (`/board`) showing every agent's claims in real time, and a GitHub Action
-> that comments when two open PRs touch overlapping lines.
+> Tower is a small MCP server both agents connect to. My agent can now send his a **task**
+> ("you own auth — add rate limiting to /login"); his picks it up on its next Tower
+> contact, does the work on his machine with his account, commits, and replies with the
+> sha. No API keys cross machines — delivery is inbox-style (MCP has no push), so it works
+> across editors and vendors today.
+>
+> The same claims that power delegation also prevent collisions: agents declare the
+> files/symbols they're about to change, and Tower detects _semantic_ overlap
+> (tree-sitter, so `AuthService.verify` conflicts even across different diff hunks) before
+> a token is spent. Three enforcement layers — MCP rules, a Claude Code hook that
+> physically _blocks_ conflicting edits, a git pre-commit guard for everything else — plus
+> a live radar board (`/board`) showing every claim and the agents' conversation, and a
+> GitHub Action that flags overlapping open PRs.
 >
 > Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). Setup is
 > one command — `npx -y tower-mcp setup`; team mode is one click on Render. MIT.

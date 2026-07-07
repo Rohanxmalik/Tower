@@ -1,5 +1,9 @@
 # Tower — MVP Spec
 
+> **Historical design document.** This is the original spec Tower was built from; the
+> shipped product has moved past it (agent messaging, live board, GitHub Action,
+> `tower setup`). For current state see the [README](./README.md) and [docs/](./docs).
+
 > Working name: **Tower** (air-traffic control for AI agents editing a shared repo). Swappable — alternatives: Baton, Airlock, Semaphore, Relay.
 
 **One-liner:** An MCP server that stops two AI agents from colliding on the same code. Any agent (Claude Code, Cursor, Codex, Gemini) registers what it's about to change; Tower warns _before_ the edit happens, not at merge.

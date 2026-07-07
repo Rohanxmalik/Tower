@@ -4,14 +4,16 @@
 ![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-3fb950)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Air-traffic control for AI agents editing a shared repo.**
+**Air-traffic control for AI agents editing a shared repo — and the channel they talk on.**
 
-**[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — install: `npx -y tower-mcp serve`
+**[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — setup: `npx -y tower-mcp setup`
 
-Tower is an [MCP](https://modelcontextprotocol.io) server that stops two AI agents from
-colliding on the same code. Any agent — Claude Code, Cursor, Codex, Gemini — registers
-what it's _about to change_; Tower detects **semantic** overlap with other active agents
-and warns **before** the edit happens, not at merge time.
+Tower is an [MCP](https://modelcontextprotocol.io) server that connects your team's
+coding agents. Any agent — Claude Code, Cursor, Codex, Gemini — registers what it's
+_about to change_; Tower detects **semantic** overlap with every other active agent and
+holds the second one **before it spends a token**, not at merge time. And the agents
+don't just avoid each other: they **message, delegate tasks, and report back** through
+Tower's agent channel, visible live on the radar board.
 
 ![Tower catches a collision before the edit](docs/demo.svg)
 
@@ -28,8 +30,9 @@ and warns **before** the edit happens, not at merge time.
 > The banner above is an animated SVG. Prefer a real terminal-recording GIF? Run
 > [`vhs`](https://github.com/charmbracelet/vhs): `vhs examples/two-agents-demo/demo.tape` → `docs/demo.gif`.
 
-> Status: **early / building in public.** MVP works end-to-end. See [MVP-SPEC.md](./MVP-SPEC.md)
-> for the full design and roadmap.
+> Status: **v0.4 — early, building in public.** Collision detection, three enforcement
+> layers, the live board, agent messaging/delegation, and the GitHub Action all work
+> end-to-end today (156 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 
@@ -123,9 +126,9 @@ Wire contract → [docs/protocol.md](./docs/protocol.md).
 MCP clients (Claude Code / Cursor / Codex)
         │  stdio  ·  HTTP/SSE
         ▼
-Tower server ── collision engine (tree-sitter symbols) · sequencer · SQLite store
+Tower server ── collision engine (tree-sitter) · agent inbox · sequencer · SQLite · /board UI
         ▲
-tower CLI: init · serve · status · watch · claim · guard · complete   (+ git & PreToolUse hooks)
+tower CLI: setup · serve · status · watch · claim · guard · send · inbox · next-task · complete
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so
@@ -252,11 +255,17 @@ npm run build     # tsc -b
 
 ## Roadmap
 
+- Per-agent identity & auth (today: one shared team token) — the Tower Cloud foundation
+- More language grammars for symbol extraction (Go, Rust, Java — [contributions welcome](./CONTRIBUTING.md))
 - Predictive conflict detection (ML on your merge history) — the eventual moat
 - Auto-resolution / reconciliation agent
 - Cross-repo / org-wide intent graph + API-contract break detection
 - Enterprise: policy engine, SSO, audit ledger
-- A2A adapter for cross-vendor agent delegation
+
+## Contributing & community
+
+PRs welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) (TDD, small PRs, good-first ideas
+inside). Security reports → [SECURITY.md](./SECURITY.md). Changes → [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 

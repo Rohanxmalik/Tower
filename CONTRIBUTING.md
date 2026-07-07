@@ -29,6 +29,14 @@ npm run demo    # the two-agent collision demo
   must pass.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`…).
 
+## Good first contributions
+
+- **New language grammars** for symbol extraction (Go, Rust, Java…) — see
+  `packages/server/src/engine/symbols.ts`; grammars come from `tree-sitter-wasms`.
+- **Editor recipes** — tested setup docs for Windsurf, Zed, Gemini CLI, etc.
+- **Board polish** — repo filter, claim history (`packages/server/src/board.ts`).
+- **`tower doctor`** — a command that diagnoses common setup problems.
+
 ## Before opening a PR
 
 ```bash

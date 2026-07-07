@@ -14,6 +14,11 @@ transport and MCP standardized agent-to-tool access.
 - **Conflict** — a detected overlap between an incoming intent and an active claim, with
   a severity.
 - **Decision** — a recorded architecture choice and the reasoning behind it (shared memory).
+- **Message** — an async agent-to-agent note: `kind` is `message` (chat), `task`
+  (delegated work), or `task_update` (status reply, threaded via `replyTo`).
+  `toAgentId: "*"` broadcasts to every agent on the repo; each recipient's read state is
+  tracked separately. Delivery is pull-based — MCP has no push channel — so
+  `claim_intent` responses carry the caller's `unreadMessages` count as the wake-up signal.
 
 ## Severity
 
@@ -25,7 +30,7 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All nine tools take and return JSON validated by the schemas in
+All eleven tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool              | Purpose                                                               |
@@ -39,14 +44,17 @@ All nine tools take and return JSON validated by the schemas in
 | `log_decision`    | Record a decision + why.                                              |
 | `get_decisions`   | Recall decisions.                                                     |
 | `next_task`       | Ask the sequencer for a task whose module is safe to start now.       |
+| `send_message`    | Message or delegate a task to another agent (`toAgentId`, or `"*"`).  |
+| `fetch_messages`  | Read the caller's inbox; fetched messages are marked read.            |
 
 ### The agent loop
 
 ```
 1. Before editing            → claim_intent { agentId, repo, branch, files, symbols, purpose }
 2. If a "hard" conflict      → stop, surface options to the user
-3. While editing (~60s)      → heartbeat { claimId }
-4. On commit (git hook)      → complete_claim { claimId, commitSha }
+3. If unreadMessages > 0     → fetch_messages { agentId }; act on tasks, reply with task_update
+4. While editing (~60s)      → heartbeat { claimId }
+5. On commit (git hook)      → complete_claim { claimId, commitSha }
 ```
 
 ## Design notes

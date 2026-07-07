@@ -12,27 +12,12 @@ compound.
 
 ---
 
-## 1. Publish to npm — the install one-liner **[you]**
+## 1. npm — ✅ DONE
 
-Everything is prepped as a single self-contained package `tower-mcp` (verified: a fresh
-install runs the collision demo, tree-sitter and all).
-
-```bash
-npm run build              # produces the bundled packages/cli/dist
-cd packages/cli
-npm publish --dry-run      # sanity check the tarball contents
-npm login                  # your npm account
-npm publish                # ships tower-mcp@0.1.0 (public)
-```
-
-Then verify on a clean machine (or fresh dir):
-
-```bash
-npx -y tower-mcp serve --help
-```
-
-The README, website, and docs already point at `npx -y tower-mcp serve`, so nothing else
-to change once it's live.
+`tower-mcp` is live on npm (v0.4.x): one self-contained package, `npx -y tower-mcp setup`
+onboards a repo in one command. To ship a new version: bump `packages/cli/package.json`
+(+ the version strings in `packages/server/src/mcp.ts` and `packages/cli/src/remote.ts`),
+`npm run build && npm test`, then `npm publish` from `packages/cli`.
 
 ## 2. Website (GitHub Pages)
 
@@ -101,8 +86,8 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
 > radar board (`/board`) showing every agent's claims in real time, and a GitHub Action
 > that comments when two open PRs touch overlapping lines.
 >
-> Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). Install is
-> `npx -y tower-mcp serve`; team mode is one click on Render. MIT.
+> Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). Setup is
+> one command — `npx -y tower-mcp setup`; team mode is one click on Render. MIT.
 >
 > Repo: https://github.com/Rohanxmalik/Tower · Site: https://rohanxmalik.github.io/Tower/
 >
@@ -128,7 +113,7 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
    keystroke, not at merge.
 3. It's an MCP server, so it works with Claude Code, Cursor, Codex — any model. A PreToolUse
    hook makes it _enforce_, not just suggest. Team mode: host one Tower, everyone connects.
-4. `npx -y tower-mcp serve` · Node 22+, no native deps, MIT.
+4. `npx -y tower-mcp setup` — 30 seconds, any MCP editor · Node 22+, no native deps, MIT.
    ⭐ https://github.com/Rohanxmalik/Tower
 
 ### Reddit

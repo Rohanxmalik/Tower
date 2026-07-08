@@ -22,6 +22,7 @@ you: "swap JWT for sessions;
       hand rate-limiting to bob"
 agent → send_message (task)      ─────────►   agent claims src/auth.ts
                                               → "unreadMessages: 1" → fetch_messages
+                                              (or: tower work accepted it, running claude…)
                                               → does the task, their machine/tokens
                                               → commits (hook completes the claim)
 [DONE] bob → alice:              ◄─────────   → send_message (task_update)
@@ -124,31 +125,42 @@ Two people, two machines, two accounts — one repo. This is what Tower is for:
 2. **Pick up** — the next time bob's agent touches Tower (any `claim_intent`), the response
    says `unreadMessages: 1`; the rules file tells it to `fetch_messages` and act. Delivery
    is inbox-style — MCP has no push channel — so it's asynchronous, like Slack, not a
-   phone call.
+   phone call. **Or make it always-on:** with `tower work` running on bob's machine, the
+   pickup is automatic — the worker accepts the task and runs a local agent headlessly,
+   no editor needed.
 3. **Do the work — their machine, their account.** Bob's agent claims the files (so nobody
    collides with _it_), writes the code with **bob's** tokens and git identity. No API keys
    ever cross machines.
 4. **Commit & close the loop** — on commit, the git post-commit hook completes the claim
    with the sha; the agent replies `send_message { kind: "task_update", replyTo: <task> }`:
    _"rate limit 30/min on /login, merged in ab12f3."_ Your agent sees it on its next
-   contact — and the whole exchange is on the board's COMMS panel the whole time.
+   contact — and the whole exchange is on the board's COMMS panel the whole time. Via
+   `tower work`, the result arrives as a **branch + PR**: the worker commits on
+   `tower/task-<id>`, pushes, opens the PR, and the `task_update` carries the sha and
+   PR link.
+
+**Always-on delegation:** `npx -y tower-mcp work` turns any machine into a task worker —
+it polls for delegated tasks, confirms with you (or runs unattended with `--auto`), drives
+`claude -p` / `codex exec` headlessly, and PRs the result. Full guide + security model →
+[docs/worker.md](./docs/worker.md).
 
 Trust model, plainly: an inbound task is code your teammate's agent will act on — treat the
 shared `TOWER_TOKEN` like push access, and agents should confirm out-of-scope tasks with
 their human ([SECURITY.md](./SECURITY.md)).
 
-## The 11 tools
+## The 14 tools
 
-| Tool                               | Purpose                                                                |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| `claim_intent`                     | Register intent **and** get collisions in one call (primary)           |
-| `check_collision`                  | Dry-run collision check, no claim persisted                            |
-| `heartbeat`                        | Keep a claim alive (auto-expires otherwise)                            |
-| `complete_claim` / `release_claim` | Free a claim on commit / abandon                                       |
-| `list_claims`                      | Live claim state                                                       |
-| `log_decision` / `get_decisions`   | Shared architecture-decision memory                                    |
-| `next_task`                        | Rule-based sequencer: a module that's safe to start now                |
-| `send_message` / `fetch_messages`  | The agent channel: async messages + **task delegation** between agents |
+| Tool                                           | Purpose                                                                |
+| ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)           |
+| `check_collision`                              | Dry-run collision check, no claim persisted                            |
+| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                            |
+| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                       |
+| `list_claims`                                  | Live claim state                                                       |
+| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                    |
+| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                |
+| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents |
+| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR      |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 
@@ -160,7 +172,7 @@ MCP clients (Claude Code / Cursor / Codex)
         ▼
 Tower server ── collision engine (tree-sitter) · agent inbox · sequencer · SQLite · /board UI
         ▲
-tower CLI: setup · serve · status · watch · claim · guard · send · inbox · next-task · complete
+tower CLI: setup · serve · status · watch · claim · guard · send · inbox · work · next-task · complete
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so

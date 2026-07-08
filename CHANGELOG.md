@@ -3,6 +3,22 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.5.0 — 2026-07-08
+
+- **Task lifecycle** — a `kind: "task"` message is now a first-class `DelegatedTask`
+  (`open → accepted → done | failed`). New MCP tools (14 total): `accept_task`
+  (**first-accept-wins** — a broadcast task runs exactly once), `complete_task`
+  (result + commit sha + PR url; auto-notifies the delegator with a `task_update`),
+  `list_tasks`. Finished tasks age out with the 7-day pruner; open work never dropped.
+- **`tower work`** — the worker daemon ([docs/worker.md](docs/worker.md)): polls for
+  delegated tasks, runs your local agent headlessly (`claude -p` / `codex exec` / custom
+  `--cmd`), commits on an isolated `tower/task-<id>` branch, pushes and opens a PR via
+  `gh` (best-effort), and completes the task with the sha/PR. Safety by default:
+  per-task confirmation (`--auto` to go unattended), `--allow-from` sender allowlist,
+  runtime kill switch, clean-tree preflight, never touches your current branch.
+- **Board: TASKS lane** — delegation status chips (OPEN/ACCEPTED/DONE/FAILED), assignee,
+  and PR links, live above the COMMS feed.
+
 ## 0.4.0 — 2026-07-07
 
 - **`tower setup`** — one-command onboarding: writes/merges `.mcp.json` (local or team

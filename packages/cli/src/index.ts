@@ -16,6 +16,7 @@ import {
   type ClaimArgs,
   type SendArgs,
 } from "./commands.js";
+import { cmdWork, type WorkerOptions } from "./worker.js";
 
 const HELP = `Tower — air-traffic control for AI agents editing a shared repo.
 
@@ -40,6 +41,10 @@ Commands:
                              (--from/--repo are inferred from git; flags for scripts:
                               --to <id|*> --body <text> [--task] [--reply-to <id>])
   inbox [--agent <id>]       Read your messages (marks them read; agent inferred from git)
+  work [--auto] [--runner claude|codex|cmd] [--allow-from a,b] [--interval 15]
+                             Worker daemon: picks up delegated tasks, runs your local
+                             agent headlessly, commits on a branch, opens a PR, reports
+                             back. Confirms each task unless --auto. See docs/worker.md.
 
 Run with no command to print this help.`;
 
@@ -226,6 +231,61 @@ export async function run(argv: string[]): Promise<number> {
         };
       }
       await cmdSend(cwd, full);
+      return 0;
+    }
+
+    case "work": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          agent: { type: "string" },
+          repo: { type: "string" },
+          runner: { type: "string" },
+          cmd: { type: "string" },
+          interval: { type: "string" },
+          auto: { type: "boolean" },
+          "allow-from": { type: "string" },
+          "max-minutes": { type: "string" },
+          "no-push": { type: "boolean" },
+          "no-pr": { type: "boolean" },
+        },
+        allowPositionals: false,
+      });
+      const runner = values.runner ?? "claude";
+      if (runner !== "claude" && runner !== "codex" && runner !== "cmd") {
+        process.stderr.write(`unknown --runner "${runner}" (claude | codex | cmd)\n`);
+        return 1;
+      }
+      const defaults = gitDefaults(cwd);
+      const opts: WorkerOptions = {
+        agentId: values.agent ?? defaults.defaultFrom,
+        repo: values.repo ?? defaults.defaultRepo,
+        runner,
+        ...(values.cmd ? { cmdTemplate: values.cmd } : {}),
+        ...(toNum(values.interval) != null ? { intervalMs: toNum(values.interval)! * 1000 } : {}),
+        ...(values.auto ? { auto: true } : {}),
+        ...(values["allow-from"]
+          ? { allowFrom: values["allow-from"].split(",").map((s) => s.trim()) }
+          : {}),
+        ...(toNum(values["max-minutes"]) != null
+          ? { maxMinutes: toNum(values["max-minutes"])! }
+          : {}),
+        ...(values["no-push"] ? { push: false } : {}),
+        ...(values["no-pr"] ? { pr: false } : {}),
+      };
+      if (!opts.auto && process.stdin.isTTY) {
+        const { createInterface } = await import("node:readline/promises");
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        try {
+          await cmdWork(cwd, { ...opts, ask: (q) => rl.question(q) }, (l) =>
+            process.stdout.write(l + "\n"),
+          );
+        } finally {
+          rl.close();
+        }
+      } else {
+        await cmdWork(cwd, opts, (l) => process.stdout.write(l + "\n"));
+      }
       return 0;
     }
 

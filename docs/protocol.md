@@ -19,6 +19,8 @@ transport and MCP standardized agent-to-tool access.
   `toAgentId: "*"` broadcasts to every agent on the repo; each recipient's read state is
   tracked separately. Delivery is pull-based — MCP has no push channel — so
   `claim_intent` responses carry the caller's `unreadMessages` count as the wake-up signal.
+  A `task` message doubles as a lifecycle object (`open → accepted → done | failed`) under
+  the **same id** — workers `accept_task` and `complete_task` it.
 
 ## Severity
 
@@ -30,7 +32,7 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All eleven tools take and return JSON validated by the schemas in
+All fourteen tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool              | Purpose                                                               |
@@ -46,6 +48,9 @@ All eleven tools take and return JSON validated by the schemas in
 | `next_task`       | Ask the sequencer for a task whose module is safe to start now.       |
 | `send_message`    | Message or delegate a task to another agent (`toAgentId`, or `"*"`).  |
 | `fetch_messages`  | Read the caller's inbox; fetched messages are marked read.            |
+| `accept_task`     | Claim an open delegated task — first accept wins, sets the assignee.  |
+| `complete_task`   | Finish a task (done/failed) with a result, optional commit sha + PR.  |
+| `list_tasks`      | List delegated tasks by repo, status, recipient, or assignee.         |
 
 ### The agent loop
 

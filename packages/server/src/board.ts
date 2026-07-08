@@ -58,12 +58,15 @@ export const BOARD_HTML = `<!doctype html>
   .cols { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; align-items: start; }
   @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
   #strips { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.8rem; }
-  /* COMMS — the agent-to-agent conversation feed */
-  #comms {
+  .side { display: grid; gap: 1rem; align-items: start; }
+  /* TASKS + COMMS — the delegation lane and the agent-to-agent conversation feed */
+  #comms, #tasks {
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    padding: 0.7rem 0.9rem; font-size: 0.74rem; max-height: 78vh; overflow-y: auto;
+    padding: 0.7rem 0.9rem; font-size: 0.74rem; overflow-y: auto;
   }
-  #comms h2 { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.25em; margin-bottom: 0.6rem; }
+  #tasks { max-height: 32vh; }
+  #comms { max-height: 44vh; }
+  #comms h2, #tasks h2 { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.25em; margin-bottom: 0.6rem; }
   .msg { border-top: 1px solid var(--line); padding: 0.45rem 0; }
   .msg:first-of-type { border-top: 0; }
   .msg .who { color: #fff; }
@@ -76,7 +79,14 @@ export const BOARD_HTML = `<!doctype html>
   }
   .kind.task { border-color: var(--amber); color: var(--amber); }
   .kind.task_update { border-color: var(--green); color: var(--green); }
-  #comms .empty { color: var(--muted); }
+  /* Delegated-task status chips (open → accepted → done | failed). */
+  .kind.open { border-color: var(--amber); color: var(--amber); }
+  .kind.accepted { border-color: var(--cyan); color: var(--cyan); }
+  .kind.done { border-color: var(--green); color: var(--green); }
+  .kind.failed { border-color: var(--red); color: var(--red); }
+  .msg .refs { margin-top: 0.25rem; display: flex; gap: 0.35rem; align-items: center; }
+  .msg .refs a { color: var(--cyan); font-size: 0.68rem; }
+  #comms .empty, #tasks .empty { color: var(--muted); }
   .strip {
     background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--green);
     border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.78rem;
@@ -113,9 +123,15 @@ export const BOARD_HTML = `<!doctype html>
     <div id="strips"></div>
     <div id="empty" hidden><div class="big">ALL CLEAR</div>no active claims — agents are safe to proceed</div>
   </div>
-  <div id="comms">
-    <h2>COMMS — AGENT CHANNEL</h2>
-    <div id="feed"><span class="empty">No messages yet. Agents talk here (send_message / tower send).</span></div>
+  <div class="side">
+    <div id="tasks">
+      <h2>TASKS — DELEGATION</h2>
+      <div id="taskfeed"><span class="empty">No delegated tasks yet (tower send --task / tower work).</span></div>
+    </div>
+    <div id="comms">
+      <h2>COMMS — AGENT CHANNEL</h2>
+      <div id="feed"><span class="empty">No messages yet. Agents talk here (send_message / tower send).</span></div>
+    </div>
   </div>
 </div>
 <script>
@@ -205,6 +221,37 @@ export const BOARD_HTML = `<!doctype html>
       stripsEl.appendChild(s);
     });
     emptyEl.hidden = data.claims.length > 0;
+
+    var taskfeed = document.getElementById("taskfeed");
+    taskfeed.replaceChildren();
+    if (!data.tasks || !data.tasks.length) {
+      taskfeed.appendChild(el("span", "empty", "No delegated tasks yet (tower send --task / tower work)."));
+    } else {
+      data.tasks.forEach(function (t) {
+        var box = el("div", "msg");
+        var who = el("div", "who");
+        who.appendChild(el("span", "kind " + t.status, t.status.toUpperCase()));
+        who.appendChild(el("b", "", t.fromAgentId));
+        who.appendChild(el("span", "to", " → " + (t.assigneeAgentId || t.toAgentId)));
+        who.appendChild(el("span", "when", "  " + fmtAge(data.now - t.createdAt) + " ago"));
+        box.appendChild(who);
+        var body = t.body.length > 120 ? t.body.slice(0, 120) + "…" : t.body;
+        box.appendChild(el("div", "body", body));
+        if (t.commitSha || t.prUrl) {
+          var refs = el("div", "refs");
+          if (t.commitSha) refs.appendChild(el("span", "chip", t.commitSha.slice(0, 8)));
+          if (t.prUrl && /^https?:\\/\\//i.test(t.prUrl)) {
+            var pr = el("a", "", "PR"); // text via textContent; href via the property — never innerHTML
+            pr.href = t.prUrl;
+            pr.target = "_blank";
+            pr.rel = "noopener";
+            refs.appendChild(pr);
+          }
+          box.appendChild(refs);
+        }
+        taskfeed.appendChild(box);
+      });
+    }
 
     var feed = document.getElementById("feed");
     feed.replaceChildren();

@@ -331,3 +331,80 @@ describe("TowerStore — prune", () => {
     expect(store.listMessages()).toHaveLength(0);
   });
 });
+
+describe("TowerStore — delegated tasks (lifecycle)", () => {
+  let store: TowerStore;
+  beforeEach(() => {
+    store = new TowerStore({ now: () => 1000 });
+  });
+
+  const task = (over = {}) =>
+    store.createTask({
+      id: "task-1",
+      repo: "team/app",
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      body: "add rate limiting to /login",
+      ...over,
+    });
+
+  it("creates an open task and lists it", () => {
+    task();
+    const open = store.listTasks({ status: "open" });
+    expect(open).toHaveLength(1);
+    expect(open[0]!.status).toBe("open");
+    expect(open[0]!.fromAgentId).toBe("alice");
+  });
+
+  it("accept is first-accept-wins", () => {
+    task();
+    expect(store.acceptTask("task-1", "bob")).toBe(true);
+    expect(store.acceptTask("task-1", "carol")).toBe(false); // already accepted
+    const [t] = store.listTasks({ status: "accepted" });
+    expect(t!.assigneeAgentId).toBe("bob");
+  });
+
+  it("complete requires the assignee and records outcome", () => {
+    task();
+    store.acceptTask("task-1", "bob");
+    expect(store.completeTask("task-1", "carol", { success: true, result: "nope" })).toBe(false); // not the assignee
+    expect(
+      store.completeTask("task-1", "bob", {
+        success: true,
+        result: "rate limit 30/min",
+        commitSha: "ab12f3",
+        prUrl: "https://github.com/x/y/pull/7",
+      }),
+    ).toBe(true);
+    const [t] = store.listTasks({ status: "done" });
+    expect(t!.commitSha).toBe("ab12f3");
+    expect(t!.prUrl).toContain("/pull/7");
+  });
+
+  it("failed outcomes are recorded as failed", () => {
+    task();
+    store.acceptTask("task-1", "bob");
+    store.completeTask("task-1", "bob", { success: false, result: "tests failed" });
+    expect(store.listTasks({ status: "failed" })).toHaveLength(1);
+  });
+
+  it("filters by toAgentId including broadcasts", () => {
+    task({ id: "t-direct", toAgentId: "bob" });
+    task({ id: "t-bcast", toAgentId: "*" });
+    task({ id: "t-other", toAgentId: "carol" });
+    const forBob = store.listTasks({ status: "open", forAgentId: "bob" });
+    expect(forBob.map((t) => t.id).sort()).toEqual(["t-bcast", "t-direct"]);
+  });
+
+  it("prunes old finished tasks but never open/accepted ones", () => {
+    const clock = { t: 1000 };
+    const s = new TowerStore({ now: () => clock.t });
+    s.createTask({ id: "old-done", repo: "r", fromAgentId: "a", toAgentId: "b", body: "x" });
+    s.acceptTask("old-done", "b");
+    s.completeTask("old-done", "b", { success: true, result: "" });
+    s.createTask({ id: "old-open", repo: "r", fromAgentId: "a", toAgentId: "b", body: "y" });
+    clock.t = 1000 + 8 * 24 * 60 * 60 * 1000; // +8 days
+    s.prune();
+    expect(s.listTasks({}).map((t) => t.id)).toEqual(["old-open"]);
+  });
+});

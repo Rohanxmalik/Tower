@@ -189,6 +189,62 @@ export const NextTaskOutput = z.object({
 });
 export type NextTaskOutput = z.infer<typeof NextTaskOutput>;
 
+/** Lifecycle of a delegated task: open → accepted → done | failed. */
+export const TaskStatus = z.enum(["open", "accepted", "done", "failed"]);
+export type TaskStatus = z.infer<typeof TaskStatus>;
+
+/** A delegated unit of work between agents (id doubles as the originating message id). */
+export const DelegatedTask = z.object({
+  id: z.string(),
+  repo: z.string().min(1),
+  fromAgentId: z.string().min(1),
+  /** Direct assignee, or "*" — open to whoever accepts first. */
+  toAgentId: z.string().min(1),
+  body: z.string().min(1),
+  status: TaskStatus,
+  assigneeAgentId: z.string().optional(),
+  commitSha: z.string().optional(),
+  prUrl: z.string().optional(),
+  result: z.string().optional(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int(),
+});
+export type DelegatedTask = z.infer<typeof DelegatedTask>;
+
+export const AcceptTaskInput = z.object({
+  taskId: z.string().min(1),
+  agentId: z.string().min(1),
+});
+export type AcceptTaskInput = z.infer<typeof AcceptTaskInput>;
+
+export const AcceptTaskOutput = z.object({
+  ok: z.boolean(),
+  task: DelegatedTask.nullable(),
+});
+export type AcceptTaskOutput = z.infer<typeof AcceptTaskOutput>;
+
+export const CompleteTaskInput = z.object({
+  taskId: z.string().min(1),
+  agentId: z.string().min(1),
+  success: z.boolean().default(true),
+  result: z.string().default(""),
+  commitSha: z.string().optional(),
+  prUrl: z.string().optional(),
+});
+export type CompleteTaskInput = z.infer<typeof CompleteTaskInput>;
+
+export const ListTasksInput = z.object({
+  repo: z.string().optional(),
+  status: TaskStatus.optional(),
+  /** Tasks addressed to this agent (including "*" broadcasts). */
+  forAgentId: z.string().optional(),
+  assigneeAgentId: z.string().optional(),
+});
+export type ListTasksInput = z.infer<typeof ListTasksInput>;
+
+export const ListTasksOutput = z.object({ tasks: z.array(DelegatedTask) });
+export type ListTasksOutput = z.infer<typeof ListTasksOutput>;
+
 export const SendMessageInput = z.object({
   fromAgentId: z.string().min(1),
   toAgentId: z.string().min(1),
@@ -226,6 +282,9 @@ export const TOOL_SCHEMAS = {
   next_task: { input: NextTaskInput, output: NextTaskOutput },
   send_message: { input: SendMessageInput, output: SendMessageOutput },
   fetch_messages: { input: FetchMessagesInput, output: FetchMessagesOutput },
+  accept_task: { input: AcceptTaskInput, output: AcceptTaskOutput },
+  complete_task: { input: CompleteTaskInput, output: OkOutput },
+  list_tasks: { input: ListTasksInput, output: ListTasksOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

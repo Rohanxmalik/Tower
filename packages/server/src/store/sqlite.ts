@@ -10,11 +10,13 @@ import type {
   Claim,
   ClaimStatus,
   Decision,
+  DelegatedTask,
   ListClaimsInput,
   GetDecisionsInput,
   Message,
   MessageKind,
   SymbolRef,
+  TaskStatus,
 } from "@tower/shared";
 
 /** Default time-to-live for a claim before it auto-expires (ms). Refreshed by heartbeat. */
@@ -43,6 +45,12 @@ CREATE TABLE IF NOT EXISTS messages (
   readAt INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (toAgentId, readAt);
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
+  body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, commitSha TEXT, prUrl TEXT,
+  result TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, toAgentId);
 CREATE TABLE IF NOT EXISTS message_reads (
   messageId TEXT NOT NULL, agentId TEXT NOT NULL, readAt INTEGER NOT NULL,
   PRIMARY KEY (messageId, agentId)
@@ -107,6 +115,38 @@ function rowToMessage(r: MessageRow): Message {
     body: r.body,
     ...(r.replyTo != null ? { replyTo: r.replyTo } : {}),
     createdAt: r.createdAt,
+  };
+}
+
+interface TaskRow {
+  id: string;
+  repo: string;
+  fromAgentId: string;
+  toAgentId: string;
+  body: string;
+  status: string;
+  assigneeAgentId: string | null;
+  commitSha: string | null;
+  prUrl: string | null;
+  result: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function rowToTask(r: TaskRow): DelegatedTask {
+  return {
+    id: r.id,
+    repo: r.repo,
+    fromAgentId: r.fromAgentId,
+    toAgentId: r.toAgentId,
+    body: r.body,
+    status: r.status as TaskStatus,
+    ...(r.assigneeAgentId != null ? { assigneeAgentId: r.assigneeAgentId } : {}),
+    ...(r.commitSha != null ? { commitSha: r.commitSha } : {}),
+    ...(r.prUrl != null ? { prUrl: r.prUrl } : {}),
+    ...(r.result != null ? { result: r.result } : {}),
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
   };
 }
 
@@ -249,6 +289,10 @@ export class TowerStore {
     this.db
       .prepare(`DELETE FROM message_reads WHERE messageId NOT IN (SELECT id FROM messages)`)
       .run();
+    // Finished tasks age out; open/accepted work is never dropped.
+    this.db
+      .prepare(`DELETE FROM tasks WHERE status IN ('done','failed') AND createdAt < ?`)
+      .run(cutoff);
     return { claims: Number(claims.changes), messages: Number(messages.changes) };
   }
 
@@ -408,6 +452,99 @@ export class TowerStore {
           .prepare(`SELECT * FROM messages ORDER BY createdAt DESC LIMIT ?`)
           .all(limit)) as unknown as MessageRow[];
     return rows.map(rowToMessage);
+  }
+
+  // -- delegated tasks (lifecycle: open → accepted → done | failed) ----------
+
+  createTask(input: {
+    id: string;
+    repo: string;
+    fromAgentId: string;
+    toAgentId: string;
+    body: string;
+  }): DelegatedTask {
+    const now = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,commitSha,prUrl,result,createdAt,updatedAt)
+         VALUES (?,?,?,?,?,'open',NULL,NULL,NULL,NULL,?,?)`,
+      )
+      .run(input.id, input.repo, input.fromAgentId, input.toAgentId, input.body, now, now);
+    return this.getTask(input.id)!;
+  }
+
+  getTask(id: string): DelegatedTask | undefined {
+    const row = this.db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as unknown as
+      TaskRow | undefined;
+    return row ? rowToTask(row) : undefined;
+  }
+
+  /** First accept wins: only an `open` task can be accepted, atomically. */
+  acceptTask(id: string, agentId: string): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status = 'accepted', assigneeAgentId = ?, updatedAt = ?
+         WHERE id = ? AND status = 'open'`,
+      )
+      .run(agentId, this.now(), id);
+    return Number(res.changes) > 0;
+  }
+
+  /** Only the assignee can finish its accepted task. */
+  completeTask(
+    id: string,
+    agentId: string,
+    outcome: { success: boolean; result: string; commitSha?: string; prUrl?: string },
+  ): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status = ?, result = ?, commitSha = ?, prUrl = ?, updatedAt = ?
+         WHERE id = ? AND status = 'accepted' AND assigneeAgentId = ?`,
+      )
+      .run(
+        outcome.success ? "done" : "failed",
+        outcome.result,
+        outcome.commitSha ?? null,
+        outcome.prUrl ?? null,
+        this.now(),
+        id,
+        agentId,
+      );
+    return Number(res.changes) > 0;
+  }
+
+  listTasks(
+    filter: {
+      repo?: string;
+      status?: TaskStatus;
+      /** Tasks addressed to this agent, including "*" broadcasts. */
+      forAgentId?: string;
+      assigneeAgentId?: string;
+    } = {},
+  ): DelegatedTask[] {
+    const clauses: string[] = [];
+    const params: string[] = [];
+    if (filter.repo) {
+      clauses.push("repo = ?");
+      params.push(filter.repo);
+    }
+    if (filter.status) {
+      clauses.push("status = ?");
+      params.push(filter.status);
+    }
+    if (filter.forAgentId) {
+      clauses.push("(toAgentId = ? OR toAgentId = '*')");
+      params.push(filter.forAgentId);
+    }
+    if (filter.assigneeAgentId) {
+      clauses.push("assigneeAgentId = ?");
+      params.push(filter.assigneeAgentId);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.db
+      .prepare(`SELECT * FROM tasks ${where} ORDER BY createdAt DESC`)
+      .all(...params) as unknown as TaskRow[];
+    return rows.map(rowToTask);
   }
 
   // -- decisions ------------------------------------------------------------

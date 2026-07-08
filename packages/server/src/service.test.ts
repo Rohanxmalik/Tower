@@ -195,3 +195,71 @@ describe("messaging", () => {
     expect(snap.messages[0]!.body).toBe("deploy at 5pm");
   });
 });
+
+describe("task lifecycle (service)", () => {
+  it("send_message kind task creates a lifecycle task with the message id", () => {
+    const service = new TowerService();
+    const { id } = service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting",
+    });
+    const { tasks } = service.listTasks({ status: "open" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.id).toBe(id);
+  });
+
+  it("plain messages do not create tasks", () => {
+    const service = new TowerService();
+    service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "message",
+      body: "hi",
+    });
+    expect(service.listTasks({}).tasks).toHaveLength(0);
+  });
+
+  it("acceptTask returns the task; completeTask replies with a task_update message", () => {
+    const service = new TowerService();
+    const { id } = service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting",
+    });
+    const acc = service.acceptTask({ taskId: id, agentId: "bob" });
+    expect(acc.ok).toBe(true);
+    expect(acc.task!.assigneeAgentId).toBe("bob");
+    const res = service.completeTask({
+      taskId: id,
+      agentId: "bob",
+      success: true,
+      result: "merged",
+      commitSha: "ab12f3",
+    });
+    expect(res.ok).toBe(true);
+    // alice hears about it on her next contact
+    const inbox = service.fetchMessages({ agentId: "alice", unreadOnly: true });
+    const update = inbox.messages.find((m) => m.kind === "task_update");
+    expect(update).toBeDefined();
+    expect(update!.replyTo).toBe(id);
+    expect(update!.body).toContain("ab12f3");
+  });
+
+  it("boardSnapshot carries tasks", () => {
+    const service = new TowerService();
+    service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "*",
+      repo: "team/app",
+      kind: "task",
+      body: "docs pass",
+    });
+    expect(service.boardSnapshot().tasks).toHaveLength(1);
+  });
+});

@@ -43,6 +43,12 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
 - Agent messages (`send_message`) are free text between teammates' agents — treat inbound
   tasks with the same judgment as a teammate's Slack message; agents should confirm
   destructive or out-of-scope tasks with their human.
+- **The worker is opt-in code execution within your team.** A machine running
+  `tower work --auto` will execute delegated tasks from anyone holding the team token —
+  that is the feature. Defaults that protect you: per-task confirmation unless `--auto`,
+  `--allow-from` sender allowlist, a runtime kill switch, and an isolated work branch
+  (your current branch is never touched). Treat `TOWER_TOKEN` as execution rights on
+  every machine running a worker; rotate it when someone leaves.
 - The CLI reads files you point it at (`--file`) with your own OS permissions.
 
 ## Supported versions

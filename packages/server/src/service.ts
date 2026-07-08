@@ -20,8 +20,13 @@ import type {
   SendMessageOutput,
   FetchMessagesInput,
   FetchMessagesOutput,
+  AcceptTaskInput,
+  AcceptTaskOutput,
+  CompleteTaskInput,
+  ListTasksInput,
+  ListTasksOutput,
 } from "@tower/shared";
-import type { Claim, Message } from "@tower/shared";
+import type { Claim, DelegatedTask, Message } from "@tower/shared";
 import { TowerStore } from "./store/sqlite.js";
 import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
@@ -32,6 +37,8 @@ export interface BoardSnapshot {
   conflicts: PairConflict[];
   /** Recent agent-to-agent messages, newest first. */
   messages: Message[];
+  /** Delegated tasks, newest first (open/accepted/done/failed). */
+  tasks: DelegatedTask[];
   /** Server clock (ms) so the board can render TTL countdowns without clock skew. */
   now: number;
 }
@@ -126,16 +133,61 @@ export class TowerService {
       claims,
       conflicts: pairwiseCollisions(claims),
       messages: this.store.listMessages({ limit: 50 }),
+      tasks: this.store.listTasks({}),
       now: Date.now(),
     };
   }
 
   sendMessage(input: SendMessageInput): SendMessageOutput {
-    return { id: this.store.sendMessage(input).id };
+    const msg = this.store.sendMessage(input);
+    // A task message is also a lifecycle object (same id) the worker can accept/complete.
+    if (input.kind === "task") {
+      this.store.createTask({
+        id: msg.id,
+        repo: input.repo,
+        fromAgentId: input.fromAgentId,
+        toAgentId: input.toAgentId,
+        body: input.body,
+      });
+    }
+    return { id: msg.id };
   }
 
   fetchMessages(input: FetchMessagesInput): FetchMessagesOutput {
     return { messages: this.store.fetchMessages(input) };
+  }
+
+  acceptTask(input: AcceptTaskInput): AcceptTaskOutput {
+    const ok = this.store.acceptTask(input.taskId, input.agentId);
+    return { ok, task: ok ? (this.store.getTask(input.taskId) ?? null) : null };
+  }
+
+  completeTask(input: CompleteTaskInput): OkOutput {
+    const ok = this.store.completeTask(input.taskId, input.agentId, {
+      success: input.success,
+      result: input.result,
+      ...(input.commitSha ? { commitSha: input.commitSha } : {}),
+      ...(input.prUrl ? { prUrl: input.prUrl } : {}),
+    });
+    if (ok) {
+      // Close the loop on the COMMS channel so the delegator hears the outcome.
+      const task = this.store.getTask(input.taskId)!;
+      const outcome = input.success ? "done" : "FAILED";
+      const refs = [input.commitSha, input.prUrl].filter(Boolean).join(" · ");
+      this.store.sendMessage({
+        fromAgentId: input.agentId,
+        toAgentId: task.fromAgentId,
+        repo: task.repo,
+        kind: "task_update",
+        body: `[${outcome}] ${input.result || task.body}${refs ? ` (${refs})` : ""}`,
+        replyTo: task.id,
+      });
+    }
+    return { ok };
+  }
+
+  listTasks(input: ListTasksInput): ListTasksOutput {
+    return { tasks: this.store.listTasks(input) };
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {

@@ -50,9 +50,13 @@ Agents do the same over MCP (`send_message` / `fetch_messages`), and every
 `claim_intent` response tells them when they have unread mail — so a task you delegate
 is picked up the next time their agent touches Tower.
 
+Want pickup to be automatic — even with the editor closed? Run `tower work` on the
+recipient's machine: a worker daemon that accepts delegated tasks, runs a local agent
+headlessly, and PRs the result → [worker.md](./worker.md).
+
 ## 5. Go deeper
 
 - Whole team on one server (Render one-click, same-WiFi mode) → [team.md](./team.md)
 - Blocking enforcement (Claude Code hook + universal pre-commit) → [enforcement.md](./enforcement.md)
 - PR collision reports in CI → [action.md](./action.md)
-- The wire contract (all 11 tools) → [protocol.md](./protocol.md)
+- The wire contract (all 14 tools) → [protocol.md](./protocol.md)

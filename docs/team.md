@@ -252,8 +252,21 @@ The real workflow, once both editors are configured (previous section):
    up on its next contact, and the whole exchange is visible on `/board` throughout.
 
 Delivery is asynchronous by design (MCP has no push channel): a task waits in the inbox
-until the recipient's agent next touches Tower. If Bob's editor is closed, the task waits —
-"always-on" pickup is what the roadmap's worker mode is for.
+until the recipient's agent next touches Tower.
+
+### Always-on pickup: `tower work`
+
+If Bob's editor is closed, the task doesn't have to wait. Each teammate who wants
+auto-pickup runs a worker on their machine:
+
+```bash
+npx -y tower-mcp work           # confirm each task before it runs (default)
+npx -y tower-mcp work --auto    # unattended: accept and run without prompting
+```
+
+The worker polls for open tasks, runs a local agent headlessly, commits on an isolated
+`tower/task-<id>` branch, opens a PR, and reports back with the sha — details and the
+security model in [worker.md](./worker.md).
 
 For the real thing, both enable the PreToolUse hook and open Claude Code in the repo — B's
 agent is physically blocked from editing `auth.ts` while A is on it.

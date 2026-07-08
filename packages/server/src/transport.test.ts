@@ -146,7 +146,7 @@ describe("HTTP transport", () => {
     httpServer = await startHttp(service, { port: 0 });
     const client = await mcpClient(httpServer); // Host: 127.0.0.1 — allowed
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(11);
+    expect(tools.length).toBe(14);
   });
 });
 
@@ -223,6 +223,27 @@ describe("board", () => {
     expect(api.messages[0]!.kind).toBe("task");
     const page = await (await fetch(url(httpServer, "/board"))).text();
     expect(page).toContain("COMMS");
+  });
+
+  it("includes delegated tasks in /api/board and the TASKS lane on the page", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const { id } = service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting to /login",
+    });
+    service.acceptTask({ taskId: id, agentId: "bob" });
+    const api = (await (await fetch(url(httpServer, "/api/board"))).json()) as {
+      tasks: { status: string; assigneeAgentId?: string }[];
+    };
+    expect(api.tasks).toHaveLength(1);
+    expect(api.tasks[0]!.status).toBe("accepted");
+    expect(api.tasks[0]!.assigneeAgentId).toBe("bob");
+    const page = await (await fetch(url(httpServer, "/board"))).text();
+    expect(page).toContain("TASKS");
   });
 
   it("blocks non-local /api/board without a token (rebinding guard)", async () => {

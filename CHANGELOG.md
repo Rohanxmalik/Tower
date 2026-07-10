@@ -16,6 +16,11 @@ versions are [semver](https://semver.org) (0.x — expect movement).
   (who asked whom, the command, and the reply nested under it, with commit sha + PR link),
   **who's connected**, **editing right now**, and a chronological **activity log**.
   Renders correctly on a phone; only re-renders when data changes, so buttons stay tappable.
+- **Windows runner fix.** The `claude` / `codex` runners now spawn through the shell with
+  the prompt on stdin — Node refuses to launch the Windows `.cmd` agent shims directly
+  (CVE-2024-27980), which silently failed every task on a Windows worker. Verified with a
+  real end-to-end run: a delegated task drove a headless `claude -p` to write a file and
+  commit it on an isolated branch.
 
 ## 0.5.0 — 2026-07-08
 

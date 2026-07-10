@@ -8,18 +8,22 @@ import type { Writer } from "./commands.js";
 export type Exec = (
   cmd: string,
   args: string[],
-  opts: { cwd: string; timeoutMs?: number },
+  opts: { cwd: string; timeoutMs?: number; input?: string; shell?: boolean },
 ) => Promise<{ code: number; out: string; timedOut?: boolean }>;
 
 /** execFile-based Exec that never throws: captures stdout+stderr, exit code, timeouts. */
 export const defaultExec: Exec = (cmd, args, opts) =>
   new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       cmd,
       args,
       {
         cwd: opts.cwd,
         ...(opts.timeoutMs ? { timeout: opts.timeoutMs, killSignal: "SIGKILL" } : {}),
+        // Agent CLIs (`claude`, `codex`) are .cmd shims on Windows; Node refuses to spawn
+        // .cmd without a shell (CVE-2024-27980), so runners set shell:true. Their args are
+        // all static — the untrusted prompt goes via stdin, never the command line.
+        ...(opts.shell ? { shell: true } : {}),
         // cmd.exe needs verbatim args or Node's quoting breaks `/c <template>`.
         windowsVerbatimArguments: cmd === "cmd",
         maxBuffer: 10 * 1024 * 1024,
@@ -32,6 +36,10 @@ export const defaultExec: Exec = (cmd, args, opts) =>
         resolve({ code: code === 0 ? 1 : code, out, timedOut });
       },
     );
+    if (opts.input != null && child.stdin) {
+      child.stdin.on("error", () => {}); // ignore EPIPE if the child exits early
+      child.stdin.end(opts.input);
+    }
   });
 
 export interface WorkerOptions {
@@ -63,6 +71,10 @@ export interface RunnerCmd {
   args: string[];
   /** Windows cmd.exe templates must be passed through unquoted. */
   verbatim?: boolean;
+  /** Prompt to feed on stdin (keeps untrusted text off the command line). */
+  input?: string;
+  /** Run through a shell (needed for the `.cmd` agent shims on Windows). */
+  shell?: boolean;
 }
 
 /** The headless command for each runner. Exported for tests and docs honesty. */
@@ -71,11 +83,15 @@ export function runnerCommand(
   prompt: string,
   platform: NodeJS.Platform = process.platform,
 ): RunnerCmd {
+  // claude/codex take the prompt on stdin, and run via the shell so the Windows `.cmd`
+  // shim spawns (Node blocks bare .cmd execution). The whole invocation is one static
+  // string (no args array → no DEP0190) and carries no untrusted text — the prompt is
+  // piped on stdin, so there is nothing to escape or inject.
   if (opts.runner === "claude") {
-    return { cmd: "claude", args: ["-p", prompt, "--permission-mode", "acceptEdits"] };
+    return { cmd: "claude -p --permission-mode acceptEdits", args: [], input: prompt, shell: true };
   }
   if (opts.runner === "codex") {
-    return { cmd: "codex", args: ["exec", "--full-auto", prompt] };
+    return { cmd: "codex exec --full-auto -", args: [], input: prompt, shell: true };
   }
   const full = (opts.cmdTemplate ?? "").replaceAll("{{task}}", prompt);
   return platform === "win32"
@@ -181,7 +197,12 @@ async function runTask(
     `Work only within this repository; make the change complete and keep tests green.)`;
   const runner = runnerCommand(opts, prompt);
   const timeoutMs = (opts.maxMinutes ?? 15) * 60_000;
-  const run = await exec(runner.cmd, runner.args, { cwd, timeoutMs });
+  const run = await exec(runner.cmd, runner.args, {
+    cwd,
+    timeoutMs,
+    ...(runner.input != null ? { input: runner.input } : {}),
+    ...(runner.shell ? { shell: true } : {}),
+  });
 
   if (run.timedOut) {
     await git("reset", "--hard");

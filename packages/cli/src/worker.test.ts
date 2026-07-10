@@ -313,16 +313,20 @@ describe("cmdWork --approve remote", () => {
 });
 
 describe("runnerCommand", () => {
-  it("builds the claude headless command", () => {
+  it("builds the claude headless command — prompt on stdin, via shell (Windows .cmd shim)", () => {
     const c = runnerCommand({ ...baseOpts, runner: "claude" }, "do it");
-    expect(c.cmd).toBe("claude");
-    expect(c.args).toEqual(["-p", "do it", "--permission-mode", "acceptEdits"]);
+    expect(c.cmd).toBe("claude -p --permission-mode acceptEdits"); // one static string, no argv
+    expect(c.args).toEqual([]);
+    expect(c.input).toBe("do it"); // untrusted prompt only on stdin
+    expect(c.shell).toBe(true);
   });
 
-  it("builds the codex headless command", () => {
+  it("builds the codex headless command — prompt on stdin, via shell", () => {
     const c = runnerCommand({ ...baseOpts, runner: "codex" }, "do it");
-    expect(c.cmd).toBe("codex");
-    expect(c.args).toEqual(["exec", "--full-auto", "do it"]);
+    expect(c.cmd).toBe("codex exec --full-auto -");
+    expect(c.args).toEqual([]);
+    expect(c.input).toBe("do it");
+    expect(c.shell).toBe(true);
   });
 
   it("substitutes {{task}} into the cmd template and uses the platform shell", () => {

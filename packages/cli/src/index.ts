@@ -41,10 +41,11 @@ Commands:
                              (--from/--repo are inferred from git; flags for scripts:
                               --to <id|*> --body <text> [--task] [--reply-to <id>])
   inbox [--agent <id>]       Read your messages (marks them read; agent inferred from git)
-  work [--auto] [--runner claude|codex|cmd] [--allow-from a,b] [--interval 15]
+  work [--auto | --approve remote] [--runner claude|codex|cmd] [--allow-from a,b]
                              Worker daemon: picks up delegated tasks, runs your local
                              agent headlessly, commits on a branch, opens a PR, reports
-                             back. Confirms each task unless --auto. See docs/worker.md.
+                             back. Confirms each task in the terminal by default; --auto
+                             runs unattended; --approve remote waits for a board/phone tap.
 
 Run with no command to print this help.`;
 
@@ -244,6 +245,7 @@ export async function run(argv: string[]): Promise<number> {
           cmd: { type: "string" },
           interval: { type: "string" },
           auto: { type: "boolean" },
+          approve: { type: "string" },
           "allow-from": { type: "string" },
           "max-minutes": { type: "string" },
           "no-push": { type: "boolean" },
@@ -264,6 +266,7 @@ export async function run(argv: string[]): Promise<number> {
         ...(values.cmd ? { cmdTemplate: values.cmd } : {}),
         ...(toNum(values.interval) != null ? { intervalMs: toNum(values.interval)! * 1000 } : {}),
         ...(values.auto ? { auto: true } : {}),
+        ...(values.approve === "remote" ? { remoteApprove: true } : {}),
         ...(values["allow-from"]
           ? { allowFrom: values["allow-from"].split(",").map((s) => s.trim()) }
           : {}),
@@ -273,7 +276,7 @@ export async function run(argv: string[]): Promise<number> {
         ...(values["no-push"] ? { push: false } : {}),
         ...(values["no-pr"] ? { pr: false } : {}),
       };
-      if (!opts.auto && process.stdin.isTTY) {
+      if (!opts.auto && !opts.remoteApprove && process.stdin.isTTY) {
         const { createInterface } = await import("node:readline/promises");
         const rl = createInterface({ input: process.stdin, output: process.stdout });
         try {

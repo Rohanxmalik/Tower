@@ -32,25 +32,27 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All fourteen tools take and return JSON validated by the schemas in
+All sixteen tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
-| Tool              | Purpose                                                               |
-| ----------------- | --------------------------------------------------------------------- |
-| `claim_intent`    | Register intent **and** get collisions in one call. The primary tool. |
-| `check_collision` | Dry-run collision check without persisting a claim.                   |
-| `heartbeat`       | Extend a claim's TTL; unheartbeated claims auto-expire.               |
-| `complete_claim`  | Release a claim on commit (optionally record the sha).                |
-| `release_claim`   | Abandon a claim without committing.                                   |
-| `list_claims`     | List claims by repo/branch/status.                                    |
-| `log_decision`    | Record a decision + why.                                              |
-| `get_decisions`   | Recall decisions.                                                     |
-| `next_task`       | Ask the sequencer for a task whose module is safe to start now.       |
-| `send_message`    | Message or delegate a task to another agent (`toAgentId`, or `"*"`).  |
-| `fetch_messages`  | Read the caller's inbox; fetched messages are marked read.            |
-| `accept_task`     | Claim an open delegated task — first accept wins, sets the assignee.  |
-| `complete_task`   | Finish a task (done/failed) with a result, optional commit sha + PR.  |
-| `list_tasks`      | List delegated tasks by repo, status, recipient, or assignee.         |
+| Tool               | Purpose                                                               |
+| ------------------ | --------------------------------------------------------------------- |
+| `claim_intent`     | Register intent **and** get collisions in one call. The primary tool. |
+| `check_collision`  | Dry-run collision check without persisting a claim.                   |
+| `heartbeat`        | Extend a claim's TTL; unheartbeated claims auto-expire.               |
+| `complete_claim`   | Release a claim on commit (optionally record the sha).                |
+| `release_claim`    | Abandon a claim without committing.                                   |
+| `list_claims`      | List claims by repo/branch/status.                                    |
+| `log_decision`     | Record a decision + why.                                              |
+| `get_decisions`    | Recall decisions.                                                     |
+| `next_task`        | Ask the sequencer for a task whose module is safe to start now.       |
+| `send_message`     | Message or delegate a task to another agent (`toAgentId`, or `"*"`).  |
+| `fetch_messages`   | Read the caller's inbox; fetched messages are marked read.            |
+| `accept_task`      | Claim an open delegated task — first accept wins, sets the assignee.  |
+| `complete_task`    | Finish a task (done/failed) with a result, optional commit sha + PR.  |
+| `list_tasks`       | List delegated tasks by repo, status, recipient, or assignee.         |
+| `request_approval` | Park a task for human approval (worker remote-approve mode).          |
+| `resolve_approval` | Approve or reject a parked task (the board / a phone taps this).      |
 
 ### The agent loop
 

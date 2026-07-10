@@ -273,6 +273,45 @@ describe("cmdWork (worker daemon)", () => {
   });
 });
 
+describe("cmdWork --approve remote", () => {
+  it("parks an open task for approval instead of running it", async () => {
+    initRepo();
+    const id = seedTask("alice", "bob", "needs remote approval");
+    const { out, lines } = collect();
+    await cmdWork(dir, { ...baseOpts, remoteApprove: true }, out);
+    const task = taskById(id);
+    expect(task?.status).toBe("open");
+    expect(task?.approval).toBe("pending");
+    expect(lines.join("\n").toLowerCase()).toContain("approval");
+  });
+
+  it("runs a task once it has been approved", async () => {
+    initRepo();
+    const id = seedTask("alice", "bob", "write out.txt after approval");
+    const svc = buildService(dir);
+    svc.requestApproval({ taskId: id, agentId: "bob" });
+    svc.resolveApproval({ taskId: id, approved: true });
+    svc.store.close();
+    const { out } = collect();
+    await cmdWork(dir, { ...baseOpts, remoteApprove: true }, out);
+    expect(taskById(id)?.status).toBe("done");
+  });
+
+  it("never runs a rejected task", async () => {
+    initRepo();
+    const id = seedTask("alice", "bob", "should be rejected");
+    const svc = buildService(dir);
+    svc.requestApproval({ taskId: id, agentId: "bob" });
+    svc.resolveApproval({ taskId: id, approved: false });
+    svc.store.close();
+    const { out } = collect();
+    await cmdWork(dir, { ...baseOpts, remoteApprove: true }, out);
+    const task = taskById(id);
+    expect(task?.status).toBe("open");
+    expect(task?.approval).toBe("rejected");
+  });
+});
+
 describe("runnerCommand", () => {
   it("builds the claude headless command", () => {
     const c = runnerCommand({ ...baseOpts, runner: "claude" }, "do it");

@@ -17,10 +17,12 @@ import type {
   AcceptTaskInput,
   CompleteTaskInput,
   ListTasksInput,
+  RequestApprovalInput,
+  ResolveApprovalInput,
 } from "@tower/shared";
 import { TowerService } from "./service.js";
 
-const SERVER_INFO = { name: "tower", version: "0.5.0" } as const;
+const SERVER_INFO = { name: "tower", version: "0.6.0" } as const;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:
@@ -43,6 +45,9 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   complete_task:
     "Finish an accepted task: success or failure, with the result and optional commit sha / PR url. Auto-notifies the delegator.",
   list_tasks: "List delegated tasks by repo/status/recipient/assignee (the worker's poll).",
+  request_approval:
+    "Park a task for human approval before running it (remote-approve worker mode) — a person approves it from the board/phone.",
+  resolve_approval: "Approve or reject a parked task (used by the board; also callable by tools).",
 };
 
 function summarize(tool: string, result: unknown): string {
@@ -58,7 +63,7 @@ function summarize(tool: string, result: unknown): string {
   return JSON.stringify(result);
 }
 
-/** Build an MCP server exposing Tower's 14 tools, delegating to the given service. */
+/** Build an MCP server exposing Tower's 16 tools, delegating to the given service. */
 export function buildMcpServer(service: TowerService): McpServer {
   const server = new McpServer(SERVER_INFO);
 
@@ -79,6 +84,8 @@ export function buildMcpServer(service: TowerService): McpServer {
     accept_task: (a) => service.acceptTask(a as AcceptTaskInput),
     complete_task: (a) => service.completeTask(a as CompleteTaskInput),
     list_tasks: (a) => service.listTasks(a as ListTasksInput),
+    request_approval: (a) => service.requestApproval(a as RequestApprovalInput),
+    resolve_approval: (a) => service.resolveApproval(a as ResolveApprovalInput),
   };
 
   for (const name of Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[]) {

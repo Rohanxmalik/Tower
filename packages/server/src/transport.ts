@@ -3,6 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
+import { CreateTaskInput, ResolveApprovalInput } from "@tower/shared";
 import { buildMcpServer } from "./mcp.js";
 import { BOARD_HTML } from "./board.js";
 import { TowerService } from "./service.js";
@@ -133,6 +134,28 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   app.get("/api/board", (req, res) => {
     if (!authorize(req, res)) return;
     res.json(service.boardSnapshot());
+  });
+
+  // Create a delegated task from the board (incl. mobile) — a worker picks it up.
+  app.post("/api/task", (req, res) => {
+    if (!authorize(req, res)) return;
+    const parsed = CreateTaskInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "repo and body are required" });
+      return;
+    }
+    res.json(service.createTask(parsed.data));
+  });
+
+  // Approve or reject a parked task (the phone taps ✓/✗).
+  app.post("/api/approve", (req, res) => {
+    if (!authorize(req, res)) return;
+    const parsed = ResolveApprovalInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "taskId and approved are required" });
+      return;
+    }
+    res.json(service.resolveApproval(parsed.data));
   });
 
   app.post("/mcp", async (req, res) => {

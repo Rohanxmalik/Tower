@@ -146,7 +146,7 @@ describe("HTTP transport", () => {
     httpServer = await startHttp(service, { port: 0 });
     const client = await mcpClient(httpServer); // Host: 127.0.0.1 — allowed
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(14);
+    expect(tools.length).toBe(16);
   });
 });
 
@@ -225,7 +225,7 @@ describe("board", () => {
     expect(page).toContain("COMMS");
   });
 
-  it("includes delegated tasks in /api/board and the TASKS lane on the page", async () => {
+  it("includes delegated tasks in /api/board and the delegation tree on the page", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0 });
     const { id } = service.sendMessage({
@@ -243,7 +243,67 @@ describe("board", () => {
     expect(api.tasks[0]!.status).toBe("accepted");
     expect(api.tasks[0]!.assigneeAgentId).toBe("bob");
     const page = await (await fetch(url(httpServer, "/board"))).text();
-    expect(page).toContain("TASKS");
+    expect(page).toContain("Delegated tasks"); // the who-asked-whom tree
+  });
+
+  it("the board page ships the mobile controls: a send box and approve/reject", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const page = await (await fetch(url(httpServer, "/board"))).text();
+    expect(page).toContain("Delegate task"); // send box submit button
+    expect(page).toContain("api/task"); // POSTs a delegated task
+    expect(page).toContain("api/approve"); // approve/reject a parked task
+    expect(page).toContain("Approve");
+    expect(page).not.toContain("innerHTML"); // agent strings are textContent-only
+  });
+
+  it("creates a task from the board via POST /api/task (mobile send box)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    // auth required
+    expect(
+      (
+        await fetch(url(httpServer, "/api/task"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ repo: "team/app", body: "add health endpoint" }),
+        })
+      ).status,
+    ).toBe(401);
+    const res = await fetch(url(httpServer, "/api/task"), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret" },
+      body: JSON.stringify({ repo: "team/app", body: "add health endpoint", toAgentId: "bob" }),
+    });
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    expect(id).toBeTruthy();
+    expect(service.listTasks({ status: "open" }).tasks[0]!.body).toBe("add health endpoint");
+  });
+
+  it("rejects a task create with a missing body (400)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const res = await fetch(url(httpServer, "/api/task"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repo: "team/app" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("approves a parked task via POST /api/approve", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const { id } = service.createTask({ repo: "r", body: "x", fromAgentId: "a", toAgentId: "*" });
+    service.requestApproval({ taskId: id, agentId: "bob" });
+    const res = await fetch(url(httpServer, "/api/approve"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ taskId: id, approved: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(service.listTasks({}).tasks[0]!.approval).toBe("approved");
   });
 
   it("blocks non-local /api/board without a token (rebinding guard)", async () => {

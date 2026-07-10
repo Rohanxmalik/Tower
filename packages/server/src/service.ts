@@ -25,6 +25,9 @@ import type {
   CompleteTaskInput,
   ListTasksInput,
   ListTasksOutput,
+  CreateTaskInput,
+  RequestApprovalInput,
+  ResolveApprovalInput,
 } from "@tower/shared";
 import type { Claim, DelegatedTask, Message } from "@tower/shared";
 import { TowerStore } from "./store/sqlite.js";
@@ -188,6 +191,25 @@ export class TowerService {
 
   listTasks(input: ListTasksInput): ListTasksOutput {
     return { tasks: this.store.listTasks(input) };
+  }
+
+  /** Create a delegated task directly (the board's mobile send box). */
+  createTask(input: CreateTaskInput): SendMessageOutput {
+    return this.sendMessage({
+      fromAgentId: input.fromAgentId,
+      toAgentId: input.toAgentId,
+      repo: input.repo,
+      kind: "task",
+      body: input.body,
+    });
+  }
+
+  requestApproval(input: RequestApprovalInput): OkOutput {
+    return { ok: this.store.requestApproval(input.taskId, input.agentId) };
+  }
+
+  resolveApproval(input: ResolveApprovalInput): OkOutput {
+    return { ok: this.store.resolveApproval(input.taskId, input.approved) };
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {

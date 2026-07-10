@@ -193,6 +193,10 @@ export type NextTaskOutput = z.infer<typeof NextTaskOutput>;
 export const TaskStatus = z.enum(["open", "accepted", "done", "failed"]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
+/** Human-in-the-loop gate: a worker can park a task until someone approves it (e.g. from a phone). */
+export const ApprovalState = z.enum(["pending", "approved", "rejected"]);
+export type ApprovalState = z.infer<typeof ApprovalState>;
+
 /** A delegated unit of work between agents (id doubles as the originating message id). */
 export const DelegatedTask = z.object({
   id: z.string(),
@@ -203,6 +207,8 @@ export const DelegatedTask = z.object({
   body: z.string().min(1),
   status: TaskStatus,
   assigneeAgentId: z.string().optional(),
+  /** Set when a worker is waiting on human approval before running (remote-approve mode). */
+  approval: ApprovalState.optional(),
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
   result: z.string().optional(),
@@ -210,6 +216,29 @@ export const DelegatedTask = z.object({
   updatedAt: z.number().int(),
 });
 export type DelegatedTask = z.infer<typeof DelegatedTask>;
+
+/** Create a delegated task directly (used by the board's mobile send box). */
+export const CreateTaskInput = z.object({
+  repo: z.string().min(1),
+  body: z.string().min(1),
+  fromAgentId: z.string().min(1).default("board"),
+  toAgentId: z.string().min(1).default("*"),
+});
+export type CreateTaskInput = z.infer<typeof CreateTaskInput>;
+
+/** A worker parks a task for human approval before running it. */
+export const RequestApprovalInput = z.object({
+  taskId: z.string().min(1),
+  agentId: z.string().min(1),
+});
+export type RequestApprovalInput = z.infer<typeof RequestApprovalInput>;
+
+/** A human approves/rejects a parked task (from the board, incl. mobile). */
+export const ResolveApprovalInput = z.object({
+  taskId: z.string().min(1),
+  approved: z.boolean(),
+});
+export type ResolveApprovalInput = z.infer<typeof ResolveApprovalInput>;
 
 export const AcceptTaskInput = z.object({
   taskId: z.string().min(1),
@@ -285,6 +314,8 @@ export const TOOL_SCHEMAS = {
   accept_task: { input: AcceptTaskInput, output: AcceptTaskOutput },
   complete_task: { input: CompleteTaskInput, output: OkOutput },
   list_tasks: { input: ListTasksInput, output: ListTasksOutput },
+  request_approval: { input: RequestApprovalInput, output: OkOutput },
+  resolve_approval: { input: ResolveApprovalInput, output: OkOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

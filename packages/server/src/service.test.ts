@@ -263,3 +263,27 @@ describe("task lifecycle (service)", () => {
     expect(service.boardSnapshot().tasks).toHaveLength(1);
   });
 });
+
+describe("task approval + create (mobile control)", () => {
+  it("createTask makes an open delegated task", () => {
+    const service = new TowerService();
+    const { id } = service.createTask({
+      repo: "team/app",
+      body: "add a health endpoint",
+      fromAgentId: "board",
+      toAgentId: "*",
+    });
+    const { tasks } = service.listTasks({ status: "open" });
+    expect(tasks[0]!.id).toBe(id);
+    expect(tasks[0]!.fromAgentId).toBe("board");
+  });
+
+  it("request then resolve approval flips the task's approval state", () => {
+    const service = new TowerService();
+    const { id } = service.createTask({ repo: "r", body: "x", fromAgentId: "a", toAgentId: "*" });
+    expect(service.requestApproval({ taskId: id, agentId: "bob" }).ok).toBe(true);
+    expect(service.listTasks({}).tasks[0]!.approval).toBe("pending");
+    expect(service.resolveApproval({ taskId: id, approved: true }).ok).toBe(true);
+    expect(service.listTasks({}).tasks[0]!.approval).toBe("approved");
+  });
+});

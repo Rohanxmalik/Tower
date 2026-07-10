@@ -3,6 +3,20 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.6.0 — 2026-07-10
+
+- **Your phone is now a remote control.** The board (`/board`) has a send box that
+  delegates a task (`POST /api/task`) and **Approve / Reject** buttons for parked tasks
+  (`POST /api/approve`) — both behind the usual `TOWER_TOKEN`. Queue work for your agent
+  and approve it from anywhere.
+- **`tower work --approve remote`** — instead of asking the terminal, the worker parks each
+  task for a human to approve on the board. New MCP tools (16 total): `request_approval`,
+  `resolve_approval`; tasks carry an `approval` state (`pending → approved | rejected`).
+- **Board rebuilt for clarity.** Plain English over ATC jargon: a **delegation tree**
+  (who asked whom, the command, and the reply nested under it, with commit sha + PR link),
+  **who's connected**, **editing right now**, and a chronological **activity log**.
+  Renders correctly on a phone; only re-renders when data changes, so buttons stay tappable.
+
 ## 0.5.0 — 2026-07-08
 
 - **Task lifecycle** — a `kind: "task"` message is now a first-class `DelegatedTask`

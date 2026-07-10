@@ -49,6 +49,10 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
   `--allow-from` sender allowlist, a runtime kill switch, and an isolated work branch
   (your current branch is never touched). Treat `TOWER_TOKEN` as execution rights on
   every machine running a worker; rotate it when someone leaves.
+- **The board can create and approve tasks** (`POST /api/task`, `POST /api/approve`) using
+  the same token. That is what makes the phone a remote control — and it means anyone who
+  can reach your board URL with the token can queue work for, and approve work on, any
+  machine running `tower work`. Serve it over TLS and keep the token private.
 - The CLI reads files you point it at (`--file`) with your own OS permissions.
 
 ## Supported versions

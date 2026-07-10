@@ -10,6 +10,7 @@ import type {
   Claim,
   ClaimStatus,
   Decision,
+  ApprovalState,
   DelegatedTask,
   ListClaimsInput,
   GetDecisionsInput,
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (toAgentId, readAt);
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
-  body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, commitSha TEXT, prUrl TEXT,
+  body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, approval TEXT, commitSha TEXT, prUrl TEXT,
   result TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, toAgentId);
@@ -126,6 +127,7 @@ interface TaskRow {
   body: string;
   status: string;
   assigneeAgentId: string | null;
+  approval: string | null;
   commitSha: string | null;
   prUrl: string | null;
   result: string | null;
@@ -142,6 +144,7 @@ function rowToTask(r: TaskRow): DelegatedTask {
     body: r.body,
     status: r.status as TaskStatus,
     ...(r.assigneeAgentId != null ? { assigneeAgentId: r.assigneeAgentId } : {}),
+    ...(r.approval != null ? { approval: r.approval as ApprovalState } : {}),
     ...(r.commitSha != null ? { commitSha: r.commitSha } : {}),
     ...(r.prUrl != null ? { prUrl: r.prUrl } : {}),
     ...(r.result != null ? { result: r.result } : {}),
@@ -466,8 +469,8 @@ export class TowerStore {
     const now = this.now();
     this.db
       .prepare(
-        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,commitSha,prUrl,result,createdAt,updatedAt)
-         VALUES (?,?,?,?,?,'open',NULL,NULL,NULL,NULL,?,?)`,
+        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,approval,commitSha,prUrl,result,createdAt,updatedAt)
+         VALUES (?,?,?,?,?,'open',NULL,NULL,NULL,NULL,NULL,?,?)`,
       )
       .run(input.id, input.repo, input.fromAgentId, input.toAgentId, input.body, now, now);
     return this.getTask(input.id)!;
@@ -487,6 +490,25 @@ export class TowerStore {
          WHERE id = ? AND status = 'open'`,
       )
       .run(agentId, this.now(), id);
+    return Number(res.changes) > 0;
+  }
+
+  /** Park an open task for human approval (remote-approve worker mode). */
+  requestApproval(id: string, agentId: string): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET approval = 'pending', assigneeAgentId = ?, updatedAt = ?
+         WHERE id = ? AND status = 'open'`,
+      )
+      .run(agentId, this.now(), id);
+    return Number(res.changes) > 0;
+  }
+
+  /** A human approves or rejects a pending task (from the board / mobile). */
+  resolveApproval(id: string, approved: boolean): boolean {
+    const res = this.db
+      .prepare(`UPDATE tasks SET approval = ?, updatedAt = ? WHERE id = ? AND approval = 'pending'`)
+      .run(approved ? "approved" : "rejected", this.now(), id);
     return Number(res.changes) > 0;
   }
 

@@ -408,3 +408,45 @@ describe("TowerStore — delegated tasks (lifecycle)", () => {
     expect(s.listTasks({}).map((t) => t.id)).toEqual(["old-open"]);
   });
 });
+
+describe("TowerStore — task approval gate", () => {
+  let store: TowerStore;
+  beforeEach(() => {
+    store = new TowerStore({ now: () => 1000 });
+  });
+  const task = () =>
+    store.createTask({ id: "t1", repo: "r", fromAgentId: "alice", toAgentId: "*", body: "do it" });
+
+  it("requestApproval parks the task pending with the requesting agent", () => {
+    task();
+    expect(store.requestApproval("t1", "bob")).toBe(true);
+    const t = store.getTask("t1")!;
+    expect(t.approval).toBe("pending");
+    expect(t.assigneeAgentId).toBe("bob");
+    expect(t.status).toBe("open"); // not accepted yet — waiting on a human
+  });
+
+  it("resolveApproval sets approved or rejected", () => {
+    task();
+    store.requestApproval("t1", "bob");
+    expect(store.resolveApproval("t1", true)).toBe(true);
+    expect(store.getTask("t1")!.approval).toBe("approved");
+    const t2 = store.createTask({
+      id: "t2",
+      repo: "r",
+      fromAgentId: "a",
+      toAgentId: "*",
+      body: "x",
+    });
+    store.requestApproval(t2.id, "bob");
+    store.resolveApproval(t2.id, false);
+    expect(store.getTask("t2")!.approval).toBe("rejected");
+  });
+
+  it("carries approval through listTasks and rowToTask", () => {
+    task();
+    store.requestApproval("t1", "bob");
+    const [t] = store.listTasks({ forAgentId: "bob" });
+    expect(t!.approval).toBe("pending");
+  });
+});

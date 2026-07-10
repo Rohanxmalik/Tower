@@ -28,13 +28,26 @@ On the machine that should pick up tasks (with `TOWER_URL` / `TOWER_TOKEN` point
 your team Tower, same as in [team.md](./team.md)):
 
 ```bash
-npx -y tower-mcp work            # confirm each task before it runs (default)
-npx -y tower-mcp work --auto     # unattended: accept and run without prompting
+npx -y tower-mcp work                    # confirm each task in this terminal (default)
+npx -y tower-mcp work --approve remote   # approve from the board — including your phone
+npx -y tower-mcp work --auto             # unattended: accept and run without prompting
 ```
 
 By default the worker **asks you before running each task** — you see who sent it and
 what it says, and approve or skip. `--auto` removes the prompt for fully unattended
 operation; read the [Security](#security--read-this-before---auto) section first.
+
+### Approve from your phone (`--approve remote`)
+
+With `--approve remote` the worker never asks the terminal. It **parks** each task and
+waits: the task appears under **"needs your OK"** on the board (`/board`) with **Approve**
+and **Reject** buttons. Open that URL on your phone, tap Approve, and the worker on your
+laptop accepts the task and runs it. Reject, and it never runs.
+
+The board doubles as a **remote control**: its send box delegates a new task
+(`POST /api/task`), so you can queue work for your own agent from the couch and approve it
+in the same tap. Both endpoints use the same `TOWER_TOKEN` as everything else — anyone who
+can open your board can drive your worker, so treat the token accordingly.
 
 > The flags below describe the shipped behavior at a high level; the exact, current CLI
 > surface is always `tower work --help`.

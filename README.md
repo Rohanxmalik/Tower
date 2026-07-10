@@ -148,7 +148,21 @@ Trust model, plainly: an inbound task is code your teammate's agent will act on 
 shared `TOWER_TOKEN` like push access, and agents should confirm out-of-scope tasks with
 their human ([SECURITY.md](./SECURITY.md)).
 
-## The 14 tools
+## Drive it from your phone
+
+The board is a remote control, not just a dashboard. Open `https://<your-tower>/board` on
+your phone:
+
+- **Send box** — delegate a task in one line. A `tower work` daemon on the target agent's
+  machine picks it up, runs the agent, and opens a PR.
+- **Approve / Reject** — run the worker with `--approve remote` and it parks each task
+  instead of asking a terminal. Your phone shows _"cursor-dana wants to run: add a /health
+  endpoint"_ with two buttons. Tap Approve; your laptop does the work.
+
+Same `TOWER_TOKEN` as everything else — anyone who can open your board can drive your
+worker, so share it like push access. Details → [docs/worker.md](./docs/worker.md).
+
+## The 16 tools
 
 | Tool                                           | Purpose                                                                |
 | ---------------------------------------------- | ---------------------------------------------------------------------- |
@@ -161,6 +175,7 @@ their human ([SECURITY.md](./SECURITY.md)).
 | `next_task`                                    | Rule-based sequencer: a module that's safe to start now                |
 | `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents |
 | `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR      |
+| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone   |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 

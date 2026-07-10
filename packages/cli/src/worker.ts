@@ -46,6 +46,8 @@ export interface WorkerOptions {
   auto?: boolean;
   /** Only accept tasks sent by these agent ids. */
   allowFrom?: string[];
+  /** Park each task for approval from the board/phone instead of the terminal. */
+  remoteApprove?: boolean;
   maxMinutes?: number;
   branchPrefix?: string;
   push?: boolean;
@@ -87,6 +89,7 @@ const tail = (s: string): string => s.slice(-TAIL_CHARS).trim();
 interface TaskApi {
   listOpen(): Promise<DelegatedTask[]>;
   accept(taskId: string): Promise<boolean>;
+  requestApproval(taskId: string): Promise<boolean>;
   complete(input: {
     taskId: string;
     success: boolean;
@@ -113,6 +116,12 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
             call("accept_task", { taskId, agentId: opts.agentId }),
           )) as AcceptTaskOutput
         ).ok,
+      requestApproval: async (taskId) =>
+        (
+          (await withRemote(remote, (call) =>
+            call("request_approval", { taskId, agentId: opts.agentId }),
+          )) as OkOutput
+        ).ok,
       complete: async (input) => {
         (await withRemote(remote, (call) =>
           call("complete_task", { ...input, agentId: opts.agentId }),
@@ -133,6 +142,8 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
       local((svc) => svc.listTasks({ status: "open", forAgentId: opts.agentId, repo: opts.repo }))
         .tasks,
     accept: async (taskId) => local((svc) => svc.acceptTask({ taskId, agentId: opts.agentId })).ok,
+    requestApproval: async (taskId) =>
+      local((svc) => svc.requestApproval({ taskId, agentId: opts.agentId })).ok,
     complete: async (input) => {
       local((svc) => svc.completeTask({ ...input, agentId: opts.agentId }));
     },
@@ -257,8 +268,8 @@ export async function cmdWork(
     return;
   }
   const ask = opts.ask;
-  if (!opts.auto && !ask && !process.stdin.isTTY) {
-    out("No terminal to confirm tasks on — pass --auto to run unattended (see docs/worker.md).");
+  if (!opts.auto && !opts.remoteApprove && !ask && !process.stdin.isTTY) {
+    out("No terminal to confirm tasks on — pass --auto or --approve remote (see docs/worker.md).");
     return;
   }
 
@@ -267,10 +278,28 @@ export async function cmdWork(
   for (let tick = 0; opts.ticks == null || tick < opts.ticks; tick++) {
     if (tick > 0) await new Promise((r) => setTimeout(r, intervalMs));
     try {
-      const open = (await api.listOpen())
+      const candidates = (await api.listOpen())
         .filter((t) => !opts.allowFrom || opts.allowFrom.includes(t.fromAgentId))
         .sort((a, b) => a.createdAt - b.createdAt);
-      const task = open[0];
+
+      // Remote-approve: a human OKs each task from the board/phone. Park un-parked
+      // tasks, ignore rejected ones, and only run once approved.
+      if (opts.remoteApprove) {
+        const approved = candidates.find((t) => t.approval === "approved");
+        if (approved) {
+          if (await api.accept(approved.id)) await runTask(cwd, opts, api, approved, out);
+          continue;
+        }
+        const unparked = candidates.find((t) => t.approval == null);
+        if (unparked && (await api.requestApproval(unparked.id))) {
+          out(
+            `⏸ task ${unparked.id.slice(0, 8)} from ${unparked.fromAgentId} — awaiting approval on the board`,
+          );
+        }
+        continue; // pending/rejected tasks just wait
+      }
+
+      const task = candidates[0];
       if (!task) continue;
 
       if (!opts.auto && ask) {

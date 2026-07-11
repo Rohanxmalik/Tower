@@ -107,7 +107,10 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
       }
       const header = req.header("authorization") ?? "";
       if (!safeEqual(header, `Bearer ${opts.token}`)) {
-        throttle.recordFailure(ip);
+        // Only a *present but wrong* token counts as a brute-force attempt. A missing
+        // header is just "not signed in yet" — the board polls before a token is entered,
+        // and those requests must not lock out the IP (which is shared by the whole team).
+        if (header) throttle.recordFailure(ip);
         res.status(401).json({ error: "unauthorized" });
         return false;
       }

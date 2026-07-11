@@ -16,6 +16,12 @@ versions are [semver](https://semver.org) (0.x — expect movement).
   (who asked whom, the command, and the reply nested under it, with commit sha + PR link),
   **who's connected**, **editing right now**, and a chronological **activity log**.
   Renders correctly on a phone; only re-renders when data changes, so buttons stay tappable.
+- **Board self-lockout fix.** The board polled `/api/board` every 2s even before a token
+  was entered, and each tokenless poll counted as a failed auth — tripping the brute-force
+  lockout and 429-ing the whole (shared) IP, so the board could never connect. Now a
+  *missing* Authorization header is never counted (only a present-but-wrong token is), and
+  the board backs off to 6s while unauthed. Plus **one-tap auth**: open `/board#token=…`
+  and it's stored with no mobile typing (the hash is stripped immediately).
 - **Windows runner fix.** The `claude` / `codex` runners now spawn through the shell with
   the prompt on stdin — Node refuses to launch the Windows `.cmd` agent shims directly
   (CVE-2024-27980), which silently failed every task on a Windows worker. Verified with a

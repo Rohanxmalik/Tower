@@ -128,6 +128,20 @@ describe("HTTP transport", () => {
     expect(good.status).toBe(429);
   });
 
+  it("does NOT lock out requests that omit the Authorization header (board polling)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    // 20 tokenless polls (what the board does before a token is entered) must not lock.
+    for (let i = 0; i < 20; i++) {
+      expect((await fetch(url(httpServer, "/api/board"))).status).toBe(401);
+    }
+    // a correct token from the same IP still works — the IP was never locked.
+    const ok = await fetch(url(httpServer, "/api/board"), {
+      headers: { authorization: "Bearer secret" },
+    });
+    expect(ok.status).toBe(200);
+  });
+
   it("does not count successful auth towards the lockout", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0, token: "secret" });

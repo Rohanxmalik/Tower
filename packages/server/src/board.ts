@@ -158,11 +158,22 @@ export const BOARD_HTML = `<!doctype html>
   var tokInput = document.getElementById("tok");
   var dot = document.getElementById("dot");
   var statusEl = document.getElementById("status");
+  // One-tap auth: open /board#token=YOURTOKEN and it's stored, no mobile typing.
+  // The hash is stripped immediately so it never lands in history or a screenshot.
+  (function () {
+    var m = /[#&]token=([^&]+)/.exec(location.hash);
+    if (m) {
+      localStorage.setItem("tower-token", decodeURIComponent(m[1]).trim());
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+  })();
   tokInput.value = localStorage.getItem("tower-token") || "";
-  tokInput.addEventListener("change", function () {
+  tokInput.addEventListener("input", saveToken);
+  tokInput.addEventListener("change", saveToken);
+  function saveToken() {
     localStorage.setItem("tower-token", tokInput.value.trim());
     poll();
-  });
+  }
   function token() { return localStorage.getItem("tower-token") || ""; }
   function authHeaders(extra) {
     var h = extra || {};
@@ -396,28 +407,36 @@ export const BOARD_HTML = `<!doctype html>
   // the relative ages stay honest.
   var lastSig = "";
   var lastRenderAt = 0;
+  var pollTimer = null;
+  // Poll fast (2s) when connected; back off (6s) while unauthed/offline so the board's
+  // own polling never floods the server.
+  function schedule(ms) {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(poll, ms);
+  }
   function poll() {
     fetch("api/board", { headers: authHeaders({}), cache: "no-store" })
       .then(function (res) {
-        if (res.status === 401) { setStatus("err", "token required — enter it top right"); return null; }
-        if (res.status === 429) { setStatus("err", "locked out — too many bad tokens, wait 1m"); return null; }
-        if (!res.ok) { setStatus("err", "error " + res.status); return null; }
+        if (res.status === 401) { setStatus("err", "token needed — open the /board#token link or paste it top right"); schedule(6000); return null; }
+        if (res.status === 429) { setStatus("err", "locked out — wait ~1 min, then it clears"); schedule(6000); return null; }
+        if (!res.ok) { setStatus("err", "error " + res.status); schedule(6000); return null; }
         return res.json();
       })
       .then(function (data) {
         if (!data) return;
         var now = data.now;
         var sig = JSON.stringify([data.claims, data.conflicts, data.messages, data.tasks]);
-        if (sig === lastSig && now - lastRenderAt < 15000) return;
-        lastSig = sig;
-        lastRenderAt = now;
-        render(data);
+        if (sig !== lastSig || now - lastRenderAt >= 15000) {
+          lastSig = sig;
+          lastRenderAt = now;
+          render(data);
+        }
+        schedule(2000);
       })
-      .catch(function () { setStatus("err", "offline — is the server up?"); });
+      .catch(function () { setStatus("err", "offline — is the server up?"); schedule(6000); });
   }
 
   poll();
-  setInterval(poll, 2000);
 })();
 </script>
 </body>

@@ -450,3 +450,28 @@ describe("TowerStore — task approval gate", () => {
     expect(t!.approval).toBe("pending");
   });
 });
+
+describe("TowerStore — worker presence", () => {
+  it("upserts a worker heartbeat and lists online workers within the window", () => {
+    const clock = { t: 10_000 };
+    const store = new TowerStore({ now: () => clock.t });
+    store.heartbeatWorker({ agentId: "bob", repo: "team/app", runner: "claude" });
+    clock.t = 15_000;
+    store.heartbeatWorker({ agentId: "bob", repo: "team/app", runner: "claude" }); // refresh
+    store.heartbeatWorker({ agentId: "dana", repo: "team/app", runner: "codex" });
+    const online = store.listWorkers(30_000);
+    expect(online.map((w) => w.agentId).sort()).toEqual(["bob", "dana"]);
+    expect(online.find((w) => w.agentId === "bob")!.runner).toBe("claude");
+    expect(online.find((w) => w.agentId === "bob")!.lastSeen).toBe(15_000);
+  });
+
+  it("drops workers not seen within the window", () => {
+    const clock = { t: 0 };
+    const store = new TowerStore({ now: () => clock.t });
+    store.heartbeatWorker({ agentId: "stale", repo: "r", runner: "claude" });
+    clock.t = 40_000; // > 30s window later
+    store.heartbeatWorker({ agentId: "fresh", repo: "r", runner: "codex" });
+    const online = store.listWorkers(30_000);
+    expect(online.map((w) => w.agentId)).toEqual(["fresh"]);
+  });
+});

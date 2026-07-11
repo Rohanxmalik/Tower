@@ -106,6 +106,7 @@ interface TaskApi {
   listOpen(): Promise<DelegatedTask[]>;
   accept(taskId: string): Promise<boolean>;
   requestApproval(taskId: string): Promise<boolean>;
+  heartbeat(): Promise<void>;
   complete(input: {
     taskId: string;
     success: boolean;
@@ -138,6 +139,15 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
             call("request_approval", { taskId, agentId: opts.agentId }),
           )) as OkOutput
         ).ok,
+      heartbeat: async () => {
+        (await withRemote(remote, (call) =>
+          call("heartbeat_worker", {
+            agentId: opts.agentId,
+            repo: opts.repo,
+            runner: opts.runner,
+          }),
+        )) as OkOutput;
+      },
       complete: async (input) => {
         (await withRemote(remote, (call) =>
           call("complete_task", { ...input, agentId: opts.agentId }),
@@ -160,6 +170,11 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
     accept: async (taskId) => local((svc) => svc.acceptTask({ taskId, agentId: opts.agentId })).ok,
     requestApproval: async (taskId) =>
       local((svc) => svc.requestApproval({ taskId, agentId: opts.agentId })).ok,
+    heartbeat: async () => {
+      local((svc) =>
+        svc.heartbeatWorker({ agentId: opts.agentId, repo: opts.repo, runner: opts.runner }),
+      );
+    },
     complete: async (input) => {
       local((svc) => svc.completeTask({ ...input, agentId: opts.agentId }));
     },
@@ -299,6 +314,7 @@ export async function cmdWork(
   for (let tick = 0; opts.ticks == null || tick < opts.ticks; tick++) {
     if (tick > 0) await new Promise((r) => setTimeout(r, intervalMs));
     try {
+      await api.heartbeat(); // announce presence so the board shows this worker online
       const candidates = (await api.listOpen())
         .filter((t) => !opts.allowFrom || opts.allowFrom.includes(t.fromAgentId))
         .sort((a, b) => a.createdAt - b.createdAt);

@@ -28,8 +28,12 @@ import type {
   CreateTaskInput,
   RequestApprovalInput,
   ResolveApprovalInput,
+  HeartbeatWorkerInput,
 } from "@tower/shared";
-import type { Claim, DelegatedTask, Message } from "@tower/shared";
+import type { Claim, DelegatedTask, Message, Worker } from "@tower/shared";
+
+/** A worker is "online" if it heartbeated within this window. */
+export const WORKER_ONLINE_MS = 30_000;
 import { TowerStore } from "./store/sqlite.js";
 import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
@@ -42,6 +46,8 @@ export interface BoardSnapshot {
   messages: Message[];
   /** Delegated tasks, newest first (open/accepted/done/failed). */
   tasks: DelegatedTask[];
+  /** Worker daemons currently online (heartbeated recently) — who can run a task now. */
+  workers: Worker[];
   /** Server clock (ms) so the board can render TTL countdowns without clock skew. */
   now: number;
 }
@@ -137,8 +143,14 @@ export class TowerService {
       conflicts: pairwiseCollisions(claims),
       messages: this.store.listMessages({ limit: 50 }),
       tasks: this.store.listTasks({}),
+      workers: this.store.listWorkers(WORKER_ONLINE_MS),
       now: Date.now(),
     };
+  }
+
+  heartbeatWorker(input: HeartbeatWorkerInput): OkOutput {
+    this.store.heartbeatWorker(input);
+    return { ok: true };
   }
 
   sendMessage(input: SendMessageInput): SendMessageOutput {

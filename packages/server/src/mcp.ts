@@ -19,6 +19,7 @@ import type {
   ListTasksInput,
   RequestApprovalInput,
   ResolveApprovalInput,
+  HeartbeatWorkerInput,
 } from "@tower/shared";
 import { TowerService } from "./service.js";
 
@@ -48,6 +49,8 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   request_approval:
     "Park a task for human approval before running it (remote-approve worker mode) — a person approves it from the board/phone.",
   resolve_approval: "Approve or reject a parked task (used by the board; also callable by tools).",
+  heartbeat_worker:
+    "Announce that this worker is online and ready to run tasks (call it every poll so the board shows live presence).",
 };
 
 function summarize(tool: string, result: unknown): string {
@@ -63,7 +66,7 @@ function summarize(tool: string, result: unknown): string {
   return JSON.stringify(result);
 }
 
-/** Build an MCP server exposing Tower's 16 tools, delegating to the given service. */
+/** Build an MCP server exposing Tower's 17 tools, delegating to the given service. */
 export function buildMcpServer(service: TowerService): McpServer {
   const server = new McpServer(SERVER_INFO);
 
@@ -86,6 +89,7 @@ export function buildMcpServer(service: TowerService): McpServer {
     list_tasks: (a) => service.listTasks(a as ListTasksInput),
     request_approval: (a) => service.requestApproval(a as RequestApprovalInput),
     resolve_approval: (a) => service.resolveApproval(a as ResolveApprovalInput),
+    heartbeat_worker: (a) => service.heartbeatWorker(a as HeartbeatWorkerInput),
   };
 
   for (const name of Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[]) {

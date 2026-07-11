@@ -287,3 +287,13 @@ describe("task approval + create (mobile control)", () => {
     expect(service.listTasks({}).tasks[0]!.approval).toBe("approved");
   });
 });
+
+describe("worker presence (service)", () => {
+  it("heartbeat_worker shows up as an online worker on the board", () => {
+    const service = new TowerService();
+    service.heartbeatWorker({ agentId: "bob", repo: "team/app", runner: "claude" });
+    const snap = service.boardSnapshot();
+    expect(snap.workers.map((w) => w.agentId)).toEqual(["bob"]);
+    expect(snap.workers[0]!.runner).toBe("claude");
+  });
+});

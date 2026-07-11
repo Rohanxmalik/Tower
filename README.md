@@ -153,16 +153,20 @@ their human ([SECURITY.md](./SECURITY.md)).
 The board is a remote control, not just a dashboard. Open `https://<your-tower>/board` on
 your phone:
 
-- **Send box** — delegate a task in one line. A `tower work` daemon on the target agent's
-  machine picks it up, runs the agent, and opens a PR.
+- **Send box** — delegate a task in one line. Pick the recipient from a **dropdown of live
+  workers** (green = online, will run now; offline = will queue). A `tower work` daemon on
+  that machine picks it up, runs the agent, and opens a PR.
 - **Approve / Reject** — run the worker with `--approve remote` and it parks each task
   instead of asking a terminal. Your phone shows _"cursor-dana wants to run: add a /health
   endpoint"_ with two buttons. Tap Approve; your laptop does the work.
+- **Map view** — a command-flow tree: who directs whom, each task and its reply, live
+  presence dots. **Tap any agent to command it.** ([docs/map.png](./docs/map.png))
+- **One-tap auth** — open `/board#token=<token>` and it connects with no typing.
 
 Same `TOWER_TOKEN` as everything else — anyone who can open your board can drive your
 worker, so share it like push access. Details → [docs/worker.md](./docs/worker.md).
 
-## The 16 tools
+## The 17 tools
 
 | Tool                                           | Purpose                                                                |
 | ---------------------------------------------- | ---------------------------------------------------------------------- |
@@ -176,6 +180,7 @@ worker, so share it like push access. Details → [docs/worker.md](./docs/worker
 | `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents |
 | `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR      |
 | `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone   |
+| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks    |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 

@@ -3,7 +3,16 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
-## 0.6.0 — 2026-07-10
+## 0.6.0 — 2026-07-10..12
+
+- **Live worker presence.** Workers call a new `heartbeat_worker` tool (17 tools total)
+  every poll; the board shows which machines are **online and ready to run tasks** (30s
+  window). The send box's recipient is now a **dropdown** — pick a live worker (runs now)
+  or an offline one (queues), no typing an agent id.
+- **Command Map view.** A second board tab: a command-flow tree — the repo at the root,
+  each commander (incl. 📱 you) and the agents they've tasked, statuses, and replies with
+  sha/PR. **Tap any agent to command it** (pre-fills the send box). Who-directs-whom at a
+  glance. ([docs/map.png](docs/map.png))
 
 - **Your phone is now a remote control.** The board (`/board`) has a send box that
   delegates a task (`POST /api/task`) and **Approve / Reject** buttons for parked tasks
@@ -19,7 +28,7 @@ versions are [semver](https://semver.org) (0.x — expect movement).
 - **Board self-lockout fix.** The board polled `/api/board` every 2s even before a token
   was entered, and each tokenless poll counted as a failed auth — tripping the brute-force
   lockout and 429-ing the whole (shared) IP, so the board could never connect. Now a
-  *missing* Authorization header is never counted (only a present-but-wrong token is), and
+  _missing_ Authorization header is never counted (only a present-but-wrong token is), and
   the board backs off to 6s while unauthed. Plus **one-tap auth**: open `/board#token=…`
   and it's stored with no mobile typing (the hash is stripped immediately).
 - **Windows runner fix.** The `claude` / `codex` runners now spawn through the shell with

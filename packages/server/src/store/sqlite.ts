@@ -18,6 +18,7 @@ import type {
   MessageKind,
   SymbolRef,
   TaskStatus,
+  Worker,
 } from "@tower/shared";
 
 /** Default time-to-live for a claim before it auto-expires (ms). Refreshed by heartbeat. */
@@ -55,6 +56,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, toAgentId);
 CREATE TABLE IF NOT EXISTS message_reads (
   messageId TEXT NOT NULL, agentId TEXT NOT NULL, readAt INTEGER NOT NULL,
   PRIMARY KEY (messageId, agentId)
+);
+CREATE TABLE IF NOT EXISTS workers (
+  agentId TEXT NOT NULL, repo TEXT NOT NULL, runner TEXT NOT NULL, lastSeen INTEGER NOT NULL,
+  PRIMARY KEY (agentId, repo)
 );
 `;
 
@@ -567,6 +572,32 @@ export class TowerStore {
       .prepare(`SELECT * FROM tasks ${where} ORDER BY createdAt DESC`)
       .all(...params) as unknown as TaskRow[];
     return rows.map(rowToTask);
+  }
+
+  // -- worker presence ------------------------------------------------------
+
+  /** Record that a worker is alive (upsert on agentId+repo). */
+  heartbeatWorker(input: { agentId: string; repo: string; runner: string }): void {
+    this.db
+      .prepare(
+        `INSERT INTO workers (agentId,repo,runner,lastSeen) VALUES (?,?,?,?)
+         ON CONFLICT(agentId,repo) DO UPDATE SET runner=excluded.runner, lastSeen=excluded.lastSeen`,
+      )
+      .run(input.agentId, input.repo, input.runner, this.now());
+  }
+
+  /** Workers seen within `windowMs` (online), newest first. */
+  listWorkers(windowMs: number): Worker[] {
+    const cutoff = this.now() - windowMs;
+    const rows = this.db
+      .prepare(`SELECT * FROM workers WHERE lastSeen >= ? ORDER BY lastSeen DESC`)
+      .all(cutoff) as unknown as Worker[];
+    return rows.map((r) => ({
+      agentId: r.agentId,
+      repo: r.repo,
+      runner: r.runner,
+      lastSeen: r.lastSeen,
+    }));
   }
 
   // -- decisions ------------------------------------------------------------

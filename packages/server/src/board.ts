@@ -110,6 +110,32 @@ export const BOARD_HTML = `<!doctype html>
   .ev .t { color: var(--muted); font-size: 0.72rem; }
   #comms { max-height: 40vh; overflow-y: auto; }
   .empty { color: var(--muted); font-size: 0.85rem; }
+  /* Tabs (Board | Map) */
+  .tabs { display: flex; gap: 0.4rem; margin: 1rem 0 0.2rem; }
+  .tabs button { background: var(--panel2); font-size: 0.85rem; padding: 0.45rem 1rem; }
+  .tabs button.active { background: var(--cyan); color: #05121a; border-color: var(--cyan); }
+  select.to { width: 11rem; }
+  @media (max-width: 520px) { select.to { width: 100%; } }
+  /* Command map — hierarchy of who directs whom */
+  .tree { font-family: var(--mono); font-size: 0.84rem; }
+  .root { color: #fff; font-weight: 700; letter-spacing: 0.04em; }
+  .root .sub { color: var(--muted); font-weight: 400; font-size: 0.72rem; }
+  .cmdr { margin-top: 0.9rem; padding-left: 0.7rem; border-left: 3px solid var(--cyan); }
+  .cmdr.you { border-left-color: var(--green); }
+  .kid { margin: 0.35rem 0 0 1.1rem; padding-left: 0.8rem; border-left: 1px solid var(--line); }
+  .agent-node { cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;
+    border: 1px solid var(--line); border-radius: 6px; padding: 0.2rem 0.55rem; margin: 0.15rem 0; }
+  .agent-node:hover { border-color: var(--cyan); background: var(--panel2); }
+  .agent-node .nm { color: #fff; font-weight: 600; }
+  .agent-node .rn { color: var(--muted); font-size: 0.72rem; }
+  .pdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .pdot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .pdot.off { background: var(--muted); }
+  .edge { color: var(--muted); }
+  .tline { color: var(--ink); margin: 0.15rem 0; }
+  .tline .st { margin-left: 0.4rem; }
+  .avail { margin-top: 0.9rem; color: var(--muted); }
+  .cmdhint { color: var(--cyan); font-size: 0.78rem; margin-left: 0.5rem; }
 </style>
 </head>
 <body>
@@ -119,37 +145,51 @@ export const BOARD_HTML = `<!doctype html>
   <input id="tok" type="password" placeholder="token (if required)" autocomplete="off" />
 </header>
 
+<div class="tabs">
+  <button data-view="board" class="active" type="button">Board</button>
+  <button data-view="map" type="button">Map</button>
+</div>
+
 <!-- SEND — delegate a task (works from your phone) -->
 <form id="send">
   <div class="row">
     <textarea id="body" placeholder="Tell an agent what to do — e.g. add a health endpoint to the API"></textarea>
-    <input class="to" id="to" placeholder="to (agent id, or *)" autocomplete="off" />
+    <select class="to" id="to" aria-label="recipient agent">
+      <option value="*">★ everyone</option>
+    </select>
   </div>
   <div class="row">
     <button class="btn-go" type="submit">Delegate task</button>
-    <span class="hint muted" id="sendhint">A worker (tower work) on that agent's machine will pick it up.</span>
+    <span class="hint muted" id="sendhint">Pick a worker (or ★ everyone); one that's online runs it now.</span>
   </div>
 </form>
 
 <div id="approvals"></div>
 <div id="collisions"></div>
 
-<div class="cols">
-  <div>
-    <h2>Delegated tasks — who asked whom &amp; what came back</h2>
-    <div class="card"><div id="tasks"><span class="empty">No tasks yet. Delegate one above, or run <b>tower send --task</b>.</span></div></div>
+<div id="view-board">
+  <div class="cols">
+    <div>
+      <h2>Delegated tasks — who asked whom &amp; what came back</h2>
+      <div class="card"><div id="tasks"><span class="empty">No tasks yet. Delegate one above, or run <b>tower send --task</b>.</span></div></div>
 
-    <h2>Editing right now</h2>
-    <div class="card"><div id="edits"><span class="empty">No active edits — all agents idle.</span></div></div>
+      <h2>Editing right now</h2>
+      <div class="card"><div id="edits"><span class="empty">No active edits — all agents idle.</span></div></div>
+    </div>
+
+    <div>
+      <h2>Who's connected</h2>
+      <div class="card"><div id="roster"><span class="empty">No agents seen yet.</span></div></div>
+
+      <h2>COMMS — activity log</h2>
+      <div class="card" id="comms"><div id="feed"><span class="empty">Nothing has happened yet.</span></div></div>
+    </div>
   </div>
+</div>
 
-  <div>
-    <h2>Who's connected</h2>
-    <div class="card"><div id="roster"><span class="empty">No agents seen yet.</span></div></div>
-
-    <h2>COMMS — activity log</h2>
-    <div class="card" id="comms"><div id="feed"><span class="empty">Nothing has happened yet.</span></div></div>
-  </div>
+<div id="view-map" hidden>
+  <h2>Command map — who directs whom (tap a name to command it)</h2>
+  <div class="card"><div id="map"><span class="empty">No agents yet.</span></div></div>
 </div>
 
 <script>
@@ -196,6 +236,35 @@ export const BOARD_HTML = `<!doctype html>
     return m < 60 ? m + "m" : Math.floor(m / 60) + "h" + (m % 60) + "m";
   }
   function isUrl(u) { return typeof u === "string" && /^https?:\\/\\//i.test(u); }
+
+  // --- tabs: Board | Map -------------------------------------------------
+  var view = /[#&]map/.test(location.hash) ? "map" : "board";
+  function setView(v) {
+    view = v;
+    document.getElementById("view-board").hidden = v !== "board";
+    document.getElementById("view-map").hidden = v !== "map";
+    var btns = document.querySelectorAll(".tabs button");
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle("active", btns[i].dataset.view === v);
+  }
+  (function () {
+    var btns = document.querySelectorAll(".tabs button");
+    for (var i = 0; i < btns.length; i++) btns[i].addEventListener("click", function () { setView(this.dataset.view); });
+    setView(view);
+  })();
+
+  // Prefill the recipient and jump to the send box (used by map click-to-command).
+  function commandAgent(id) {
+    var sel = document.getElementById("to");
+    var found = false;
+    for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === id) { found = true; break; }
+    if (!found) { var o = document.createElement("option"); o.value = id; o.textContent = id; sel.appendChild(o); }
+    sel.value = id;
+    setView("board");
+    var b = document.getElementById("body");
+    b.focus();
+    document.getElementById("sendhint").textContent = "commanding " + id + " — type the task and Delegate.";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   // --- SEND a task -------------------------------------------------------
   document.getElementById("send").addEventListener("submit", function (e) {
@@ -357,15 +426,21 @@ export const BOARD_HTML = `<!doctype html>
     });
     data.tasks.forEach(function (t) { note(t.fromAgentId, ""); note(t.assigneeAgentId, ""); if (t.toAgentId !== "*") note(t.toAgentId, ""); });
     data.messages.forEach(function (m) { note(m.fromAgentId, ""); if (m.toAgentId !== "*") note(m.toAgentId, ""); });
+    // PRESENCE — which agents have a live worker (heartbeated recently).
+    var online = {}, runnerOf = {};
+    (data.workers || []).forEach(function (w) {
+      online[w.agentId] = true; runnerOf[w.agentId] = w.runner || "";
+      note(w.agentId, (seen[w.agentId] && seen[w.agentId].doing) || "worker online" + (w.runner ? " · " + w.runner : ""));
+    });
     var rosterEl = document.getElementById("roster");
     rosterEl.replaceChildren();
     var ids = Object.keys(seen);
     if (!ids.length) rosterEl.appendChild(el("span", "empty", "No agents seen yet."));
     ids.forEach(function (id) {
       var a = el("div", "agent");
-      a.appendChild(el("span", "dot ok"));
-      a.appendChild(el("span", "name", seen[id].id));
-      a.appendChild(el("span", "doing" + (seen[id].doing ? " busy" : ""), seen[id].doing || "connected"));
+      a.appendChild(el("span", "pdot " + (online[id] ? "on" : "off")));
+      a.appendChild(el("span", "name", id));
+      a.appendChild(el("span", "doing" + (seen[id].doing ? " busy" : ""), seen[id].doing || (online[id] ? "online" : "seen earlier")));
       rosterEl.appendChild(a);
     });
 
@@ -398,8 +473,110 @@ export const BOARD_HTML = `<!doctype html>
       feed.appendChild(row);
     });
 
+    // RECIPIENT DROPDOWN — ★ everyone, then online workers, then agents seen earlier.
+    var sel = document.getElementById("to");
+    var prev = sel.value || "*";
+    sel.replaceChildren();
+    var optEveryone = el("option", "", "★ everyone"); optEveryone.value = "*"; sel.appendChild(optEveryone);
+    var onlineIds = Object.keys(online);
+    onlineIds.forEach(function (id) {
+      var o = el("option", "", id + " — online" + (runnerOf[id] ? " · " + runnerOf[id] : ""));
+      o.value = id; sel.appendChild(o);
+    });
+    ids.filter(function (id) { return !online[id]; }).forEach(function (id) {
+      var o = el("option", "", id + " — offline (will queue)"); o.value = id; sel.appendChild(o);
+    });
+    // keep the user's current choice if still present
+    var keep = false;
+    for (var si = 0; si < sel.options.length; si++) if (sel.options[si].value === prev) { keep = true; break; }
+    sel.value = keep ? prev : "*";
+
+    renderMap(data, online, runnerOf, seen, repliesFor(data));
+
     var n = data.claims.length, tq = data.tasks.filter(function (t) { return t.status === "open" || t.status === "accepted"; }).length;
-    setStatus("ok", "connected — " + n + " editing, " + tq + " task(s) in flight");
+    setStatus("ok", "connected — " + onlineIds.length + " worker(s) online, " + tq + " task(s) in flight");
+  }
+
+  function repliesFor(data) {
+    var r = {};
+    data.messages.forEach(function (m) { if (m.kind === "task_update" && m.replyTo) r[m.replyTo] = m; });
+    return r;
+  }
+
+  var TASK_LABEL = { open: "waiting", accepted: "running", done: "done", failed: "failed" };
+
+  // MAP — command hierarchy: repo root → commanders → the agents they've tasked → replies.
+  function renderMap(data, online, runnerOf, seen, replies) {
+    var mapEl = document.getElementById("map");
+    mapEl.replaceChildren();
+    var repo = (data.tasks[0] || data.claims[0] || data.messages[0] || {}).repo || "this repo";
+
+    var tree = el("div", "tree");
+    var root = el("div", "root");
+    root.appendChild(el("span", "", "◈ " + repo));
+    root.appendChild(el("span", "sub", "  — shared Tower · " + (Object.keys(online).length) + " worker(s) online"));
+    tree.appendChild(root);
+
+    // group tasks by commander (fromAgentId)
+    var byCommander = {};
+    data.tasks.forEach(function (t) {
+      (byCommander[t.fromAgentId] = byCommander[t.fromAgentId] || []).push(t);
+    });
+    var commanders = Object.keys(byCommander).sort(function (a, b) { return byCommander[b].length - byCommander[a].length; });
+
+    function agentNode(id) {
+      var node = el("span", "agent-node");
+      node.appendChild(el("span", "pdot " + (online[id] ? "on" : "off")));
+      node.appendChild(el("span", "nm", id));
+      if (runnerOf[id]) node.appendChild(el("span", "rn", runnerOf[id]));
+      node.title = "Tap to command " + id;
+      node.addEventListener("click", function () { commandAgent(id); });
+      return node;
+    }
+
+    commanders.forEach(function (cmdr) {
+      var isYou = cmdr === "board";
+      var block = el("div", "cmdr" + (isYou ? " you" : ""));
+      var head = el("div");
+      head.appendChild(el("span", "root", isYou ? "📱 You (board)" : cmdr));
+      head.appendChild(el("span", "edge", "  directs " + byCommander[cmdr].length + " task(s) ↓"));
+      block.appendChild(head);
+      byCommander[cmdr].forEach(function (t) {
+        var kid = el("div", "kid");
+        var line = el("div", "tline");
+        line.appendChild(el("span", "edge", "└▶ "));
+        line.appendChild(agentNode(t.assigneeAgentId || t.toAgentId));
+        line.appendChild(el("span", "st st " + (t.status === "open" ? "waiting" : t.status === "accepted" ? "running" : t.status), (t.approval === "pending" ? "needs your OK" : TASK_LABEL[t.status] || t.status)));
+        kid.appendChild(line);
+        kid.appendChild(el("div", "cmd", t.body.length > 90 ? t.body.slice(0, 90) + "…" : t.body));
+        var rep = replies[t.id];
+        if (rep) {
+          var fail = /^\\[failed\\]/i.test(rep.body);
+          var rl = el("div", "reply" + (fail ? " fail" : ""));
+          rl.appendChild(el("span", "r-who", rep.fromAgentId + ": "));
+          rl.appendChild(el("span", "", rep.body.replace(/^\\[(done|failed)\\]\\s*/i, "").slice(0, 90)));
+          kid.appendChild(rl);
+        }
+        block.appendChild(kid);
+      });
+      tree.appendChild(block);
+    });
+
+    // idle online workers with no task yet — available capacity to command
+    var tasked = {};
+    data.tasks.forEach(function (t) { tasked[t.assigneeAgentId || t.toAgentId] = true; });
+    var idle = Object.keys(online).filter(function (id) { return !tasked[id]; });
+    if (idle.length) {
+      var av = el("div", "avail");
+      av.appendChild(el("div", "", "● online & available — tap to command:"));
+      idle.forEach(function (id) { av.appendChild(agentNode(id)); });
+      tree.appendChild(av);
+    }
+    if (!commanders.length && !idle.length) {
+      mapEl.appendChild(el("span", "empty", "No agents yet. Start a worker (tower work) and delegate a task."));
+      return;
+    }
+    mapEl.appendChild(tree);
   }
 
   // Re-rendering on every poll would detach buttons mid-tap (Approve/Reject become

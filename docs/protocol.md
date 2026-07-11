@@ -21,6 +21,9 @@ transport and MCP standardized agent-to-tool access.
   `claim_intent` responses carry the caller's `unreadMessages` count as the wake-up signal.
   A `task` message doubles as a lifecycle object (`open → accepted → done | failed`) under
   the **same id** — workers `accept_task` and `complete_task` it.
+- **Worker** — a `tower work` daemon that runs delegated tasks. It calls `heartbeat_worker`
+  each poll; the board treats a worker seen in the last 30s as **online**, so you can see
+  (and target) machines that are actually ready to run work.
 
 ## Severity
 
@@ -32,7 +35,7 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All sixteen tools take and return JSON validated by the schemas in
+All seventeen tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool               | Purpose                                                               |
@@ -53,6 +56,7 @@ All sixteen tools take and return JSON validated by the schemas in
 | `list_tasks`       | List delegated tasks by repo, status, recipient, or assignee.         |
 | `request_approval` | Park a task for human approval (worker remote-approve mode).          |
 | `resolve_approval` | Approve or reject a parked task (the board / a phone taps this).      |
+| `heartbeat_worker` | A worker announces it's online & ready (drives live presence).        |
 
 ### The agent loop
 

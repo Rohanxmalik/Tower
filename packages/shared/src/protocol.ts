@@ -274,6 +274,23 @@ export type ListTasksInput = z.infer<typeof ListTasksInput>;
 export const ListTasksOutput = z.object({ tasks: z.array(DelegatedTask) });
 export type ListTasksOutput = z.infer<typeof ListTasksOutput>;
 
+/** A worker daemon announcing it is online and ready to run delegated tasks. */
+export const Worker = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().min(1),
+  /** Which local agent it runs: "claude" | "codex" | "cmd" (free-form for forward-compat). */
+  runner: z.string().default(""),
+  lastSeen: z.number().int(),
+});
+export type Worker = z.infer<typeof Worker>;
+
+export const HeartbeatWorkerInput = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().min(1),
+  runner: z.string().default(""),
+});
+export type HeartbeatWorkerInput = z.infer<typeof HeartbeatWorkerInput>;
+
 export const SendMessageInput = z.object({
   fromAgentId: z.string().min(1),
   toAgentId: z.string().min(1),
@@ -316,6 +333,7 @@ export const TOOL_SCHEMAS = {
   list_tasks: { input: ListTasksInput, output: ListTasksOutput },
   request_approval: { input: RequestApprovalInput, output: OkOutput },
   resolve_approval: { input: ResolveApprovalInput, output: OkOutput },
+  heartbeat_worker: { input: HeartbeatWorkerInput, output: OkOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

@@ -31,9 +31,11 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.4 — early, building in public.** Agent messaging/task delegation, semantic
-> collision detection, three enforcement layers, the live board, and the GitHub Action all
-> work end-to-end today (156 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+> Status: **v0.6 — early, building in public.** Agent messaging/task delegation, the
+> `tower work` worker daemon, remote human approval, the phone remote-control board with
+> live worker presence and the command Map, semantic collision detection, three enforcement
+> layers, and the GitHub Action all work end-to-end today (202 tests, 80% coverage gate).
+> Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 
@@ -192,7 +194,7 @@ MCP clients (Claude Code / Cursor / Codex)
         ▼
 Tower server ── collision engine (tree-sitter) · agent inbox · sequencer · SQLite · /board UI
         ▲
-tower CLI: setup · serve · status · watch · claim · guard · send · inbox · work · next-task · complete
+tower CLI: init · setup · serve · status · watch · claim · guard · send · inbox · work · next-task · complete
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so
@@ -290,7 +292,7 @@ packages/cli      the `tower` command
 hooks/            Claude Code PreToolUse enforcement hook
 action/           GitHub Action — PR collision reports
 examples/         two-agents-demo, git-hooks (pre-commit guard, post-commit release)
-docs/             quickstart, protocol, enforcement, team, action, waitlist
+docs/             quickstart, protocol, worker, enforcement, team, action, waitlist
 Dockerfile        hosted team server
 ```
 

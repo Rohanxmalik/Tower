@@ -254,20 +254,20 @@ describe("cmdSend / cmdInbox (agent comms)", () => {
     const sent = collect();
     await cmdSend(
       dir,
-      { from: "rohan", to: "cofounder", repo: "team/app", body: "add rate limiting", task: true },
+      { from: "alice", to: "bob", repo: "team/app", body: "add rate limiting", task: true },
       sent.out,
     );
     expect(sent.lines.join("\n")).toContain("Sent task");
 
     const inbox = collect();
-    await cmdInbox(dir, { agentId: "cofounder" }, inbox.out);
+    await cmdInbox(dir, { agentId: "bob" }, inbox.out);
     const text = inbox.lines.join("\n");
-    expect(text).toContain("rohan");
+    expect(text).toContain("alice");
     expect(text).toContain("add rate limiting");
     expect(text).toContain("TASK");
 
     const again = collect();
-    await cmdInbox(dir, { agentId: "cofounder" }, again.out);
+    await cmdInbox(dir, { agentId: "bob" }, again.out);
     expect(again.lines.join("\n")).toContain("empty");
   });
 });
@@ -277,7 +277,7 @@ describe("interactive send (gatherSendArgs)", () => {
     const { gatherSendArgs } = await import("./commands.js");
     const asked: string[] = [];
     const answers: Record<string, string> = {
-      "To (agent id, or * for everyone): ": "cofounder",
+      "To (agent id, or * for everyone): ": "bob",
       "Message: ": "add rate limiting to /login",
       "Is this a task for them? [y/N]: ": "y",
     };
@@ -285,10 +285,10 @@ describe("interactive send (gatherSendArgs)", () => {
       asked.push(q);
       return answers[q] ?? "";
     };
-    const args = await gatherSendArgs({}, { defaultFrom: "rohan", defaultRepo: "team/app", ask });
+    const args = await gatherSendArgs({}, { defaultFrom: "alice", defaultRepo: "team/app", ask });
     expect(args).toEqual({
-      from: "rohan",
-      to: "cofounder",
+      from: "alice",
+      to: "bob",
       repo: "team/app",
       body: "add rate limiting to /login",
       task: true,
@@ -311,10 +311,10 @@ describe("interactive send (gatherSendArgs)", () => {
 
   it("re-asks until required answers are non-empty", async () => {
     const { gatherSendArgs } = await import("./commands.js");
-    const replies = ["", "cofounder", "", "do it", "n"];
+    const replies = ["", "bob", "", "do it", "n"];
     const ask = async () => replies.shift() ?? "";
-    const args = await gatherSendArgs({}, { defaultFrom: "rohan", defaultRepo: "r", ask });
-    expect(args.to).toBe("cofounder");
+    const args = await gatherSendArgs({}, { defaultFrom: "alice", defaultRepo: "r", ask });
+    expect(args.to).toBe("bob");
     expect(args.body).toBe("do it");
     expect(args.task).toBe(false);
   });

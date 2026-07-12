@@ -3,6 +3,50 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.6.1 — 2026-07-12
+
+Security + correctness release from a full pre-launch audit (three independent review
+passes: security, docs, code). Upgrade recommended for every 0.5/0.6 install.
+
+- **SECURITY — custom `--cmd` runners no longer substitute `{{task}}`.** Splicing task
+  text into a shell string let a hostile task body inject commands on the worker machine
+  (the `claude`/`codex` runners were never affected). Every runner — including `--cmd` —
+  now receives the prompt on **stdin**; templates still containing `{{task}}` are refused
+  with an explanation. **Breaking** for `--cmd` users: read the prompt from stdin.
+- **Fixed: 0.5.0 databases broke all delegation on upgrade.** The `tasks` table gained an
+  `approval` column in 0.6.0 with no migration, so every `send_message kind:"task"` /
+  `POST /api/task` failed on an existing DB file. The store now ALTERs old files in place
+  (covered by an upgrade test).
+- **Approval gate is now enforced, not advisory.** `accept_task` refuses pending and
+  rejected tasks, so a human's Reject holds even against `--auto` workers on the same
+  inbox; rejection is terminal (task → `failed`, delegator notified via `task_update`)
+  instead of silently ignored forever; an already-decided task can't be re-parked.
+- **Hosted-Tower DoS fixed.** Behind Render/nginx the throttle saw one shared IP —
+  10 bad tokens from anyone locked out the whole instance. Now the real client IP is
+  read through the proxy (`trust proxy`), and a **valid token always gets in** even
+  when the bucket is locked. Typing the token by hand no longer trips the lockout
+  either (the board saves on Enter/blur, not per keystroke).
+- **No more stack-trace leakage.** Malformed requests previously returned Express's
+  default error page — with absolute filesystem paths — unless `NODE_ENV=production`.
+  A terminal error handler now always answers `{"error":"bad request"}`. JSON bodies
+  capped at 256 KB.
+- **Worker hardening.** Runner timeouts now kill the whole process tree on Windows
+  (`taskkill /T` — previously the shell shim died but the agent kept editing, then
+  every later task failed on a "dirty tree"); the kill switch documented since 0.5.0
+  now exists (`touch .tower/STOP` stops the daemon before its next task); presence
+  heartbeats on its own 15s timer so a worker no longer shows offline exactly while
+  it's running your task; `--approve` values other than `remote` are rejected instead
+  of silently ignored.
+- **Board fixes.** `/board` sends clickjacking protection (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'`); phone-delegated tasks use the **live worker's repo**
+  instead of guessing (a fresh board no longer queues tasks to a placeholder repo
+  nobody polls); Approve/Reject taps surface errors instead of failing silently;
+  presence changes re-render immediately; a **sign out** button forgets the saved
+  token; the Map shows rejected tasks as rejected; the board renders the newest 100
+  tasks (matching the 50-message reply window) so a week of history can't bloat the DOM.
+- 11 new regression tests (213 total), including a real-process spawn test for the
+  stdin/tree-kill path and the 0.5.0→0.6.x DB upgrade.
+
 ## 0.6.0 — 2026-07-10..12
 
 - **Live worker presence.** Workers call a new `heartbeat_worker` tool (17 tools total)
@@ -19,7 +63,7 @@ versions are [semver](https://semver.org) (0.x — expect movement).
   (`POST /api/approve`) — both behind the usual `TOWER_TOKEN`. Queue work for your agent
   and approve it from anywhere.
 - **`tower work --approve remote`** — instead of asking the terminal, the worker parks each
-  task for a human to approve on the board. New MCP tools (16 total): `request_approval`,
+  task for a human to approve on the board. New MCP tools: `request_approval`,
   `resolve_approval`; tasks carry an `approval` state (`pending → approved | rejected`).
 - **Board rebuilt for clarity.** Plain English over ATC jargon: a **delegation tree**
   (who asked whom, the command, and the reply nested under it, with commit sha + PR link),

@@ -42,7 +42,10 @@ operation; read the [Security](#security--read-this-before---auto) section first
 With `--approve remote` the worker never asks the terminal. It **parks** each task and
 waits: the task appears under **"needs your OK"** on the board (`/board`) with **Approve**
 and **Reject** buttons. Open that URL on your phone, tap Approve, and the worker on your
-laptop accepts the task and runs it. Reject, and it never runs.
+laptop accepts the task and runs it. Reject, and it never runs — rejection is enforced in
+the store (the task is marked `failed` and can never be accepted), so it holds even if
+another worker on the same inbox is running `--auto`. The delegator gets a `task_update`
+about the rejection instead of waiting forever.
 
 The board doubles as a **remote control**: its send box delegates a new task
 (`POST /api/task`), so you can queue work for your own agent from the couch and approve it
@@ -75,14 +78,18 @@ can open your board can drive your worker, so treat the token accordingly.
 
 The worker runs whatever local agent you point it at:
 
-| Runner   | Command it drives                         | Notes                                  |
-| -------- | ----------------------------------------- | -------------------------------------- |
-| `claude` | `claude -p --permission-mode acceptEdits` | Claude Code headless mode              |
-| `codex`  | `codex exec --full-auto`                  | Codex CLI non-interactive mode         |
-| `cmd`    | your own command template                 | Any tool that takes a prompt and edits |
+| Runner   | Command it drives                         | Notes                              |
+| -------- | ----------------------------------------- | ---------------------------------- |
+| `claude` | `claude -p --permission-mode acceptEdits` | Claude Code headless mode          |
+| `codex`  | `codex exec --full-auto`                  | Codex CLI non-interactive mode     |
+| `cmd`    | your own command (`--cmd "..."`)          | Reads the task prompt on **stdin** |
 
-The task body becomes the prompt. Whatever the runner is allowed to do on your machine,
-a delegated task can do — that's the point, and it's why the safety defaults below exist.
+The task body becomes the prompt, and **every runner receives it on stdin** — task text
+is never substituted into the shell command line, so a hostile task body can't inject
+shell commands on the worker machine. (`--cmd` templates with the old `{{task}}`
+placeholder are refused with an explanation.) Whatever the runner is allowed to do on
+your machine, a delegated task can do — that's the point, and it's why the safety
+defaults below exist.
 
 ## The git flow
 
@@ -112,8 +119,16 @@ Defaults that protect you:
 - **Confirm-per-task** unless you explicitly pass `--auto` — you review sender and body
   before anything runs.
 - **`--allow-from`** — an allowlist of sender agent ids; tasks from anyone else are
-  ignored. Use it even with confirm mode, and especially with `--auto`.
-- **Max runtime** — a runaway agent is killed, and the task marked `failed`.
+  ignored. Use it even with confirm mode, and especially with `--auto`. Note: agent ids
+  are self-declared, so any token holder can send as an allow-listed name — this filters
+  accidents and noise, not malice. The token itself is the security boundary.
+- **Kill switch** — create a file at **`.tower/STOP`** in the worker's repo and the
+  daemon stops before its next task (delete the file to run again). Works from any
+  editor or SSH session while the worker is mid-run.
+- **Max runtime** — a runaway agent is killed (the whole process tree, including the
+  Windows shell shims), and the task marked `failed`.
+- **Prompt on stdin** — task text never touches the runner's command line, so a task
+  body can't shell-inject on your machine.
 - **Branch isolation** — the worker only ever commits to `tower/task-<id8>` branches,
   never to the branch you're on, and refuses to run on a dirty tree.
 
@@ -125,5 +140,8 @@ Advice for unattended use:
   stays in the loop; don't wire it to auto-merge.
 - **Rotate `TOWER_TOKEN` when someone leaves the team** — restart the server with a new
   token. Old token = old teammate can still queue tasks for your workers.
+- **`/board#token=…` links carry the token.** One-tap auth is convenient, but pasting
+  that link into a chat or email exposes the token to that channel's history — share it
+  the way you'd share the token itself.
 
 More on the shared-token trust model: [SECURITY.md](../SECURITY.md).

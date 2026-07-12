@@ -213,6 +213,20 @@ export class TowerStore {
     this.now = opts.now ?? Date.now;
     this.ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
     this.db.exec(DDL);
+    this.migrate();
+  }
+
+  /** In-place upgrades for DB files created by older versions. */
+  private migrate(): void {
+    // 0.5.0 shipped `tasks` without the approval column; CREATE TABLE IF NOT EXISTS
+    // won't touch the existing table, so ALTER it in — otherwise every delegation
+    // INSERT fails on an upgraded install.
+    const cols = this.db.prepare(`PRAGMA table_info(tasks)`).all() as unknown as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "approval")) {
+      this.db.exec(`ALTER TABLE tasks ADD COLUMN approval TEXT`);
+    }
   }
 
   // -- claims ---------------------------------------------------------------
@@ -487,33 +501,48 @@ export class TowerStore {
     return row ? rowToTask(row) : undefined;
   }
 
-  /** First accept wins: only an `open` task can be accepted, atomically. */
+  /** First accept wins: only an `open` task can be accepted, atomically. A task that
+   * was parked for approval can only be accepted once approved — so a human's Reject
+   * (or a still-pending gate) holds even against `--auto` workers on the same inbox. */
   acceptTask(id: string, agentId: string): boolean {
     const res = this.db
       .prepare(
         `UPDATE tasks SET status = 'accepted', assigneeAgentId = ?, updatedAt = ?
-         WHERE id = ? AND status = 'open'`,
+         WHERE id = ? AND status = 'open' AND (approval IS NULL OR approval = 'approved')`,
       )
       .run(agentId, this.now(), id);
     return Number(res.changes) > 0;
   }
 
-  /** Park an open task for human approval (remote-approve worker mode). */
+  /** Park an open task for human approval (remote-approve worker mode). Only an
+   * ungated task can be parked — re-parking must never reset a human's decision. */
   requestApproval(id: string, agentId: string): boolean {
     const res = this.db
       .prepare(
         `UPDATE tasks SET approval = 'pending', assigneeAgentId = ?, updatedAt = ?
-         WHERE id = ? AND status = 'open'`,
+         WHERE id = ? AND status = 'open' AND approval IS NULL`,
       )
       .run(agentId, this.now(), id);
     return Number(res.changes) > 0;
   }
 
-  /** A human approves or rejects a pending task (from the board / mobile). */
+  /** A human approves or rejects a pending task (from the board / mobile).
+   * Reject is terminal: the task is marked failed so no worker mode ever runs it
+   * and the 7-day pruner can age it out. */
   resolveApproval(id: string, approved: boolean): boolean {
-    const res = this.db
-      .prepare(`UPDATE tasks SET approval = ?, updatedAt = ? WHERE id = ? AND approval = 'pending'`)
-      .run(approved ? "approved" : "rejected", this.now(), id);
+    const res = approved
+      ? this.db
+          .prepare(
+            `UPDATE tasks SET approval = 'approved', updatedAt = ? WHERE id = ? AND approval = 'pending'`,
+          )
+          .run(this.now(), id)
+      : this.db
+          .prepare(
+            `UPDATE tasks SET approval = 'rejected', status = 'failed',
+               result = 'rejected by a human on the board', updatedAt = ?
+             WHERE id = ? AND approval = 'pending'`,
+          )
+          .run(this.now(), id);
     return Number(res.changes) > 0;
   }
 
@@ -547,10 +576,12 @@ export class TowerStore {
       /** Tasks addressed to this agent, including "*" broadcasts. */
       forAgentId?: string;
       assigneeAgentId?: string;
+      /** Cap the result set (newest first) — the board uses this. */
+      limit?: number;
     } = {},
   ): DelegatedTask[] {
     const clauses: string[] = [];
-    const params: string[] = [];
+    const params: (string | number)[] = [];
     if (filter.repo) {
       clauses.push("repo = ?");
       params.push(filter.repo);
@@ -568,8 +599,10 @@ export class TowerStore {
       params.push(filter.assigneeAgentId);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limitSql = filter.limit != null ? ` LIMIT ?` : "";
+    if (filter.limit != null) params.push(filter.limit);
     const rows = this.db
-      .prepare(`SELECT * FROM tasks ${where} ORDER BY createdAt DESC`)
+      .prepare(`SELECT * FROM tasks ${where} ORDER BY createdAt DESC${limitSql}`)
       .all(...params) as unknown as TaskRow[];
     return rows.map(rowToTask);
   }

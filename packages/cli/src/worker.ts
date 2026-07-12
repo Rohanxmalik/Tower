@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { DelegatedTask, ListTasksOutput, AcceptTaskOutput, OkOutput } from "@tower/shared";
 import { remoteConfig, withRemote } from "./remote.js";
 import { buildService, type BuildOptions } from "./lib.js";
@@ -14,12 +16,18 @@ export type Exec = (
 /** execFile-based Exec that never throws: captures stdout+stderr, exit code, timeouts. */
 export const defaultExec: Exec = (cmd, args, opts) =>
   new Promise((resolve) => {
+    // Own the timeout instead of using execFile's: with shell:true the direct child is
+    // cmd.exe/sh, and on Windows killing only it orphans the actual agent — which keeps
+    // editing files after our git reset and holds the stdio pipes open (so the callback
+    // would never fire). taskkill /T reaches the whole tree. Owning the flag also stops
+    // a maxBuffer kill from being misreported as a timeout.
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
     const child = execFile(
       cmd,
       args,
       {
         cwd: opts.cwd,
-        ...(opts.timeoutMs ? { timeout: opts.timeoutMs, killSignal: "SIGKILL" } : {}),
         // Agent CLIs (`claude`, `codex`) are .cmd shims on Windows; Node refuses to spawn
         // .cmd without a shell (CVE-2024-27980), so runners set shell:true. Their args are
         // all static — the untrusted prompt goes via stdin, never the command line.
@@ -29,13 +37,24 @@ export const defaultExec: Exec = (cmd, args, opts) =>
         maxBuffer: 10 * 1024 * 1024,
       },
       (err, stdout, stderr) => {
+        if (timer) clearTimeout(timer);
         const out = `${stdout ?? ""}${stderr ?? ""}`;
         if (!err) return resolve({ code: 0, out });
-        const timedOut = Boolean(err.killed || err.signal === "SIGKILL");
         const code = typeof err.code === "number" ? err.code : 1;
         resolve({ code: code === 0 ? 1 : code, out, timedOut });
       },
     );
+    if (opts.timeoutMs) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        if (process.platform === "win32" && child.pid) {
+          execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () => {});
+        } else {
+          child.kill("SIGKILL");
+        }
+      }, opts.timeoutMs);
+      timer.unref();
+    }
     if (opts.input != null && child.stdin) {
       child.stdin.on("error", () => {}); // ignore EPIPE if the child exits early
       child.stdin.end(opts.input);
@@ -47,7 +66,7 @@ export interface WorkerOptions {
   agentId: string;
   repo: string;
   runner: "claude" | "codex" | "cmd";
-  /** runner "cmd": local shell template; `{{task}}` is replaced with the prompt. */
+  /** runner "cmd": operator-authored shell command; receives the task prompt on STDIN. */
   cmdTemplate?: string;
   intervalMs?: number;
   /** Skip per-task confirmation. Required to run without a TTY. */
@@ -93,10 +112,14 @@ export function runnerCommand(
   if (opts.runner === "codex") {
     return { cmd: "codex exec --full-auto -", args: [], input: prompt, shell: true };
   }
-  const full = (opts.cmdTemplate ?? "").replaceAll("{{task}}", prompt);
+  // Custom commands run exactly as the operator wrote them (trusted, static) and get
+  // the prompt on STDIN too. Task text is NEVER substituted into the shell string —
+  // a `{{task}}`-style splice would let a task body break out of any quoting and run
+  // arbitrary commands on the worker machine.
+  const template = opts.cmdTemplate ?? "";
   return platform === "win32"
-    ? { cmd: "cmd", args: ["/d", "/s", "/c", full], verbatim: true }
-    : { cmd: "sh", args: ["-c", full] };
+    ? { cmd: "cmd", args: ["/d", "/s", "/c", template], verbatim: true, input: prompt }
+    : { cmd: "sh", args: ["-c", template], input: prompt };
 }
 
 const TAIL_CHARS = 2000;
@@ -300,7 +323,16 @@ export async function cmdWork(
       `allow-from ${opts.allowFrom?.join(",") ?? "anyone"} · server ${remote?.url ?? "local"}`,
   );
   if (opts.runner === "cmd" && !opts.cmdTemplate) {
-    out(`runner "cmd" needs --cmd "<template with {{task}}>" — nothing to run.`);
+    out(`runner "cmd" needs --cmd "<command>" (it receives the task prompt on stdin).`);
+    return;
+  }
+  if (opts.runner === "cmd" && opts.cmdTemplate?.includes("{{task}}")) {
+    // Refuse rather than silently run with a literal "{{task}}": substitution was
+    // removed because splicing task text into a shell string is command injection.
+    out(
+      `--cmd no longer substitutes {{task}} (command-injection risk). ` +
+        `Your command now receives the task prompt on STDIN — drop {{task}} and read stdin.`,
+    );
     return;
   }
   const ask = opts.ask;
@@ -311,48 +343,65 @@ export async function cmdWork(
 
   const api = taskApi(cwd, opts, build);
   const intervalMs = opts.intervalMs ?? 15_000;
-  for (let tick = 0; opts.ticks == null || tick < opts.ticks; tick++) {
-    if (tick > 0) await new Promise((r) => setTimeout(r, intervalMs));
-    try {
-      await api.heartbeat(); // announce presence so the board shows this worker online
-      const candidates = (await api.listOpen())
-        .filter((t) => !opts.allowFrom || opts.allowFrom.includes(t.fromAgentId))
-        .sort((a, b) => a.createdAt - b.createdAt);
+  const stopFile = join(cwd, ".tower", "STOP");
+  // Presence must not flap while a long task runs (runTask can hold the loop for
+  // minutes; the online window is 30s) — heartbeat on a timer, independent of ticks.
+  const hb = setInterval(() => {
+    api.heartbeat().catch(() => {});
+  }, 15_000);
+  hb.unref();
+  try {
+    for (let tick = 0; opts.ticks == null || tick < opts.ticks; tick++) {
+      if (tick > 0) await new Promise((r) => setTimeout(r, intervalMs));
+      if (existsSync(stopFile)) {
+        // Kill switch: `touch .tower/STOP` (or create the file from any editor) and the
+        // daemon stops accepting work. Delete the file to allow a restart.
+        out(`🛑 ${stopFile} exists — worker stopping. Delete the file to run again.`);
+        return;
+      }
+      try {
+        await api.heartbeat(); // announce presence so the board shows this worker online
+        const candidates = (await api.listOpen())
+          .filter((t) => !opts.allowFrom || opts.allowFrom.includes(t.fromAgentId))
+          .sort((a, b) => a.createdAt - b.createdAt);
 
-      // Remote-approve: a human OKs each task from the board/phone. Park un-parked
-      // tasks, ignore rejected ones, and only run once approved.
-      if (opts.remoteApprove) {
-        const approved = candidates.find((t) => t.approval === "approved");
-        if (approved) {
-          if (await api.accept(approved.id)) await runTask(cwd, opts, api, approved, out);
-          continue;
+        // Remote-approve: a human OKs each task from the board/phone. Park un-parked
+        // tasks, ignore rejected ones, and only run once approved.
+        if (opts.remoteApprove) {
+          const approved = candidates.find((t) => t.approval === "approved");
+          if (approved) {
+            if (await api.accept(approved.id)) await runTask(cwd, opts, api, approved, out);
+            continue;
+          }
+          const unparked = candidates.find((t) => t.approval == null);
+          if (unparked && (await api.requestApproval(unparked.id))) {
+            out(
+              `⏸ task ${unparked.id.slice(0, 8)} from ${unparked.fromAgentId} — awaiting approval on the board`,
+            );
+          }
+          continue; // pending/rejected tasks just wait
         }
-        const unparked = candidates.find((t) => t.approval == null);
-        if (unparked && (await api.requestApproval(unparked.id))) {
-          out(
-            `⏸ task ${unparked.id.slice(0, 8)} from ${unparked.fromAgentId} — awaiting approval on the board`,
+
+        const task = candidates[0];
+        if (!task) continue;
+
+        if (!opts.auto && ask) {
+          const answer = await ask(
+            `Run task ${task.id.slice(0, 8)} from ${task.fromAgentId}: ` +
+              `"${task.body.slice(0, 80)}"? [y/N]: `,
           );
+          if (!/^y(es)?$/i.test(answer.trim())) {
+            out(`skipped task ${task.id.slice(0, 8)} (answered no)`);
+            continue;
+          }
         }
-        continue; // pending/rejected tasks just wait
+        if (!(await api.accept(task.id))) continue; // someone else won the race
+        await runTask(cwd, opts, api, task, out);
+      } catch (err) {
+        out(`worker error: ${err instanceof Error ? err.message : String(err)}`);
       }
-
-      const task = candidates[0];
-      if (!task) continue;
-
-      if (!opts.auto && ask) {
-        const answer = await ask(
-          `Run task ${task.id.slice(0, 8)} from ${task.fromAgentId}: ` +
-            `"${task.body.slice(0, 80)}"? [y/N]: `,
-        );
-        if (!/^y(es)?$/i.test(answer.trim())) {
-          out(`skipped task ${task.id.slice(0, 8)} (answered no)`);
-          continue;
-        }
-      }
-      if (!(await api.accept(task.id))) continue; // someone else won the race
-      await runTask(cwd, opts, api, task, out);
-    } catch (err) {
-      out(`worker error: ${err instanceof Error ? err.message : String(err)}`);
     }
+  } finally {
+    clearInterval(hb);
   }
 }

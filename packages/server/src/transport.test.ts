@@ -118,14 +118,17 @@ describe("HTTP transport", () => {
         body: "{}",
       });
     for (let i = 0; i < 10; i++) expect((await wrong()).status).toBe(401);
-    // Locked out now — even a correct token from this IP is refused until the window resets.
+    // Guessers are locked out now…
     expect((await wrong()).status).toBe(429);
+    // …but a VALID token still gets in: behind a NAT or reverse proxy the whole team
+    // shares one address, and a stranger's failures must never lock teammates out.
     const good = await fetch(url(httpServer), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer secret" },
       body: "{}",
     });
-    expect(good.status).toBe(429);
+    expect(good.status).not.toBe(429);
+    expect(good.status).not.toBe(401);
   });
 
   it("does NOT lock out requests that omit the Authorization header (board polling)", async () => {
@@ -224,8 +227,8 @@ describe("board", () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0 });
     service.sendMessage({
-      fromAgentId: "rohan",
-      toAgentId: "cofounder",
+      fromAgentId: "alice",
+      toAgentId: "bob",
       repo: "team/app",
       kind: "task",
       body: "add rate limiting to /login",
@@ -318,6 +321,30 @@ describe("board", () => {
     });
     expect(res.status).toBe(200);
     expect(service.listTasks({}).tasks[0]!.approval).toBe("approved");
+  });
+
+  it("serves /board with clickjacking protection headers", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0 });
+    const res = await fetch(url(httpServer, "/board"));
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  });
+
+  it("answers malformed JSON with a generic error — no stack traces or paths", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    // Malformed JSON fails inside express.json(), BEFORE auth — exactly where the
+    // default Express handler would leak a stack trace with absolute filesystem paths.
+    const res = await fetch(url(httpServer, "/api/task"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).not.toContain("node_modules");
+    expect(JSON.parse(text)).toEqual({ error: "bad request" });
   });
 
   it("blocks non-local /api/board without a token (rebinding guard)", async () => {

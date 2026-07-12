@@ -33,6 +33,8 @@ export const BOARD_HTML = `<!doctype html>
   .dot.err { background: var(--red); box-shadow: 0 0 8px var(--red); }
   #status { color: var(--muted); font-size: 0.75rem; }
   #tok { margin-left: auto; }
+  #forget { background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.72rem; cursor: pointer; }
+  #forget:hover { color: var(--ink); border-color: var(--ink); }
   input, textarea, select, button { font-family: var(--ui); font-size: 0.85rem; }
   input, textarea, select { background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
     padding: 0.5rem 0.6rem; border-radius: 6px; }
@@ -143,6 +145,7 @@ export const BOARD_HTML = `<!doctype html>
   <h1>TOWER <small>/ TEAM BOARD</small></h1>
   <span class="dot" id="dot"></span><span id="status">connecting…</span>
   <input id="tok" type="password" placeholder="token (if required)" autocomplete="off" />
+  <button id="forget" type="button" title="Forget the saved token on this device" hidden>sign out</button>
 </header>
 
 <div class="tabs">
@@ -208,12 +211,23 @@ export const BOARD_HTML = `<!doctype html>
     }
   })();
   tokInput.value = localStorage.getItem("tower-token") || "";
-  tokInput.addEventListener("input", saveToken);
+  // Save on change (blur/Enter) only — polling per keystroke would send each PARTIAL
+  // token as a failed auth and trip the server's brute-force lockout mid-typing.
   tokInput.addEventListener("change", saveToken);
+  tokInput.addEventListener("keydown", function (e) { if (e.key === "Enter") saveToken(); });
+  var forgetBtn = document.getElementById("forget");
+  forgetBtn.addEventListener("click", function () {
+    localStorage.removeItem("tower-token");
+    tokInput.value = "";
+    forgetBtn.hidden = true;
+    poll();
+  });
   function saveToken() {
     localStorage.setItem("tower-token", tokInput.value.trim());
+    forgetBtn.hidden = !tokInput.value.trim();
     poll();
   }
+  forgetBtn.hidden = !token();
   function token() { return localStorage.getItem("tower-token") || ""; }
   function authHeaders(extra) {
     var h = extra || {};
@@ -295,12 +309,26 @@ export const BOARD_HTML = `<!doctype html>
       method: "POST",
       headers: authHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ taskId: taskId, approved: approved }),
-    }).then(poll);
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          setStatus("err", r.status === 401 ? "token needed — enter it top right" : "approval failed (error " + r.status + ")");
+          return null;
+        }
+        return r.json().then(function (j) {
+          if (j && j.ok === false) setStatus("err", "task is no longer pending (already decided?)");
+        });
+      })
+      .then(poll)
+      .catch(function () { setStatus("err", "offline — approval not sent, try again"); });
   }
 
   // --- render ------------------------------------------------------------
   function repoOf(data) {
-    var t = (data.tasks[0] || {}).repo || (data.claims[0] || {}).repo || (data.messages[0] || {}).repo;
+    // A live worker's repo is ground truth (it read it from git); tasks/claims can
+    // carry a stale or placeholder repo that would send new tasks nowhere.
+    var w = ((data.workers || [])[0] || {}).repo;
+    var t = w || (data.tasks[0] || {}).repo || (data.claims[0] || {}).repo || (data.messages[0] || {}).repo;
     return t || "team/app";
   }
 
@@ -546,7 +574,7 @@ export const BOARD_HTML = `<!doctype html>
         var line = el("div", "tline");
         line.appendChild(el("span", "edge", "└▶ "));
         line.appendChild(agentNode(t.assigneeAgentId || t.toAgentId));
-        line.appendChild(el("span", "st st " + (t.status === "open" ? "waiting" : t.status === "accepted" ? "running" : t.status), (t.approval === "pending" ? "needs your OK" : TASK_LABEL[t.status] || t.status)));
+        line.appendChild(el("span", "st st " + (t.approval === "rejected" ? "failed" : t.status === "open" ? "waiting" : t.status === "accepted" ? "running" : t.status), (t.approval === "pending" ? "needs your OK" : t.approval === "rejected" ? "rejected" : TASK_LABEL[t.status] || t.status)));
         kid.appendChild(line);
         kid.appendChild(el("div", "cmd", t.body.length > 90 ? t.body.slice(0, 90) + "…" : t.body));
         var rep = replies[t.id];
@@ -602,7 +630,10 @@ export const BOARD_HTML = `<!doctype html>
       .then(function (data) {
         if (!data) return;
         var now = data.now;
-        var sig = JSON.stringify([data.claims, data.conflicts, data.messages, data.tasks]);
+        // Include worker presence in the change signature, but not lastSeen — every
+        // heartbeat bumps it, and re-rendering per poll detaches buttons mid-tap.
+        var wsig = (data.workers || []).map(function (w) { return w.agentId + "|" + w.repo + "|" + w.runner; }).sort();
+        var sig = JSON.stringify([data.claims, data.conflicts, data.messages, data.tasks, wsig]);
         if (sig !== lastSig || now - lastRenderAt >= 15000) {
           lastSig = sig;
           lastRenderAt = now;

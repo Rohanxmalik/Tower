@@ -284,7 +284,7 @@
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
             <a class="btn" href="#install">30-second setup</a>
           </div>
-          <div class="trust">MIT · 156 tests · zero native deps · no telemetry · Node 22+</div>
+          <div class="trust">MIT · 202 tests · zero native deps · no telemetry · Node 22+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
@@ -501,7 +501,7 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">Instrument panel</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Eleven MCP tools</h2>
+          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Seventeen MCP tools</h2>
         </div>
         <div class="tools">
           <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions in one call</span></div>
@@ -515,6 +515,12 @@
           <div class="tool"><span class="name">next_task</span><span class="desc">A module that's safe to start now</span></div>
           <div class="tool"><span class="name">send_message</span><span class="desc">Message another agent — or hand it a task</span></div>
           <div class="tool"><span class="name">fetch_messages</span><span class="desc">Read the inbox; unread count rides every claim</span></div>
+          <div class="tool"><span class="name">accept_task</span><span class="desc">Claim a delegated task — first accept wins</span></div>
+          <div class="tool"><span class="name">complete_task</span><span class="desc">Finish with result + commit sha; delegator notified</span></div>
+          <div class="tool"><span class="name">list_tasks</span><span class="desc">Delegated work by status, recipient, assignee</span></div>
+          <div class="tool"><span class="name">request_approval</span><span class="desc">Park a task for a human tap (remote approve)</span></div>
+          <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject from the board — or your phone</span></div>
+          <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence: see which machines are ready</span></div>
         </div>
       </div>
     </section>
@@ -613,7 +619,7 @@
       // Paste ONE url into ENDPOINT (setup guide: docs/WAITLIST.md):
       //   • Google Apps Script web app  (…script.google.com/macros/s/…/exec) — free, straight to a Sheet
       //   • or a Formspree form         (https://formspree.io/f/xxxxxxx)     — email + Sheets add-on
-      // Empty ENDPOINT falls back to a pre-filled email to the maintainer (works with no backend).
+      // Empty ENDPOINT falls back to a pre-filled GitHub issue (works with no backend).
       (function () {
         const form = document.getElementById("wait");
         if (!form) return;
@@ -631,7 +637,7 @@
           };
           if (!ENDPOINT) {
             window.location.href =
-              "mailto:rohanxmalik06@gmail.com?subject=Tower%20Cloud%20waitlist&body=" +
+              "https://github.com/Rohanxmalik/Tower/issues/new?title=Tower%20Cloud%20waitlist&body=" +
               encodeURIComponent(email);
             return done();
           }

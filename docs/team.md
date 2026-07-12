@@ -125,7 +125,8 @@ docker run -d -p 4319:4319 -e TOWER_TOKEN=your-shared-secret -v tower-data:/app/
 ```
 
 Put it behind TLS (a reverse proxy / your platform's HTTPS) before exposing it publicly —
-the bearer token is sent in a header.
+the bearer token is sent in a header. And treat `/board#token=…` one-tap links as the
+token itself: pasting one into a chat leaves the token in that channel's history.
 
 ## Point each developer's agent at it
 

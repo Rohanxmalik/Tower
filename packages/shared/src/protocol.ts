@@ -92,7 +92,7 @@ export const Message = z.object({
 export type Message = z.infer<typeof Message>;
 
 // ---------------------------------------------------------------------------
-// MCP tool I/O contracts (9 tools)
+// MCP tool I/O contracts (17 tools)
 // ---------------------------------------------------------------------------
 
 export const ClaimIntentInput = z.object({

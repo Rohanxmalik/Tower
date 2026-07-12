@@ -14,7 +14,7 @@ if [ -f "$CLAIM_FILE" ]; then
   CLAIM_ID=$(cat "$CLAIM_FILE")
   SHA=$(git rev-parse HEAD)
   # Best-effort; never block a commit on Tower. `tower claim`/`guard` write .tower/claim-id.
-  node packages/cli/dist/index.js complete --claim "$CLAIM_ID" --sha "$SHA" >/dev/null 2>&1 || true
+  npx -y tower-mcp complete --claim "$CLAIM_ID" --sha "$SHA" >/dev/null 2>&1 || true
   rm -f "$CLAIM_FILE"
 fi
 exit 0

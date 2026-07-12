@@ -258,6 +258,11 @@ export async function run(argv: string[]): Promise<number> {
         process.stderr.write(`unknown --runner "${runner}" (claude | codex | cmd)\n`);
         return 1;
       }
+      if (values.approve != null && values.approve !== "remote") {
+        // A typo here must not silently fall back to terminal-confirm mode.
+        process.stderr.write(`unknown --approve "${values.approve}" (only: remote)\n`);
+        return 1;
+      }
       const defaults = gitDefaults(cwd);
       const opts: WorkerOptions = {
         agentId: values.agent ?? defaults.defaultFrom,

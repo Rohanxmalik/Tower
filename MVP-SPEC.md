@@ -118,7 +118,7 @@ type Decision = {
   id: string;
   title: string;
   body: string; // what + why
-  author: string; // "claude-1 + rohan"
+  author: string; // "claude-1 + alice"
   tags: string[];
   createdAt: number;
   relatedFiles?: string[];

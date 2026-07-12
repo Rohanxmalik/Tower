@@ -87,7 +87,10 @@ export interface HttpOptions {
  */
 export function startHttp(service: TowerService, opts: HttpOptions): Promise<Server> {
   const app = express();
-  app.use(express.json());
+  // Behind Render/nginx/Cloudflare the socket address is the proxy's — without this,
+  // every client shares one brute-force bucket and 10 bad tokens lock out the world.
+  app.set("trust proxy", 1);
+  app.use(express.json({ limit: "256kb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "tower" });
@@ -100,21 +103,21 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
    * itself and returns false when the request must not proceed. */
   const authorize = (req: express.Request, res: express.Response): boolean => {
     if (opts.token) {
-      const ip = req.socket.remoteAddress ?? "unknown";
+      const header = req.header("authorization") ?? "";
+      // A valid token always wins — teammates behind a NAT/proxy must never be
+      // locked out by someone else's failed attempts on the shared address.
+      if (safeEqual(header, `Bearer ${opts.token}`)) return true;
+      const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
       if (throttle.isLocked(ip)) {
         res.status(429).json({ error: "too many failed auth attempts — try again later" });
         return false;
       }
-      const header = req.header("authorization") ?? "";
-      if (!safeEqual(header, `Bearer ${opts.token}`)) {
-        // Only a *present but wrong* token counts as a brute-force attempt. A missing
-        // header is just "not signed in yet" — the board polls before a token is entered,
-        // and those requests must not lock out the IP (which is shared by the whole team).
-        if (header) throttle.recordFailure(ip);
-        res.status(401).json({ error: "unauthorized" });
-        return false;
-      }
-      return true;
+      // Only a *present but wrong* token counts as a brute-force attempt. A missing
+      // header is just "not signed in yet" — the board polls before a token is entered,
+      // and those requests must not lock out the IP (which is shared by the whole team).
+      if (header) throttle.recordFailure(ip);
+      res.status(401).json({ error: "unauthorized" });
+      return false;
     }
     if (!isLocalHost(req.header("host"))) {
       // Token-less mode is for local use only; block DNS-rebinding from browsers.
@@ -131,6 +134,10 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
     res.redirect("/board");
   });
   app.get("/board", (_req, res) => {
+    // The board holds the token in localStorage and has one-tap Approve buttons —
+    // refuse to be framed so another site can't overlay and clickjack them.
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
     res.type("html").send(BOARD_HTML);
   });
 
@@ -178,6 +185,18 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
     res.status(405).json({ error: "method not allowed" });
   app.get("/mcp", methodNotAllowed);
   app.delete("/mcp", methodNotAllowed);
+
+  // Terminal error handler: without it Express's default page leaks stack traces and
+  // absolute paths (e.g. on malformed JSON, which fails before auth) unless NODE_ENV
+  // happens to be "production". Always answer with a generic JSON error instead.
+  const onError: express.ErrorRequestHandler = (err, _req, res, _next) => {
+    const raw = (err as { status?: number; statusCode?: number } | null) ?? {};
+    const status = raw.status ?? raw.statusCode ?? 500;
+    res
+      .status(typeof status === "number" && status >= 400 && status < 600 ? status : 500)
+      .json({ error: status >= 500 ? "internal error" : "bad request" });
+  };
+  app.use(onError);
 
   return new Promise((resolve) => {
     const httpServer = app.listen(opts.port, opts.host ?? "127.0.0.1", () => resolve(httpServer));

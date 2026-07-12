@@ -61,8 +61,8 @@ export interface TowerServiceOptions {
 
 /**
  * The transport-agnostic core of Tower. Wires the store, collision engine and
- * sequencer into the nine operations exposed over MCP. Kept free of MCP/HTTP so it
- * can be unit-tested directly and reused by any transport.
+ * sequencer into the seventeen operations exposed over MCP. Kept free of MCP/HTTP so
+ * it can be unit-tested directly and reused by any transport.
  */
 export class TowerService {
   readonly store: TowerStore;
@@ -142,7 +142,8 @@ export class TowerService {
       claims,
       conflicts: pairwiseCollisions(claims),
       messages: this.store.listMessages({ limit: 50 }),
-      tasks: this.store.listTasks({}),
+      // Newest 100 — matches the 50-message reply window and keeps the DOM bounded.
+      tasks: this.store.listTasks({ limit: 100 }),
       workers: this.store.listWorkers(WORKER_ONLINE_MS),
       now: Date.now(),
     };
@@ -221,7 +222,21 @@ export class TowerService {
   }
 
   resolveApproval(input: ResolveApprovalInput): OkOutput {
-    return { ok: this.store.resolveApproval(input.taskId, input.approved) };
+    const ok = this.store.resolveApproval(input.taskId, input.approved);
+    if (ok && !input.approved) {
+      // Rejection is terminal (the store marks the task failed) — tell the delegator
+      // instead of leaving them waiting on a task that will never run.
+      const task = this.store.getTask(input.taskId)!;
+      this.store.sendMessage({
+        fromAgentId: task.assigneeAgentId ?? "board",
+        toAgentId: task.fromAgentId,
+        repo: task.repo,
+        kind: "task_update",
+        body: `[FAILED] rejected by a human on the board — ${task.body.slice(0, 120)}`,
+        replyTo: task.id,
+      });
+    }
+    return { ok };
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {

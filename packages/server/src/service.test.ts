@@ -119,7 +119,7 @@ describe("TowerService — decisions & sequencer", () => {
     const { id } = svc.logDecision({
       title: "Use Supabase Auth",
       body: "RLS",
-      author: "claude+rohan",
+      author: "claude+alice",
       tags: ["auth"],
       relatedFiles: [],
     });
@@ -149,29 +149,29 @@ describe("messaging", () => {
   it("send + fetch roundtrip through the service", () => {
     const service = new TowerService();
     const { id } = service.sendMessage({
-      fromAgentId: "rohan",
-      toAgentId: "cofounder",
+      fromAgentId: "alice",
+      toAgentId: "bob",
       repo: "team/app",
       kind: "task",
       body: "add rate limiting",
     });
     expect(id).toBeTruthy();
-    const { messages } = service.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    const { messages } = service.fetchMessages({ agentId: "bob", unreadOnly: true });
     expect(messages).toHaveLength(1);
-    expect(messages[0]!.fromAgentId).toBe("rohan");
+    expect(messages[0]!.fromAgentId).toBe("alice");
   });
 
   it("claim_intent reports the unread inbox count (you've got mail)", () => {
     const service = new TowerService();
     service.sendMessage({
-      fromAgentId: "rohan",
-      toAgentId: "cofounder",
+      fromAgentId: "alice",
+      toAgentId: "bob",
       repo: "team/app",
       kind: "message",
       body: "heads up",
     });
     const res = service.claimIntent({
-      agentId: "cofounder",
+      agentId: "bob",
       repo: "team/app",
       branch: "main",
       files: [],
@@ -184,7 +184,7 @@ describe("messaging", () => {
   it("boardSnapshot includes the recent message feed", () => {
     const service = new TowerService();
     service.sendMessage({
-      fromAgentId: "rohan",
+      fromAgentId: "alice",
       toAgentId: "*",
       repo: "team/app",
       kind: "message",
@@ -285,6 +285,27 @@ describe("task approval + create (mobile control)", () => {
     expect(service.listTasks({}).tasks[0]!.approval).toBe("pending");
     expect(service.resolveApproval({ taskId: id, approved: true }).ok).toBe(true);
     expect(service.listTasks({}).tasks[0]!.approval).toBe("approved");
+  });
+
+  it("rejecting a parked task fails it and notifies the delegator", () => {
+    const service = new TowerService();
+    const { id } = service.createTask({
+      repo: "r",
+      body: "risky change",
+      fromAgentId: "alice",
+      toAgentId: "*",
+    });
+    service.requestApproval({ taskId: id, agentId: "bob" });
+    expect(service.resolveApproval({ taskId: id, approved: false }).ok).toBe(true);
+    const task = service.listTasks({}).tasks[0]!;
+    expect(task.approval).toBe("rejected");
+    expect(task.status).toBe("failed"); // terminal — no worker mode can run it
+    expect(service.acceptTask({ taskId: id, agentId: "dana" }).ok).toBe(false);
+    // The delegator hears about the rejection instead of waiting forever.
+    const { messages } = service.fetchMessages({ agentId: "alice", unreadOnly: true });
+    const update = messages.find((m) => m.kind === "task_update" && m.replyTo === id);
+    expect(update).toBeDefined();
+    expect(update!.body).toMatch(/rejected/i);
   });
 });
 

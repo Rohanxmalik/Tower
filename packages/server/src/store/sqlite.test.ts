@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createRequire } from "node:module";
 import { TowerStore, DEFAULT_PRUNE_MS } from "./sqlite.js";
+
+const { DatabaseSync } = createRequire(import.meta.url)(
+  "node:sqlite",
+) as typeof import("node:sqlite");
 
 let clock = 1_000;
 const now = () => clock;
@@ -122,7 +130,7 @@ describe("TowerStore — decisions", () => {
     const d = store.logDecision({
       title: "Use Supabase Auth",
       body: "Better RLS support",
-      author: "claude + rohan",
+      author: "claude + alice",
       tags: ["auth"],
       relatedFiles: ["src/auth.ts"],
     });
@@ -177,8 +185,8 @@ describe("TowerStore — messages (agent inbox)", () => {
 
   const send = (over = {}) =>
     store.sendMessage({
-      fromAgentId: "rohan",
-      toAgentId: "cofounder",
+      fromAgentId: "alice",
+      toAgentId: "bob",
       repo: "team/app",
       kind: "task",
       body: "add rate limiting to /login",
@@ -187,55 +195,55 @@ describe("TowerStore — messages (agent inbox)", () => {
 
   it("stores and fetches unread messages for an agent, marking them read", () => {
     send();
-    expect(store.unreadCount("cofounder")).toBe(1);
-    const msgs = store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    expect(store.unreadCount("bob")).toBe(1);
+    const msgs = store.fetchMessages({ agentId: "bob", unreadOnly: true });
     expect(msgs).toHaveLength(1);
     expect(msgs[0]!.body).toContain("rate limiting");
     expect(msgs[0]!.kind).toBe("task");
     // fetched once → read; second unread fetch is empty
-    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(0);
-    expect(store.unreadCount("cofounder")).toBe(0);
+    expect(store.fetchMessages({ agentId: "bob", unreadOnly: true })).toHaveLength(0);
+    expect(store.unreadCount("bob")).toBe(0);
   });
 
   it("delivers broadcasts (*) to any agent without marking read for others", () => {
     send({ toAgentId: "*", kind: "message", body: "deploy at 5pm" });
-    expect(store.unreadCount("cofounder")).toBe(1);
-    expect(store.unreadCount("alice")).toBe(1);
+    expect(store.unreadCount("bob")).toBe(1);
+    expect(store.unreadCount("carol")).toBe(1);
   });
 
   it("does not deliver an agent's own messages back to them", () => {
     send({ toAgentId: "*" });
-    expect(store.unreadCount("rohan")).toBe(0);
+    expect(store.unreadCount("alice")).toBe(0);
   });
 
   it("keeps a broadcast unread for other agents after one fetches it", () => {
     send({ toAgentId: "*", kind: "message", body: "deploy at 5pm" });
 
-    // cofounder fetches — read for cofounder only
-    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(1);
-    expect(store.fetchMessages({ agentId: "cofounder", unreadOnly: true })).toHaveLength(0);
+    // bob fetches — read for bob only
+    expect(store.fetchMessages({ agentId: "bob", unreadOnly: true })).toHaveLength(1);
+    expect(store.fetchMessages({ agentId: "bob", unreadOnly: true })).toHaveLength(0);
 
-    // alice STILL sees it unread and can fetch it herself
-    expect(store.unreadCount("alice")).toBe(1);
-    const aliceMsgs = store.fetchMessages({ agentId: "alice", unreadOnly: true });
-    expect(aliceMsgs).toHaveLength(1);
-    expect(aliceMsgs[0]!.body).toBe("deploy at 5pm");
+    // carol STILL sees it unread and can fetch it herself
+    expect(store.unreadCount("carol")).toBe(1);
+    const carolMsgs = store.fetchMessages({ agentId: "carol", unreadOnly: true });
+    expect(carolMsgs).toHaveLength(1);
+    expect(carolMsgs[0]!.body).toBe("deploy at 5pm");
   });
 
   it("counts drop to zero for every agent only after they each fetch a broadcast", () => {
     send({ toAgentId: "*", kind: "message", body: "standup notes" });
-    store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
-    expect(store.unreadCount("cofounder")).toBe(0);
-    expect(store.unreadCount("alice")).toBe(1);
-    store.fetchMessages({ agentId: "alice", unreadOnly: true });
-    expect(store.unreadCount("cofounder")).toBe(0);
-    expect(store.unreadCount("alice")).toBe(0);
+    store.fetchMessages({ agentId: "bob", unreadOnly: true });
+    expect(store.unreadCount("bob")).toBe(0);
+    expect(store.unreadCount("carol")).toBe(1);
+    store.fetchMessages({ agentId: "carol", unreadOnly: true });
+    expect(store.unreadCount("bob")).toBe(0);
+    expect(store.unreadCount("carol")).toBe(0);
   });
 
   it("lists recent messages for the board feed regardless of read state", () => {
     send();
     send({ body: "second", kind: "message" });
-    store.fetchMessages({ agentId: "cofounder", unreadOnly: true });
+    store.fetchMessages({ agentId: "bob", unreadOnly: true });
     expect(store.listMessages({ limit: 10 })).toHaveLength(2);
     expect(store.listMessages({ limit: 1 })).toHaveLength(1);
   });
@@ -243,8 +251,8 @@ describe("TowerStore — messages (agent inbox)", () => {
   it("threads replies via replyTo", () => {
     const { id } = send();
     const reply = store.sendMessage({
-      fromAgentId: "cofounder",
-      toAgentId: "rohan",
+      fromAgentId: "bob",
+      toAgentId: "alice",
       repo: "team/app",
       kind: "task_update",
       body: "done in abc123",
@@ -260,8 +268,8 @@ describe("TowerStore — prune", () => {
 
   const sendOld = (store: TowerStore, body = "stale") =>
     store.sendMessage({
-      fromAgentId: "rohan",
-      toAgentId: "cofounder",
+      fromAgentId: "alice",
+      toAgentId: "bob",
       repo: "team/app",
       kind: "message",
       body,
@@ -277,7 +285,7 @@ describe("TowerStore — prune", () => {
     store.completeClaim(oldDone.id);
     const oldActive = store.createClaim({ ...baseClaim, agentId: "keeper" });
     sendOld(store, "old news");
-    store.fetchMessages({ agentId: "cofounder", unreadOnly: true }); // creates a read receipt
+    store.fetchMessages({ agentId: "bob", unreadOnly: true }); // creates a read receipt
 
     clock = 1_000 + 8 * DAY;
     const recentDone = store.createClaim({ ...baseClaim, agentId: "recent" });
@@ -448,6 +456,67 @@ describe("TowerStore — task approval gate", () => {
     store.requestApproval("t1", "bob");
     const [t] = store.listTasks({ forAgentId: "bob" });
     expect(t!.approval).toBe("pending");
+  });
+
+  it("reject is terminal: the task fails and can never be accepted", () => {
+    task();
+    store.requestApproval("t1", "bob");
+    expect(store.resolveApproval("t1", false)).toBe(true);
+    const t = store.getTask("t1")!;
+    expect(t.approval).toBe("rejected");
+    expect(t.status).toBe("failed");
+    // Not even an --auto worker on the same inbox can run it now.
+    expect(store.acceptTask("t1", "dana")).toBe(false);
+  });
+
+  it("acceptTask respects the gate: pending blocks, approved allows", () => {
+    task();
+    store.requestApproval("t1", "bob");
+    expect(store.acceptTask("t1", "dana")).toBe(false); // human hasn't decided yet
+    store.resolveApproval("t1", true);
+    expect(store.acceptTask("t1", "dana")).toBe(true); // approved — now it runs
+  });
+
+  it("requestApproval cannot re-park or reset an already-decided task", () => {
+    task();
+    store.requestApproval("t1", "bob");
+    store.resolveApproval("t1", true);
+    expect(store.requestApproval("t1", "dana")).toBe(false);
+    const t = store.getTask("t1")!;
+    expect(t.approval).toBe("approved"); // a human's decision is never overwritten
+    expect(t.assigneeAgentId).toBe("bob");
+  });
+});
+
+describe("TowerStore — in-place upgrade of 0.5.0 database files", () => {
+  it("adds the approval column to a tasks table created without it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tower-upgrade-"));
+    const path = join(dir, "old.db");
+    // Exactly the 0.5.0 tasks DDL — no approval column.
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
+      body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, commitSha TEXT, prUrl TEXT,
+      result TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+    );`);
+    old.close();
+    try {
+      const store = new TowerStore({ path });
+      // Every delegation path INSERTs the approval column — dead on 0.5.0 DBs pre-fix.
+      const t = store.createTask({
+        id: "up1",
+        repo: "r",
+        fromAgentId: "alice",
+        toAgentId: "*",
+        body: "created on an upgraded database",
+      });
+      expect(t.status).toBe("open");
+      expect(store.requestApproval("up1", "bob")).toBe(true);
+      expect(store.getTask("up1")!.approval).toBe("pending");
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+    }
   });
 });
 

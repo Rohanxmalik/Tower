@@ -30,7 +30,7 @@ import type {
   ResolveApprovalInput,
   HeartbeatWorkerInput,
 } from "@tower/shared";
-import type { Claim, DelegatedTask, Message, Worker } from "@tower/shared";
+import type { Claim, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
 
 /** A worker is "online" if it heartbeated within this window. */
 export const WORKER_ONLINE_MS = 30_000;
@@ -48,6 +48,8 @@ export interface BoardSnapshot {
   tasks: DelegatedTask[];
   /** Worker daemons currently online (heartbeated recently) — who can run a task now. */
   workers: Worker[];
+  /** Pinned team rules (decisions tagged "rule") — every delegated prompt carries them. */
+  rules: Decision[];
   /** Server clock (ms) so the board can render TTL countdowns without clock skew. */
   now: number;
 }
@@ -145,6 +147,7 @@ export class TowerService {
       // Newest 100 — matches the 50-message reply window and keeps the DOM bounded.
       tasks: this.store.listTasks({ limit: 100 }),
       workers: this.store.listWorkers(WORKER_ONLINE_MS),
+      rules: this.store.getDecisions({ tags: ["rule"] }).slice(0, 20),
       now: Date.now(),
     };
   }
@@ -164,6 +167,7 @@ export class TowerService {
         fromAgentId: input.fromAgentId,
         toAgentId: input.toAgentId,
         body: input.body,
+        ...(input.size ? { size: input.size } : {}),
       });
     }
     return { id: msg.id };
@@ -214,11 +218,18 @@ export class TowerService {
       repo: input.repo,
       kind: "task",
       body: input.body,
+      ...(input.size ? { size: input.size } : {}),
     });
   }
 
+  /** Optional hook fired when a worker parks a task for human approval — the HTTP
+   * transport wires web push here so a phone buzzes without the board being open. */
+  onApprovalRequested?: (task: DelegatedTask) => void;
+
   requestApproval(input: RequestApprovalInput): OkOutput {
-    return { ok: this.store.requestApproval(input.taskId, input.agentId) };
+    const ok = this.store.requestApproval(input.taskId, input.agentId);
+    if (ok) this.onApprovalRequested?.(this.store.getTask(input.taskId)!);
+    return { ok };
   }
 
   resolveApproval(input: ResolveApprovalInput): OkOutput {

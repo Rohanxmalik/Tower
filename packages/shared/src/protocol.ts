@@ -6,6 +6,11 @@ import { z } from "zod";
  * from them so the two can never drift.
  */
 
+/** One version string for the whole release: the MCP server, the remote client and
+ * `/health` all report this, and the worker warns when major.minor drifts from the
+ * server it talks to. Bump together with packages/cli/package.json. */
+export const TOWER_VERSION = "0.7.0";
+
 // ---------------------------------------------------------------------------
 // Core domain types
 // ---------------------------------------------------------------------------
@@ -209,6 +214,8 @@ export const DelegatedTask = z.object({
   assigneeAgentId: z.string().optional(),
   /** Set when a worker is waiting on human approval before running (remote-approve mode). */
   approval: ApprovalState.optional(),
+  /** Advisory size tag ("s" | "m" | "l") — big tasks prefer workers with capacity. */
+  size: z.enum(["s", "m", "l"]).optional(),
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
   result: z.string().optional(),
@@ -217,12 +224,17 @@ export const DelegatedTask = z.object({
 });
 export type DelegatedTask = z.infer<typeof DelegatedTask>;
 
+/** Rough task size — advisory routing metadata ("l" tasks prefer fresh workers). */
+export const TaskSize = z.enum(["s", "m", "l"]);
+export type TaskSize = z.infer<typeof TaskSize>;
+
 /** Create a delegated task directly (used by the board's mobile send box). */
 export const CreateTaskInput = z.object({
   repo: z.string().min(1),
   body: z.string().min(1),
   fromAgentId: z.string().min(1).default("board"),
   toAgentId: z.string().min(1).default("*"),
+  size: TaskSize.optional(),
 });
 export type CreateTaskInput = z.infer<typeof CreateTaskInput>;
 
@@ -274,12 +286,18 @@ export type ListTasksInput = z.infer<typeof ListTasksInput>;
 export const ListTasksOutput = z.object({ tasks: z.array(DelegatedTask) });
 export type ListTasksOutput = z.infer<typeof ListTasksOutput>;
 
+/** Worker capacity: "ok", or "low" — cooling down after a rate-limit hit / over its
+ * --budget. Vendors expose no "tokens remaining" API, so capacity is self-reported. */
+export const WorkerStatus = z.enum(["ok", "low"]);
+export type WorkerStatus = z.infer<typeof WorkerStatus>;
+
 /** A worker daemon announcing it is online and ready to run delegated tasks. */
 export const Worker = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
   /** Which local agent it runs: "claude" | "codex" | "cmd" (free-form for forward-compat). */
   runner: z.string().default(""),
+  status: WorkerStatus.default("ok"),
   lastSeen: z.number().int(),
 });
 export type Worker = z.infer<typeof Worker>;
@@ -288,8 +306,17 @@ export const HeartbeatWorkerInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
   runner: z.string().default(""),
+  status: WorkerStatus.default("ok"),
 });
 export type HeartbeatWorkerInput = z.infer<typeof HeartbeatWorkerInput>;
+
+/** A browser push subscription (the board's "notify my phone" opt-in). HTTP-only —
+ * not an MCP tool; validated at the /api/push-subscribe boundary. */
+export const PushSubscriptionInput = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+});
+export type PushSubscriptionInput = z.infer<typeof PushSubscriptionInput>;
 
 export const SendMessageInput = z.object({
   fromAgentId: z.string().min(1),
@@ -298,6 +325,8 @@ export const SendMessageInput = z.object({
   body: z.string().min(1),
   kind: MessageKind.default("message"),
   replyTo: z.string().optional(),
+  /** Advisory size for kind:"task" — see TaskSize. */
+  size: TaskSize.optional(),
 });
 export type SendMessageInput = z.infer<typeof SendMessageInput>;
 

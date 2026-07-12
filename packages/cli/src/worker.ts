@@ -195,7 +195,12 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
       local((svc) => svc.requestApproval({ taskId, agentId: opts.agentId })).ok,
     heartbeat: async () => {
       local((svc) =>
-        svc.heartbeatWorker({ agentId: opts.agentId, repo: opts.repo, runner: opts.runner }),
+        svc.heartbeatWorker({
+          agentId: opts.agentId,
+          repo: opts.repo,
+          runner: opts.runner,
+          status: "ok",
+        }),
       );
     },
     complete: async (input) => {

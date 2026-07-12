@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_inbox ON messages (toAgentId, readAt);
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
-  body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, approval TEXT, commitSha TEXT, prUrl TEXT,
+  body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, approval TEXT, size TEXT,
+  commitSha TEXT, prUrl TEXT,
   result TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, toAgentId);
@@ -58,8 +59,15 @@ CREATE TABLE IF NOT EXISTS message_reads (
   PRIMARY KEY (messageId, agentId)
 );
 CREATE TABLE IF NOT EXISTS workers (
-  agentId TEXT NOT NULL, repo TEXT NOT NULL, runner TEXT NOT NULL, lastSeen INTEGER NOT NULL,
+  agentId TEXT NOT NULL, repo TEXT NOT NULL, runner TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ok', lastSeen INTEGER NOT NULL,
   PRIMARY KEY (agentId, repo)
+);
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint TEXT PRIMARY KEY, sub TEXT NOT NULL, createdAt INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS kv (
+  k TEXT PRIMARY KEY, v TEXT NOT NULL
 );
 `;
 
@@ -133,6 +141,7 @@ interface TaskRow {
   status: string;
   assigneeAgentId: string | null;
   approval: string | null;
+  size: string | null;
   commitSha: string | null;
   prUrl: string | null;
   result: string | null;
@@ -150,6 +159,7 @@ function rowToTask(r: TaskRow): DelegatedTask {
     status: r.status as TaskStatus,
     ...(r.assigneeAgentId != null ? { assigneeAgentId: r.assigneeAgentId } : {}),
     ...(r.approval != null ? { approval: r.approval as ApprovalState } : {}),
+    ...(r.size != null ? { size: r.size as DelegatedTask["size"] } : {}),
     ...(r.commitSha != null ? { commitSha: r.commitSha } : {}),
     ...(r.prUrl != null ? { prUrl: r.prUrl } : {}),
     ...(r.result != null ? { result: r.result } : {}),
@@ -216,17 +226,20 @@ export class TowerStore {
     this.migrate();
   }
 
-  /** In-place upgrades for DB files created by older versions. */
+  /** In-place upgrades for DB files created by older versions (CREATE TABLE IF NOT
+   * EXISTS never touches an existing table, so new columns must be ALTERed in). */
   private migrate(): void {
-    // 0.5.0 shipped `tasks` without the approval column; CREATE TABLE IF NOT EXISTS
-    // won't touch the existing table, so ALTER it in — otherwise every delegation
-    // INSERT fails on an upgraded install.
-    const cols = this.db.prepare(`PRAGMA table_info(tasks)`).all() as unknown as {
-      name: string;
-    }[];
-    if (!cols.some((c) => c.name === "approval")) {
-      this.db.exec(`ALTER TABLE tasks ADD COLUMN approval TEXT`);
-    }
+    const addColumn = (table: string, column: string, ddl: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as {
+        name: string;
+      }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+      }
+    };
+    addColumn("tasks", "approval", "approval TEXT"); // 0.5.0 → 0.6.x
+    addColumn("tasks", "size", "size TEXT"); // 0.6.x → 0.7.0
+    addColumn("workers", "status", "status TEXT NOT NULL DEFAULT 'ok'"); // 0.6.x → 0.7.0
   }
 
   // -- claims ---------------------------------------------------------------
@@ -484,14 +497,24 @@ export class TowerStore {
     fromAgentId: string;
     toAgentId: string;
     body: string;
+    size?: DelegatedTask["size"];
   }): DelegatedTask {
     const now = this.now();
     this.db
       .prepare(
-        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,approval,commitSha,prUrl,result,createdAt,updatedAt)
-         VALUES (?,?,?,?,?,'open',NULL,NULL,NULL,NULL,NULL,?,?)`,
+        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,approval,size,commitSha,prUrl,result,createdAt,updatedAt)
+         VALUES (?,?,?,?,?,'open',NULL,NULL,?,NULL,NULL,NULL,?,?)`,
       )
-      .run(input.id, input.repo, input.fromAgentId, input.toAgentId, input.body, now, now);
+      .run(
+        input.id,
+        input.repo,
+        input.fromAgentId,
+        input.toAgentId,
+        input.body,
+        input.size ?? null,
+        now,
+        now,
+      );
     return this.getTask(input.id)!;
   }
 
@@ -609,14 +632,20 @@ export class TowerStore {
 
   // -- worker presence ------------------------------------------------------
 
-  /** Record that a worker is alive (upsert on agentId+repo). */
-  heartbeatWorker(input: { agentId: string; repo: string; runner: string }): void {
+  /** Record that a worker is alive (upsert on agentId+repo), with self-reported capacity. */
+  heartbeatWorker(input: {
+    agentId: string;
+    repo: string;
+    runner: string;
+    status?: Worker["status"];
+  }): void {
     this.db
       .prepare(
-        `INSERT INTO workers (agentId,repo,runner,lastSeen) VALUES (?,?,?,?)
-         ON CONFLICT(agentId,repo) DO UPDATE SET runner=excluded.runner, lastSeen=excluded.lastSeen`,
+        `INSERT INTO workers (agentId,repo,runner,status,lastSeen) VALUES (?,?,?,?,?)
+         ON CONFLICT(agentId,repo) DO UPDATE SET runner=excluded.runner,
+           status=excluded.status, lastSeen=excluded.lastSeen`,
       )
-      .run(input.agentId, input.repo, input.runner, this.now());
+      .run(input.agentId, input.repo, input.runner, input.status ?? "ok", this.now());
   }
 
   /** Workers seen within `windowMs` (online), newest first. */
@@ -629,8 +658,46 @@ export class TowerStore {
       agentId: r.agentId,
       repo: r.repo,
       runner: r.runner,
+      status: r.status === "low" ? "low" : "ok",
       lastSeen: r.lastSeen,
     }));
+  }
+
+  // -- push subscriptions & small kv (web push) ------------------------------
+
+  /** Save a browser push subscription (upsert by endpoint). */
+  addPushSub(endpoint: string, subJson: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO push_subs (endpoint, sub, createdAt) VALUES (?,?,?)
+         ON CONFLICT(endpoint) DO UPDATE SET sub=excluded.sub`,
+      )
+      .run(endpoint, subJson, this.now());
+  }
+
+  listPushSubs(): { endpoint: string; sub: string }[] {
+    return this.db.prepare(`SELECT endpoint, sub FROM push_subs`).all() as unknown as {
+      endpoint: string;
+      sub: string;
+    }[];
+  }
+
+  /** Drop a subscription the push service says is gone (410/404). */
+  deletePushSub(endpoint: string): void {
+    this.db.prepare(`DELETE FROM push_subs WHERE endpoint = ?`).run(endpoint);
+  }
+
+  getKv(key: string): string | undefined {
+    const row = this.db.prepare(`SELECT v FROM kv WHERE k = ?`).get(key) as unknown as
+      | { v: string }
+      | undefined;
+    return row?.v;
+  }
+
+  setKv(key: string, value: string): void {
+    this.db
+      .prepare(`INSERT INTO kv (k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`)
+      .run(key, value);
   }
 
   // -- decisions ------------------------------------------------------------

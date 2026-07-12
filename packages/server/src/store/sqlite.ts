@@ -689,8 +689,7 @@ export class TowerStore {
 
   getKv(key: string): string | undefined {
     const row = this.db.prepare(`SELECT v FROM kv WHERE k = ?`).get(key) as unknown as
-      | { v: string }
-      | undefined;
+      { v: string } | undefined;
     return row?.v;
   }
 

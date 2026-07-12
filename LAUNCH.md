@@ -14,7 +14,9 @@ compound.
 
 ## 1. npm — ✅ DONE
 
-`tower-mcp` is live on npm (v0.6.0): one self-contained package, `npx -y tower-mcp setup`
+`tower-mcp` is live on npm (v0.6.0 published; **v0.6.1 — the security-audit release — is
+committed and must be published before announcing**: `cd packages/cli && npm publish`).
+One self-contained package, `npx -y tower-mcp setup`
 onboards a repo in one command. To ship a new version: bump `packages/cli/package.json`
 (+ the version strings in `packages/server/src/mcp.ts` and `packages/cli/src/remote.ts`),
 `npm run build && npm test`, then `npm publish` from `packages/cli`.

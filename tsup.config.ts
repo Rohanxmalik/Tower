@@ -25,6 +25,9 @@ export default defineConfig({
     "tree-sitter-wasms",
     "yaml",
     "zod",
+    // web-push does a dynamic require("crypto"); bundling it breaks the ESM output
+    // ("Dynamic require ... is not supported") and crashes serve at startup.
+    "web-push",
   ],
   banner: { js: "#!/usr/bin/env node" },
   clean: false,

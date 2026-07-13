@@ -1,7 +1,15 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { DelegatedTask, ListTasksOutput, AcceptTaskOutput, OkOutput } from "@tower/shared";
+import type {
+  DelegatedTask,
+  ListTasksOutput,
+  AcceptTaskOutput,
+  OkOutput,
+  GetDecisionsOutput,
+  WorkerStatus,
+} from "@tower/shared";
+import { TOWER_VERSION } from "@tower/shared";
 import { remoteConfig, withRemote } from "./remote.js";
 import { buildService, type BuildOptions } from "./lib.js";
 import type { Writer } from "./commands.js";
@@ -79,10 +87,15 @@ export interface WorkerOptions {
   branchPrefix?: string;
   push?: boolean;
   pr?: boolean;
+  /** Cap on tasks STARTED per rolling 24h; over it the worker reports "low" capacity
+   * and accepts nothing until the window frees up. In-memory — a restart resets it. */
+  budget?: number;
   /** Tests: stop after N poll cycles (default: run forever). */
   ticks?: number;
   exec?: Exec;
   ask?: (q: string) => Promise<string>;
+  /** Injectable clock (tests). */
+  now?: () => number;
 }
 
 export interface RunnerCmd {
@@ -125,11 +138,45 @@ export function runnerCommand(
 const TAIL_CHARS = 2000;
 const tail = (s: string): string => s.slice(-TAIL_CHARS).trim();
 
+/** Cooldown after a rate-limit failure: report "low" capacity, accept nothing, self-recover. */
+export const COOLDOWN_MS = 10 * 60_000;
+/** Rolling window for --budget. */
+export const BUDGET_WINDOW_MS = 24 * 60 * 60_000;
+/** Runner output that means "the agent is out of tokens/requests", not "the task is bad".
+ * Vendors expose no quota API, so exhaustion is detected from the failure text. */
+export const RATE_LIMIT_RE = /rate.?limit|too many requests|\b429\b|quota|usage limit|exhaust/i;
+
+/** One-shot startup handshake: warn (never block) when server and worker drift by
+ * major.minor. Pre-0.7 servers have no version in /health — silently skipped. */
+export async function checkServerVersion(
+  mcpUrl: string,
+  out: Writer,
+  f: typeof fetch = fetch,
+): Promise<void> {
+  try {
+    const res = await f(new URL(mcpUrl).origin + "/health");
+    if (!res.ok) return;
+    const version = ((await res.json()) as { version?: string }).version;
+    if (!version) return;
+    const mm = (v: string) => v.split(".").slice(0, 2).join(".");
+    if (mm(version) !== mm(TOWER_VERSION)) {
+      out(
+        `⚠ version drift: server ${version} vs worker ${TOWER_VERSION} — ` +
+          `upgrade the older side (npm i -g tower-mcp@latest)`,
+      );
+    }
+  } catch {
+    // best-effort probe; a worker must start even if the server is briefly down
+  }
+}
+
 interface TaskApi {
   listOpen(): Promise<DelegatedTask[]>;
   accept(taskId: string): Promise<boolean>;
   requestApproval(taskId: string): Promise<boolean>;
-  heartbeat(): Promise<void>;
+  heartbeat(status: WorkerStatus): Promise<void>;
+  /** Pinned team rules (decisions tagged "rule") — prepended to every task prompt. */
+  rules(): Promise<GetDecisionsOutput["decisions"]>;
   complete(input: {
     taskId: string;
     success: boolean;
@@ -162,15 +209,22 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
             call("request_approval", { taskId, agentId: opts.agentId }),
           )) as OkOutput
         ).ok,
-      heartbeat: async () => {
+      heartbeat: async (status) => {
         (await withRemote(remote, (call) =>
           call("heartbeat_worker", {
             agentId: opts.agentId,
             repo: opts.repo,
             runner: opts.runner,
+            status,
           }),
         )) as OkOutput;
       },
+      rules: async () =>
+        (
+          (await withRemote(remote, (call) =>
+            call("get_decisions", { tags: ["rule"] }),
+          )) as GetDecisionsOutput
+        ).decisions,
       complete: async (input) => {
         (await withRemote(remote, (call) =>
           call("complete_task", { ...input, agentId: opts.agentId }),
@@ -193,16 +247,17 @@ function taskApi(cwd: string, opts: WorkerOptions, build?: BuildOptions): TaskAp
     accept: async (taskId) => local((svc) => svc.acceptTask({ taskId, agentId: opts.agentId })).ok,
     requestApproval: async (taskId) =>
       local((svc) => svc.requestApproval({ taskId, agentId: opts.agentId })).ok,
-    heartbeat: async () => {
+    heartbeat: async (status) => {
       local((svc) =>
         svc.heartbeatWorker({
           agentId: opts.agentId,
           repo: opts.repo,
           runner: opts.runner,
-          status: "ok",
+          status,
         }),
       );
     },
+    rules: async () => local((svc) => svc.getDecisions({ tags: ["rule"] })).decisions,
     complete: async (input) => {
       local((svc) => svc.completeTask({ ...input, agentId: opts.agentId }));
     },
@@ -216,6 +271,7 @@ async function runTask(
   api: TaskApi,
   task: DelegatedTask,
   out: Writer,
+  onFailureOutput?: (runOut: string) => void,
 ): Promise<void> {
   const exec = opts.exec ?? defaultExec;
   const git = (...args: string[]) => exec("git", args, { cwd });
@@ -234,7 +290,21 @@ async function runTask(
   await git("checkout", "-b", branch);
   const restore = () => git("checkout", orig);
 
+  // Pinned team rules ride every prompt — phone-editable guardrails, no git commit.
+  let rulesHeader = "";
+  try {
+    const rules = (await api.rules()).slice(0, 10);
+    if (rules.length) {
+      rulesHeader =
+        "Team rules (follow these strictly):\n" +
+        rules.map((r) => `- ${r.title}${r.body ? `: ${r.body}` : ""}`).join("\n") +
+        "\n\n---\n\n";
+    }
+  } catch {
+    // rules are best-effort — a fetch failure must not block the task
+  }
   const prompt =
+    rulesHeader +
     `${task.body}\n\n` +
     `(You are completing a task delegated via Tower by agent "${task.fromAgentId}". ` +
     `Work only within this repository; make the change complete and keep tests green.)`;
@@ -250,11 +320,13 @@ async function runTask(
   if (run.timedOut) {
     await git("reset", "--hard");
     await restore();
+    onFailureOutput?.(run.out);
     return fail(`runner timed out after ${opts.maxMinutes ?? 15}m — ${tail(run.out)}`);
   }
   if (run.code !== 0) {
     await git("reset", "--hard");
     await restore();
+    onFailureOutput?.(run.out);
     return fail(`runner exited ${run.code} — ${tail(run.out)}`);
   }
 
@@ -345,14 +417,39 @@ export async function cmdWork(
     out("No terminal to confirm tasks on — pass --auto or --approve remote (see docs/worker.md).");
     return;
   }
+  if (remote) await checkServerVersion(remote.url, out);
 
   const api = taskApi(cwd, opts, build);
   const intervalMs = opts.intervalMs ?? 15_000;
   const stopFile = join(cwd, ".tower", "STOP");
+
+  // Self-reported capacity: vendors expose no "tokens remaining" API, so the worker
+  // watches its own failures. A rate-limit-looking failure → 10-min cooldown; over
+  // --budget → "low" until the 24h window frees. Low = heartbeat says so + accept nothing.
+  const now = opts.now ?? Date.now;
+  let cooldownUntil = 0;
+  const startedAt: number[] = [];
+  const overBudget = (): boolean => {
+    if (opts.budget == null) return false;
+    const cutoff = now() - BUDGET_WINDOW_MS;
+    while (startedAt.length && startedAt[0]! < cutoff) startedAt.shift();
+    return startedAt.length >= opts.budget;
+  };
+  const capacity = (): WorkerStatus => (now() < cooldownUntil || overBudget() ? "low" : "ok");
+  const noteRunFailure = (runOut: string): void => {
+    if (!RATE_LIMIT_RE.test(runOut)) return;
+    cooldownUntil = now() + COOLDOWN_MS;
+    out(
+      `⚠ capacity low — rate limit in runner output; cooling down until ` +
+        new Date(cooldownUntil).toLocaleTimeString(),
+    );
+  };
+  let wasLow = false;
+
   // Presence must not flap while a long task runs (runTask can hold the loop for
   // minutes; the online window is 30s) — heartbeat on a timer, independent of ticks.
   const hb = setInterval(() => {
-    api.heartbeat().catch(() => {});
+    api.heartbeat(capacity()).catch(() => {});
   }, 15_000);
   hb.unref();
   try {
@@ -365,7 +462,17 @@ export async function cmdWork(
         return;
       }
       try {
-        await api.heartbeat(); // announce presence so the board shows this worker online
+        await api.heartbeat(capacity()); // presence + self-reported capacity for the board
+        const low = capacity() === "low";
+        if (low && !wasLow) {
+          out(
+            overBudget()
+              ? `⏸ budget reached (${opts.budget} task(s)/24h) — not accepting more until the window frees`
+              : `⏸ capacity low — not accepting tasks during cooldown`,
+          );
+        }
+        wasLow = low;
+        if (low) continue; // heartbeat still reports "low"; accept nothing until it clears
         const candidates = (await api.listOpen())
           .filter((t) => !opts.allowFrom || opts.allowFrom.includes(t.fromAgentId))
           .sort((a, b) => a.createdAt - b.createdAt);
@@ -375,7 +482,10 @@ export async function cmdWork(
         if (opts.remoteApprove) {
           const approved = candidates.find((t) => t.approval === "approved");
           if (approved) {
-            if (await api.accept(approved.id)) await runTask(cwd, opts, api, approved, out);
+            if (await api.accept(approved.id)) {
+              startedAt.push(now());
+              await runTask(cwd, opts, api, approved, out, noteRunFailure);
+            }
             continue;
           }
           const unparked = candidates.find((t) => t.approval == null);
@@ -401,7 +511,8 @@ export async function cmdWork(
           }
         }
         if (!(await api.accept(task.id))) continue; // someone else won the race
-        await runTask(cwd, opts, api, task, out);
+        startedAt.push(now());
+        await runTask(cwd, opts, api, task, out, noteRunFailure);
       } catch (err) {
         out(`worker error: ${err instanceof Error ? err.message : String(err)}`);
       }

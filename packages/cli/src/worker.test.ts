@@ -4,7 +4,16 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DelegatedTask } from "@tower/shared";
-import { cmdWork, defaultExec, runnerCommand, type WorkerOptions, type Exec } from "./worker.js";
+import {
+  cmdWork,
+  checkServerVersion,
+  defaultExec,
+  runnerCommand,
+  RATE_LIMIT_RE,
+  type WorkerOptions,
+  type Exec,
+} from "./worker.js";
+import { TOWER_VERSION } from "@tower/shared";
 import { buildService } from "./lib.js";
 
 const REPO = "team/app";
@@ -384,6 +393,140 @@ describe("defaultExec — real child processes (the spawn path runners use)", ()
     });
     expect(r.timedOut).toBe(true);
   }, 20_000);
+});
+
+describe("cmdWork — capacity (cooldown + budget)", () => {
+  it("enters a cooldown after a rate-limit failure and accepts nothing while low", async () => {
+    initRepo();
+    const first = seedTask("alice", "bob", "hits the rate limit");
+    const second = seedTask("alice", "bob", "queued behind the cooldown");
+    const exec: Exec = (cmd, args, o) =>
+      cmd === "git"
+        ? defaultExec(cmd, args, o)
+        : Promise.resolve({ code: 1, out: "429 Too Many Requests: rate limit reached" });
+    const { out, lines } = collect();
+    await cmdWork(dir, { ...baseOpts, exec, ticks: 3 }, out);
+    expect(taskById(first)?.status).toBe("failed"); // the run that tripped the limit
+    expect(taskById(second)?.status).toBe("open"); // never accepted during cooldown
+    expect(lines.join("\n")).toContain("capacity low");
+  });
+
+  it("does NOT enter cooldown on an ordinary failure — keeps working", async () => {
+    initRepo();
+    const first = seedTask("alice", "bob", "just a broken task");
+    const second = seedTask("alice", "bob", "should still run");
+    const { out, lines } = collect();
+    await cmdWork(dir, { ...baseOpts, cmdTemplate: "node fail.cjs", ticks: 2 }, out);
+    expect(taskById(first)?.status).toBe("failed");
+    expect(taskById(second)?.status).toBe("failed"); // processed, not skipped
+    expect(lines.join("\n")).not.toContain("capacity low");
+  });
+
+  it("stops accepting once --budget is reached and recovers when the window frees", async () => {
+    initRepo();
+    const first = seedTask("alice", "bob", "task one");
+    const second = seedTask("alice", "bob", "task two");
+    let t = 1_000_000_000;
+    const { out, lines } = collect();
+    await cmdWork(dir, { ...baseOpts, budget: 1, ticks: 3, now: () => t }, out);
+    expect(taskById(first)?.status).toBe("done");
+    expect(taskById(second)?.status).toBe("open"); // budget of 1 spent
+    expect(lines.join("\n")).toContain("budget reached");
+
+    // A day later the rolling window has freed — the same budget accepts again.
+    t += 24 * 60 * 60_000 + 1;
+    const again = collect();
+    await cmdWork(dir, { ...baseOpts, budget: 1, ticks: 1, now: () => t }, again.out);
+    expect(taskById(second)?.status).toBe("done");
+  });
+
+  it("recognizes the usual out-of-tokens phrasings", () => {
+    for (const s of [
+      "Error: rate limit exceeded",
+      "HTTP 429 from api",
+      "you have hit your usage limit",
+      "quota exhausted for today",
+    ]) {
+      expect(RATE_LIMIT_RE.test(s), s).toBe(true);
+    }
+    expect(RATE_LIMIT_RE.test("SyntaxError: unexpected token")).toBe(false);
+  });
+});
+
+describe("cmdWork — team rules injection", () => {
+  it("prepends pinned rules to the runner prompt (stdin)", async () => {
+    initRepo();
+    seedTask("alice", "bob", "add the endpoint");
+    const svc = buildService(dir);
+    svc.logDecision({
+      title: "never touch prod configs",
+      body: "ask a human first",
+      author: "alice",
+      tags: ["rule"],
+      relatedFiles: [],
+    });
+    svc.store.close();
+
+    let prompt = "";
+    const exec: Exec = (cmd, args, o) => {
+      if (cmd === "git") return defaultExec(cmd, args, o);
+      prompt = o.input ?? "";
+      return Promise.resolve({ code: 0, out: "ok" });
+    };
+    const { out } = collect();
+    await cmdWork(dir, { ...baseOpts, exec }, out);
+    expect(prompt.startsWith("Team rules (follow these strictly):")).toBe(true);
+    expect(prompt).toContain("never touch prod configs: ask a human first");
+    expect(prompt).toContain("add the endpoint");
+  });
+
+  it("sends the plain prompt when no rules are pinned", async () => {
+    initRepo();
+    seedTask("alice", "bob", "no rules here");
+    let prompt = "";
+    const exec: Exec = (cmd, args, o) => {
+      if (cmd === "git") return defaultExec(cmd, args, o);
+      prompt = o.input ?? "";
+      return Promise.resolve({ code: 0, out: "ok" });
+    };
+    const { out } = collect();
+    await cmdWork(dir, { ...baseOpts, exec }, out);
+    expect(prompt.startsWith("no rules here")).toBe(true);
+  });
+});
+
+describe("checkServerVersion (startup handshake)", () => {
+  const respond = (body: unknown): typeof fetch =>
+    (() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))) as typeof fetch;
+
+  it("warns on major.minor drift", async () => {
+    const lines: string[] = [];
+    await checkServerVersion(
+      "http://t.example/mcp",
+      (l) => lines.push(l),
+      respond({ ok: true, version: "0.5.0" }),
+    );
+    expect(lines.join("\n")).toContain("version drift");
+    expect(lines.join("\n")).toContain(TOWER_VERSION);
+  });
+
+  it("stays silent when versions match", async () => {
+    const lines: string[] = [];
+    await checkServerVersion(
+      "http://t.example/mcp",
+      (l) => lines.push(l),
+      respond({ ok: true, version: TOWER_VERSION }),
+    );
+    expect(lines).toHaveLength(0);
+  });
+
+  it("stays silent for pre-0.7 servers (no version) and on network errors", async () => {
+    const lines: string[] = [];
+    await checkServerVersion("http://t.example/mcp", (l) => lines.push(l), respond({ ok: true }));
+    const boom = (() => Promise.reject(new Error("down"))) as unknown as typeof fetch;
+    await checkServerVersion("http://t.example/mcp", (l) => lines.push(l), boom);
+    expect(lines).toHaveLength(0);
+  });
 });
 
 describe("defaultExec", () => {

@@ -17,12 +17,18 @@ import {
   type SendArgs,
 } from "./commands.js";
 import { cmdWork, type WorkerOptions } from "./worker.js";
+import { cmdDemo } from "./demo.js";
+import { cmdDoctor } from "./doctor.js";
 
 const HELP = `Tower — air-traffic control for AI agents editing a shared repo.
 
 Usage: tower <command> [options]
 
 Commands:
+  demo                       30-second live demo: two agents collide, a task round-trips,
+                             the board opens in your browser. In-memory, zero setup.
+  doctor [--url u] [--token t]
+                             Check this machine: Node, git, runners, gh, server + token
   init                       Write .tower/policy.yaml + print MCP setup
   setup [--url <https://...>] [--token t] [--hooks]   One-command onboarding: .mcp.json + rules + git hooks
   serve [--http] [--port n] [--token t]   Start the coordination server
@@ -41,11 +47,13 @@ Commands:
                              (--from/--repo are inferred from git; flags for scripts:
                               --to <id|*> --body <text> [--task] [--reply-to <id>])
   inbox [--agent <id>]       Read your messages (marks them read; agent inferred from git)
-  work [--auto | --approve remote] [--runner claude|codex|cmd] [--allow-from a,b]
+  work [--auto | --approve remote] [--runner claude|codex|cmd] [--allow-from a,b] [--budget n]
                              Worker daemon: picks up delegated tasks, runs your local
                              agent headlessly, commits on a branch, opens a PR, reports
                              back. Confirms each task in the terminal by default; --auto
                              runs unattended; --approve remote waits for a board/phone tap.
+                             --budget caps tasks per rolling 24h; after a rate-limit
+                             failure the worker cools down 10 min and reports low capacity.
 
 Run with no command to print this help.`;
 
@@ -92,6 +100,27 @@ export async function run(argv: string[]): Promise<number> {
   const cwd = process.cwd();
 
   switch (command) {
+    case "demo": {
+      await cmdDemo((l) => process.stdout.write(l + "\n"));
+      // The demo server keeps the process alive until Ctrl+C.
+      return 0;
+    }
+
+    case "doctor": {
+      const { values } = parseArgs({
+        args: rest,
+        options: { url: { type: "string" }, token: { type: "string" } },
+        allowPositionals: false,
+      });
+      return cmdDoctor(
+        {
+          ...(values.url ? { url: values.url } : {}),
+          ...(values.token ? { token: values.token } : {}),
+        },
+        (l) => process.stdout.write(l + "\n"),
+      );
+    }
+
     case "init":
       cmdInit(cwd);
       return 0;
@@ -248,11 +277,16 @@ export async function run(argv: string[]): Promise<number> {
           approve: { type: "string" },
           "allow-from": { type: "string" },
           "max-minutes": { type: "string" },
+          budget: { type: "string" },
           "no-push": { type: "boolean" },
           "no-pr": { type: "boolean" },
         },
         allowPositionals: false,
       });
+      if (values.budget != null && !(toNum(values.budget) != null && toNum(values.budget)! > 0)) {
+        process.stderr.write(`--budget must be a positive number of tasks per 24h\n`);
+        return 1;
+      }
       const runner = values.runner ?? "claude";
       if (runner !== "claude" && runner !== "codex" && runner !== "cmd") {
         process.stderr.write(`unknown --runner "${runner}" (claude | codex | cmd)\n`);
@@ -278,6 +312,7 @@ export async function run(argv: string[]): Promise<number> {
         ...(toNum(values["max-minutes"]) != null
           ? { maxMinutes: toNum(values["max-minutes"])! }
           : {}),
+        ...(toNum(values.budget) != null ? { budget: Math.floor(toNum(values.budget)!) } : {}),
         ...(values["no-push"] ? { push: false } : {}),
         ...(values["no-pr"] ? { pr: false } : {}),
       };

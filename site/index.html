@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tower — air-traffic control for AI agents</title>
+    <title>Tower — air-traffic control for AI coding agents</title>
     <meta
       name="description"
-      content="Tower makes your team's AI agents talk to each other — message, delegate tasks, and never collide on the same code. Semantic pre-flight collision detection over MCP. Claude Code, Cursor, Codex."
+      content="Tower makes your team's AI coding agents work as one crew: delegate a task from your phone, a teammate's agent runs it on their machine and opens a PR — and no two agents ever collide on the same code. An MCP server for Claude Code, Cursor, and Codex."
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070B0F'/%3E%3Cpath d='M16 5v22M9 27h14M12 11l4-4 4 4' stroke='%2338E08A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <meta property="og:title" content="Tower — air-traffic control for AI agents" />
+    <meta property="og:title" content="Tower — air-traffic control for AI coding agents" />
     <meta
       property="og:description"
-      content="Make your team's Claudes and Codexes talk to each other — delegate tasks, avoid collisions, watch it live. npx tower-mcp setup."
+      content="Delegate a task from your phone; a teammate's agent runs it on their machine and opens a PR. And no two agents ever collide on the same code. npx tower-mcp demo."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
@@ -63,7 +63,10 @@
         color: var(--amber);
       }
       h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
+      h2.sec-title { color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem; }
       section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; border-top: 1px solid var(--line); }
+      .lead-p { color: var(--muted); font-size: 1.05rem; }
+      .lead-p b { color: var(--ink); }
 
       /* NAV */
       nav {
@@ -90,12 +93,12 @@
       /* HERO */
       .hero { position: relative; border-top: none; padding-top: clamp(2.5rem, 6vw, 4.5rem); }
       .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: center; }
-      h1 { font-size: clamp(2.3rem, 5.4vw, 4rem); font-weight: 700; color: #fff; margin: 0.9rem 0; }
+      h1 { font-size: clamp(2.2rem, 5vw, 3.7rem); font-weight: 700; color: #fff; margin: 0.9rem 0; }
       h1 .glow { color: var(--phosphor); }
-      .lede { font-size: clamp(1.02rem, 1.5vw, 1.22rem); color: var(--muted); max-width: 40ch; }
+      .lede { font-size: clamp(1.02rem, 1.5vw, 1.2rem); color: var(--muted); max-width: 42ch; }
       .lede b { color: var(--ink); font-weight: 600; }
       .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.6rem; }
-      .trust { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); margin-top: 1rem; }
+      .trust { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--muted); margin-top: 1rem; }
       .cmd {
         display: flex; align-items: center; justify-content: space-between; gap: 1rem;
         font-family: var(--mono); font-size: 0.95rem;
@@ -110,7 +113,7 @@
 
       /* CONSOLE / RADAR */
       .console { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.1rem; overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
-      .console-head { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.9rem; }
+      .console-head { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.9rem; }
       .live { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--phosphor); }
       .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--phosphor); animation: blink 1.6s infinite; }
       .radar { position: absolute; right: -60px; top: -60px; width: 240px; height: 240px; border-radius: 50%; opacity: 0.16; pointer-events: none;
@@ -119,51 +122,37 @@
       /* FLIGHT STRIPS */
       .strip { display: grid; grid-template-columns: 6px 1fr auto; gap: 0.8rem; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.8rem; margin-bottom: 0.7rem; font-family: var(--mono); }
       .strip .bar { align-self: stretch; border-radius: 4px; background: var(--phosphor); }
-      .strip .call { font-size: 0.9rem; color: #fff; font-weight: 600; }
-      .strip .tgt { font-size: 0.78rem; color: var(--muted); }
-      .strip .status { font-size: 0.72rem; letter-spacing: 0.1em; padding: 0.25rem 0.5rem; border-radius: 5px; border: 1px solid; }
-      .status.cleared { color: var(--phosphor); border-color: rgba(56, 224, 138, 0.4); }
-      .status.hold { color: var(--alert); border-color: rgba(255, 77, 77, 0.5); }
-      .strip.conflict { border-color: rgba(255, 77, 77, 0.55); animation: flash 1.1s ease-out; }
+      .strip.task .bar { background: var(--cyan); }
       .strip.conflict .bar { background: var(--alert); }
-      .alert-line { font-family: var(--mono); font-size: 0.8rem; color: var(--alert); padding: 0.2rem 0.2rem 0; opacity: 0; }
-      .hero-anim .strip-2 { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 1.6s forwards; }
-      .hero-anim .strip-2.conflict { animation: drop 0.5s ease-out 1.6s forwards, flash 1.1s ease-out 2.0s; }
-      .hero-anim .alert-line { animation: fadein 0.4s ease-out 2.15s forwards; }
-      .comms-line { font-family: var(--mono); font-size: 0.78rem; color: var(--cyan); padding: 0.45rem 0.2rem 0; opacity: 0; }
-      .hero-anim .comms-line { animation: fadein 0.45s ease-out 3.1s forwards; }
+      .strip .call { font-size: 0.88rem; color: #fff; font-weight: 600; }
+      .strip .tgt { font-size: 0.76rem; color: var(--muted); }
+      .strip .status { font-size: 0.68rem; letter-spacing: 0.08em; padding: 0.25rem 0.5rem; border-radius: 5px; border: 1px solid; white-space: nowrap; }
+      .status.cleared, .status.done { color: var(--phosphor); border-color: rgba(56, 224, 138, 0.45); }
+      .status.running { color: var(--cyan); border-color: rgba(76, 201, 240, 0.5); }
+      .status.hold { color: var(--alert); border-color: rgba(255, 77, 77, 0.5); }
+      .strip.conflict { border-color: rgba(255, 77, 77, 0.55); }
+      .reply-line { font-family: var(--mono); font-size: 0.76rem; color: var(--phosphor); padding: 0 0.2rem 0.6rem; opacity: 0; }
+      .alert-line { font-family: var(--mono); font-size: 0.78rem; color: var(--alert); padding: 0.2rem 0.2rem 0; opacity: 0; }
+      /* hero animation beats */
+      .hero-anim .strip-task { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 0.5s forwards; }
+      .hero-anim .status-flip .running { animation: hide 0.01s linear 2.1s forwards; }
+      .hero-anim .status-flip .done { opacity: 0; animation: fadein 0.4s ease-out 2.2s forwards; }
+      .hero-anim .reply-line { animation: fadein 0.45s ease-out 2.4s forwards; }
+      .hero-anim .strip-conflict { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 3.1s forwards, flash 1.1s ease-out 3.5s; }
+      .hero-anim .alert-line { animation: fadein 0.4s ease-out 3.7s forwards; }
+      .status-flip { position: relative; display: inline-grid; }
+      .status-flip .done { position: absolute; inset: 0; }
 
       /* PROBLEM */
-      .kicker { font-size: clamp(1.4rem, 2.6vw, 2rem); font-family: var(--display); font-weight: 600; color: #fff; max-width: 24ch; }
+      .kicker { font-size: clamp(1.4rem, 2.6vw, 2rem); font-family: var(--display); font-weight: 600; color: #fff; max-width: 26ch; }
       .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
-      .lead-p { color: var(--muted); font-size: 1.05rem; }
-      .lead-p b { color: var(--ink); }
 
-      /* DEMO */
-      .demo-frame { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #05090c; }
-      .demo-frame img { display: block; width: 100%; height: auto; }
-
-      /* BOARD */
-      .board-shot { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid rgba(56, 224, 138, 0.25); border-radius: 10px; box-shadow: 0 0 44px -14px rgba(56, 224, 138, 0.35), 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
-
-      /* FEATURES */
-      .sec-head { margin-bottom: 2.2rem; }
-      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; transition: 0.15s; }
-      .card:hover { border-color: rgba(76, 201, 240, 0.4); transform: translateY(-2px); }
-      .card .tag { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); }
-      .card h3 { font-size: 1.12rem; color: #fff; margin: 0.6rem 0 0.4rem; }
-      .card p { margin: 0; color: var(--muted); font-size: 0.94rem; }
-
-      /* STEPS */
-      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
-      @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, 1fr); } }
       /* Two-terminal comms demo */
       .terms { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.8rem; }
       @media (max-width: 860px) { .terms { grid-template-columns: 1fr; } }
       .term { background: #05090c; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-      .term-head { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em; color: var(--muted); padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); background: var(--panel); }
-      .term-body { padding: 0.9rem 1rem 1.1rem; font-family: var(--mono); font-size: 0.82rem; line-height: 1.75; }
+      .term-head { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; color: var(--muted); padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+      .term-body { padding: 0.9rem 1rem 1.1rem; font-family: var(--mono); font-size: 0.82rem; line-height: 1.7; min-height: 12.5rem; }
       .tl { opacity: 0; animation: fadein 0.35s ease-out forwards; white-space: pre-wrap; word-break: break-word; }
       .tl .p { color: var(--phosphor); }
       .tl .q { color: var(--muted); }
@@ -172,13 +161,34 @@
       .tl.task-in { color: var(--amber); }
       .tl.done { color: var(--phosphor); }
       @media (prefers-reduced-motion: reduce) { .tl { animation: none; opacity: 1; } }
+
+      /* PHONE / BOARD */
+      .split { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: center; }
+      @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+      .board-shot { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid rgba(56, 224, 138, 0.25); border-radius: 10px; box-shadow: 0 0 44px -14px rgba(56, 224, 138, 0.35), 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
+      .feat-list { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: 0.9rem; }
+      .feat-list li { padding-left: 1.7rem; position: relative; color: var(--muted); font-size: 0.98rem; }
+      .feat-list li b { color: var(--ink); }
+      .feat-list li::before { content: "▸"; position: absolute; left: 0; color: var(--phosphor); font-family: var(--mono); }
+
+      /* FEATURES */
+      .sec-head { margin-bottom: 2.2rem; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; transition: 0.15s; }
+      .card:hover { border-color: rgba(76, 201, 240, 0.4); transform: translateY(-2px); }
+      .card.star { border-color: rgba(56, 224, 138, 0.4); background: linear-gradient(180deg, rgba(56, 224, 138, 0.05), transparent); }
+      .card .tag { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cyan); }
+      .card.star .tag { color: var(--phosphor); }
+      .card h3 { font-size: 1.1rem; color: #fff; margin: 0.6rem 0 0.4rem; }
+      .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+      /* STEPS */
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+      @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, 1fr); } }
       .step { border: 1px solid var(--line); border-radius: 12px; padding: 1.3rem; background: var(--panel); }
-      .step .num { font-family: var(--mono); font-size: 0.75rem; color: var(--amber); letter-spacing: 0.15em; }
-      .step h3 { color: #fff; font-size: 1.15rem; margin: 0.5rem 0 0.4rem; }
-      .step p { color: var(--muted); font-size: 0.92rem; margin: 0; }
-      .step .verdict { font-family: var(--mono); font-size: 0.82rem; margin-top: 0.7rem; }
-      .v-clear { color: var(--phosphor); }
-      .v-hold { color: var(--alert); }
+      .step .num { font-family: var(--mono); font-size: 0.75rem; color: var(--amber); letter-spacing: 0.14em; }
+      .step h3 { color: #fff; font-size: 1.1rem; margin: 0.5rem 0 0.4rem; }
+      .step p { color: var(--muted); font-size: 0.9rem; margin: 0; }
 
       /* INSTALL TABS */
       .tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -194,9 +204,9 @@
 
       /* TOOLS */
       .tools { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.55rem; }
-      .tool { display: grid; grid-template-columns: 180px 1fr; gap: 1rem; font-family: var(--mono); font-size: 0.86rem; padding: 0.6rem 0.85rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+      .tool { display: grid; grid-template-columns: 172px 1fr; gap: 0.9rem; font-family: var(--mono); font-size: 0.84rem; padding: 0.6rem 0.85rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
       .tool .name { color: var(--phosphor); }
-      .tool .desc { color: var(--muted); font-family: var(--body); font-size: 0.88rem; }
+      .tool .desc { color: var(--muted); font-family: var(--body); font-size: 0.86rem; }
 
       /* ROADMAP */
       .road { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
@@ -214,7 +224,7 @@
       .plan.cloud-plan { border-color: rgba(56, 224, 138, 0.45); background: linear-gradient(180deg, rgba(56, 224, 138, 0.06), transparent); }
       .plan h3 { color: #fff; font-size: 1.2rem; }
       .plan .price { font-family: var(--mono); color: var(--muted); font-size: 0.82rem; margin: 0.35rem 0 1rem; }
-      .plan .soon { color: var(--amber); font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em; margin-left: 0.4rem; }
+      .plan .soon { color: var(--amber); font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.12em; margin-left: 0.4rem; }
       .plan ul { list-style: none; padding: 0; margin: 0 0 1.3rem; display: grid; gap: 0.5rem; }
       .plan li { color: var(--muted); font-size: 0.92rem; padding-left: 1.4rem; position: relative; }
       .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--phosphor); }
@@ -228,6 +238,7 @@
       @keyframes sweep { to { transform: rotate(360deg); } }
       @keyframes drop { to { opacity: 1; transform: translateY(0); } }
       @keyframes fadein { to { opacity: 1; } }
+      @keyframes hide { to { opacity: 0; } }
       @keyframes flash { 0% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.5); } 100% { box-shadow: 0 0 0 14px rgba(255, 77, 77, 0); } }
 
       @media (max-width: 860px) {
@@ -237,7 +248,10 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .radar, .live .dot { animation: none; }
-        .hero-anim .strip-2, .hero-anim .strip-2.conflict, .hero-anim .alert-line, .hero-anim .comms-line { animation: none; opacity: 1; transform: none; }
+        .hero-anim .strip-task, .hero-anim .strip-conflict,
+        .hero-anim .reply-line, .hero-anim .alert-line,
+        .hero-anim .status-flip .running, .hero-anim .status-flip .done { animation: none; opacity: 1; transform: none; }
+        .status-flip .running { display: none; }
         html { scroll-behavior: auto; }
       }
       :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
@@ -253,10 +267,10 @@
           TOWER
         </span>
         <div class="nav-links">
-          <a class="hide-sm" href="#how">How it works</a>
-          <a class="hide-sm" href="#install">Install</a>
-          <a href="#board">Board</a>
-          <a href="#cloud">Cloud</a>
+          <a class="hide-sm" href="#delegate">Delegate</a>
+          <a class="hide-sm" href="#phone">Phone</a>
+          <a href="#features">Features</a>
+          <a href="#install">Install</a>
           <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
           <a class="btn" href="https://github.com/Rohanxmalik/Tower">★ <span data-stars>Star</span></a>
         </div>
@@ -268,43 +282,48 @@
       <div class="wrap hero-grid">
         <div>
           <span class="eyebrow">MCP server · air-traffic control for AI agents</span>
-          <h1>Your Claude. Their Codex.<br /><span class="glow">Now talking to each other.</span></h1>
+          <h1>Your Claude delegates.<br /><span class="glow">Their Codex delivers.</span></h1>
           <p class="lede">
-            Tower connects your whole team's coding agents through one shared tower. They
-            <b>message each other, delegate tasks, and report back</b> when the work is done
-            — and when two agents reach for the same file, the second is held
-            <b>before it spends a token</b>, not at merge. Watch it all live on the radar
-            board.
+            Tower makes your team's coding agents work as <b>one crew on one repo</b>.
+            Hand a task to a teammate's agent — even from your phone — and it runs on
+            <b>their</b> machine with <b>their</b> tokens, commits, and <b>opens a PR</b>.
+            And because every agent declares intent first, <b>no two ever collide</b> on the
+            same code. Model-agnostic, over MCP.
           </p>
           <div class="cmd">
-            <span><span class="prompt">$ </span><code>npx -y tower-mcp setup</code></span>
-            <button class="copy" data-copy="npx -y tower-mcp setup">copy</button>
+            <span><span class="prompt">$ </span><code>npx -y tower-mcp demo</code></span>
+            <button class="copy" data-copy="npx -y tower-mcp demo">copy</button>
           </div>
           <div class="cta-row">
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
             <a class="btn" href="#install">30-second setup</a>
           </div>
-          <div class="trust">MIT · 246 tests · zero native deps · no telemetry · Node 22+</div>
+          <div class="trust">MIT · 246 tests · 17 MCP tools · zero native deps · Node 22+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
           <div class="radar"></div>
           <div class="console-head">
-            <span>TWR · repo: acme/app · main</span>
+            <span>TWR · acme/app · 2 agents · 1 worker online</span>
             <span class="live"><span class="dot"></span>live</span>
           </div>
-          <div class="strip">
+          <!-- delegated task: runs, then done + PR -->
+          <div class="strip task strip-task">
             <div class="bar"></div>
-            <div><div class="call">cursor-bob</div><div class="tgt">src/auth.ts · AuthService.verify</div></div>
-            <div class="status cleared">CLEARED</div>
+            <div><div class="call">📱 you → codex-bob</div><div class="tgt">add rate limiting to /login</div></div>
+            <div class="status-flip">
+              <span class="status running">RUNNING</span>
+              <span class="status done">DONE ✓</span>
+            </div>
           </div>
-          <div class="strip strip-2 conflict">
+          <div class="reply-line">↳ codex-bob: rate limit 30/min · PR #42 · ab12f3</div>
+          <!-- collision held before a token is spent -->
+          <div class="strip conflict strip-conflict">
             <div class="bar"></div>
             <div><div class="call">claude-a</div><div class="tgt">src/auth.ts · AuthService.verify</div></div>
             <div class="status hold">HOLD</div>
           </div>
           <div class="alert-line">⛔ CONFLICT — AuthService.verify held by cursor-bob (ETA ~6m). Reroute or wait.</div>
-          <div class="comms-line">📨 cursor-bob → claude-a: “auth is mine for ~6m — take billing, ping you when merged.”</div>
         </div>
       </div>
     </header>
@@ -312,34 +331,128 @@
     <!-- PROBLEM -->
     <section>
       <div class="wrap two-col">
-        <div class="kicker">Your team pointed its agents at one repo. Now they collide on the same files.</div>
+        <div class="kicker">Your team pointed its agents at one repo. Two things break.</div>
         <div>
           <p class="lead-p">
-            Git catches <b>text</b> conflicts at merge — after everyone's agents have already
-            burned tokens doing the work. Two teammates, five agents each, one codebase: the
-            real cost is <b>wasted parallel effort</b> discovered far too late. Worse, your
-            agents are <b>deaf to each other</b> — none of them can ask
-            <em>"who's got auth?"</em> before diving in.
+            <b>They can't hand off work.</b> Every vendor gives an agent tools and memory —
+            nobody connects it to your teammate's agent. You can't tell your Claude to give
+            the auth task to your co-founder's Codex and get a PR back.
           </p>
           <p class="lead-p">
-            Tower is the missing <b>write-side coordination</b> layer. Every agent declares
-            what it's about to change; Tower detects <b>semantic</b> overlap across the whole
-            team and stops the second agent <b>before it spends a token</b>. It sits above git
-            and speaks <a href="https://modelcontextprotocol.io">MCP</a> — any agent, any model.
+            <b>They collide, silently.</b> Git catches <em>text</em> conflicts at merge —
+            after everyone's agents have already burned tokens on the same code. Two people,
+            ten agents, one codebase: the real cost is <b>duplicated work found far too late</b>.
+          </p>
+          <p class="lead-p">
+            Tower is the missing <b>coordination layer</b>: a shared tower every agent talks
+            to over <a href="https://modelcontextprotocol.io">MCP</a>. It sits above git and
+            works with any model — coordination only matters if the <em>other</em> vendor's
+            agent is in the room.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- DEMO -->
-    <section>
+    <!-- DELEGATE — the headline -->
+    <section id="delegate">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">The headline</span>
+          <h2 class="sec-title">One repo. Two machines. Agents that hand off work.</h2>
+          <p class="lead-p" style="max-width: 66ch; margin-top: 0.8rem">
+            You delegate from your terminal (or your phone); their agent picks it up on
+            <b>their</b> machine, with <b>their</b> account — no API keys shared, ever. It
+            runs headless, commits on a branch, opens a PR, and reports back with the sha.
+          </p>
+        </div>
+        <div class="terms" aria-label="Terminal demo: delegating a task from one machine and a worker completing it on another">
+          <div class="term">
+            <div class="term-head">YOUR MACHINE — alice</div>
+            <div class="term-body">
+              <div class="tl" style="animation-delay: 0.3s"><span class="p">$ </span><span class="a">npx -y tower-mcp send --to bob --task</span></div>
+              <div class="tl" style="animation-delay: 1.0s"><span class="q">Message: </span><span class="a">add rate limiting to /login</span></div>
+              <div class="tl sent" style="animation-delay: 1.7s">📨 Sent task c78094d1 → bob</div>
+              <div class="tl q" style="animation-delay: 6.4s">…the worker on bob's machine takes it…</div>
+              <div class="tl done" style="animation-delay: 7.4s">[DONE] bob → alice</div>
+              <div class="tl done" style="animation-delay: 7.4s"><span class="a">        rate limit 30/min · PR #42 · ab12f3</span></div>
+            </div>
+          </div>
+          <div class="term">
+            <div class="term-head">THEIR MACHINE — bob (tower work)</div>
+            <div class="term-body">
+              <div class="tl task-in" style="animation-delay: 2.6s">⬇ accepted task c78094d1 from alice</div>
+              <div class="tl" style="animation-delay: 3.3s"><span class="q">→ branch tower/task-c78094d1</span></div>
+              <div class="tl" style="animation-delay: 4.0s"><span class="q">→ running claude -p (headless)…</span></div>
+              <div class="tl" style="animation-delay: 5.2s"><span class="a">→ 1 file changed, committed</span></div>
+              <div class="tl sent" style="animation-delay: 6.0s">→ pushed · gh pr create → PR #42</div>
+              <div class="tl done" style="animation-delay: 6.7s">✅ task c78094d1 done — reported back</div>
+            </div>
+          </div>
+        </div>
+        <p class="lead-p" style="margin-top: 1.4rem; font-size: 0.96rem">
+          Run <span class="mono">tower work</span> on any machine to turn it into a task
+          worker — <span class="mono">--auto</span> to run unattended,
+          <span class="mono">--approve remote</span> to wait for a human tap, and it slows
+          itself down when the account hits a rate limit. Full guide →
+          <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/worker.md">docs/worker.md</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- PHONE / BOARD -->
+    <section id="phone">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Remote control</span>
+          <h2 class="sec-title">Command your agents from your phone</h2>
+        </div>
+        <div class="split">
+          <div>
+            <p class="lead-p">
+              The live board (<span class="mono">/board</span>) is a remote control, not just
+              a dashboard. Open it on your phone and:
+            </p>
+            <ul class="feat-list">
+              <li><b>Delegate a task</b> in one line — pick any online worker from a dropdown, or broadcast to everyone.</li>
+              <li><b>Approve or reject</b> parked work with one tap. Reject means it never runs.</li>
+              <li><b>Get a push notification</b> the moment an agent needs your OK — no open tab required.</li>
+              <li><b>Pin team rules</b> that ride <em>every</em> delegated prompt — change a rule from the couch, the next task obeys it.</li>
+              <li><b>See who's connected</b>, who's editing what, and every collision — live.</li>
+            </ul>
+          </div>
+          <img
+            class="board-shot"
+            src="board.png"
+            alt="Tower live board: a delegated task done with its PR sha, a broadcast task waiting, a red collision banner, a Team rules panel, who's-connected presence dots, and the send box with an approve/notify control."
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- COLLISION — the moat -->
+    <section id="collision">
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">Live · pre-flight check</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Caught before the first keystroke</h2>
+          <h2 class="sec-title">Caught before the first keystroke</h2>
+          <p class="lead-p" style="max-width: 66ch; margin-top: 0.8rem">
+            Before an agent edits, it claims the files and symbols it's about to touch. Tower
+            compares that against every other active claim — <b>semantically</b>, from
+            tree-sitter ASTs — so <span class="mono">AuthService.verify</span> collides with
+            <span class="mono">AuthService.verify</span> even across different diff hunks. The
+            second agent is held before it spends a token.
+          </p>
         </div>
-        <div class="demo-frame">
-          <img src="demo.svg" alt="Two agents claim the same symbol; the second gets a collision alert with who, why and ETA." />
+        <div class="term" style="max-width: 760px">
+          <div class="term-head">tower — air-traffic control for AI agents</div>
+          <div class="term-body">
+            <div class="tl" style="animation-delay: 0.3s"><span class="p">$ </span><span class="a">tower claim --agent cursor-bob --symbol src/auth.ts#AuthService.verify</span></div>
+            <div class="tl done" style="animation-delay: 1.1s">✅ No collisions — cleared to edit.</div>
+            <div class="tl" style="animation-delay: 2.2s"><span class="p">$ </span><span class="a">tower guard --agent claude-a --symbol src/auth.ts#AuthService.verify</span></div>
+            <div class="tl task-in" style="animation-delay: 3.0s">⛔ HOLD — AuthService.verify is mid-change by cursor-bob (ETA ~6m, purpose: replace JWT)</div>
+            <div class="tl q" style="animation-delay: 3.6s">   [w] wait   [d] take a dependent task   [b] branch from their WIP   [f] force</div>
+            <div class="tl" style="animation-delay: 4.4s"><span class="q">exit code 2 → the PreToolUse hook blocks the edit before it happens.</span></div>
+          </div>
         </div>
       </div>
     </section>
@@ -348,79 +461,43 @@
     <section id="features">
       <div class="wrap">
         <div class="sec-head">
-          <span class="eyebrow">On board</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Everything to keep agents out of each other's way</h2>
+          <span class="eyebrow">Instrument panel</span>
+          <h2 class="sec-title">Everything Tower does</h2>
         </div>
         <div class="grid">
-          <div class="card"><div class="tag">semantic</div><h3>Symbol-level, not text</h3><p>Collisions come from tree-sitter ASTs (TS/JS/Python), so <span class="mono">AuthService.verify</span> conflicts even across different diff hunks.</p></div>
-          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into a guarantee: a hard-conflicting edit is stopped, with the reason fed back to the agent.</p></div>
-          <div class="card"><div class="tag">team</div><h3>Across machines</h3><p>Host one Tower and point every agent at it with <span class="mono">TOWER_URL</span>. A teammate's edit is blocked while you hold the file — your Claude tells your co-founder's Claude to stay off auth.</p></div>
-          <div class="card"><div class="tag">agnostic</div><h3>Any agent</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. No lock-in to one model vendor.</p></div>
-          <div class="card"><div class="tag">live</div><h3>The radar board</h3><p>Every hosted Tower ships <span class="mono">/board</span> — your whole team's claims as live flight strips, collisions flashing red, TTL countdowns. Watch your agents coordinate in real time.</p></div>
-          <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A GitHub Action comments when two open PRs touch overlapping lines — and shows which files an agent is editing <em>right now</em>. One workflow file, no server needed.</p></div>
-          <div class="card"><div class="tag">comms</div><h3>Agents that talk</h3><p>Async messages + task delegation between agents — your Claude assigns work to your co-founder's Codex. It runs on <em>their</em> machine with <em>their</em> account, and replies when done.</p></div>
-          <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>. Agents recall them before acting, so nobody re-litigates a settled call.</p></div>
-          <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; Tower hands each agent a task whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
+          <div class="card star"><div class="tag">delegate</div><h3>Cross-machine tasks</h3><p>Your agent hands work to a teammate's agent — it runs on their machine and account, commits on a branch, opens a PR, and reports back the sha. First-accept-wins, so a broadcast runs exactly once.</p></div>
+          <div class="card star"><div class="tag">phone</div><h3>Remote control</h3><p>Delegate and approve from your phone. Push notifications when a task needs your OK; one-tap sign-in via a <span class="mono">#token</span> link. Your agents, commanded from anywhere.</p></div>
+          <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
+          <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Phone-editable guardrails, no git commit.</p></div>
+          <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
+          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into a guarantee: a hard-conflicting edit is stopped, reason fed back to the agent. A universal git pre-commit guard covers every other editor.</p></div>
+          <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>
+          <div class="card"><div class="tag">agnostic</div><h3>Any agent, any model</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. Coordination is only useful if the other vendor's agent is in the room.</p></div>
+          <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A zero-dependency GitHub Action comments when two open PRs touch overlapping lines, and shows which files an agent is editing right now. One workflow file, no server needed.</p></div>
+          <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>; agents recall them before acting, so nobody re-litigates a settled call. The same store powers phone-pinned team rules.</p></div>
+          <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; <span class="mono">next_task</span> hands each agent work whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
+          <div class="card"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> shows a live collision + delegation in 30 seconds. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
         </div>
       </div>
     </section>
 
-    <!-- BOARD -->
-    <section id="board">
+    <!-- MAP -->
+    <section id="map">
       <div class="wrap">
         <div class="sec-head">
-          <span class="eyebrow">Live</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">The radar board — watch your agents coordinate</h2>
+          <span class="eyebrow">Command map</span>
+          <h2 class="sec-title">Who directs whom — at a glance</h2>
           <p class="lead-p" style="max-width: 64ch; margin-top: 0.8rem">
-            Every hosted Tower serves <span class="mono">/board</span>: each claim is a live
-            flight strip, collisions flash red, and the COMMS panel shows agents messaging each
-            other and delegating tasks — from assignment to done, in real time.
+            The Map tab draws the command hierarchy: the repo at the root, every commander
+            (including <b>📱 you</b>), the agents they've tasked, and the status of each job.
+            Tap any agent to command it directly.
           </p>
         </div>
         <img
           class="board-shot"
-          src="board.png"
-          alt="Tower live radar board: flight strips for each agent's claims, a red COLLISION banner, and a COMMS panel showing a task delegated from one agent to another and reported done."
+          src="map.png"
+          alt="Tower command map: the repo at the root, commanders branching to the agents they tasked, each with a status and reply — a tree of who directs whom."
         />
-      </div>
-    </section>
-
-    <!-- COMMS DEMO — two machines, one conversation -->
-    <section id="comms">
-      <div class="wrap">
-        <div class="sec-head">
-          <span class="eyebrow">Agent channel</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">
-            Two machines. One conversation.
-          </h2>
-          <p class="lead-p" style="margin-top: 0.8rem">
-            You delegate from your terminal; their agent picks it up on <b>their</b> machine,
-            with <b>their</b> account — no API keys shared, ever.
-          </p>
-        </div>
-        <div class="terms" aria-label="Terminal demo: sending a task from one machine and receiving it on another">
-          <div class="term">
-            <div class="term-head">YOUR MACHINE — alice</div>
-            <div class="term-body">
-              <div class="tl" style="animation-delay: 0.3s"><span class="p">$ </span><span class="a">npx -y tower-mcp send</span></div>
-              <div class="tl" style="animation-delay: 1.0s"><span class="q">To (agent id, or * for everyone): </span><span class="a">bob</span></div>
-              <div class="tl" style="animation-delay: 1.8s"><span class="q">Message: </span><span class="a">add rate limiting to /login</span></div>
-              <div class="tl" style="animation-delay: 2.6s"><span class="q">Is this a task for them? [y/N]: </span><span class="a">y</span></div>
-              <div class="tl sent" style="animation-delay: 3.3s">📨 Sent task c78094d1 → bob</div>
-              <div class="tl done" style="animation-delay: 6.6s">[DONE] bob → alice — “rate limit 30/min on /login, merged in ab12f3.”</div>
-            </div>
-          </div>
-          <div class="term">
-            <div class="term-head">THEIR MACHINE — bob</div>
-            <div class="term-body">
-              <div class="tl" style="animation-delay: 4.1s"><span class="p">$ </span><span class="a">npx -y tower-mcp inbox</span></div>
-              <div class="tl task-in" style="animation-delay: 4.8s">[TASK] alice → bob (2s ago)</div>
-              <div class="tl" style="animation-delay: 4.8s"><span class="a">       add rate limiting to /login</span></div>
-              <div class="tl" style="animation-delay: 5.6s"><span class="q">…their Claude does the work — on their machine, their token…</span></div>
-              <div class="tl sent" style="animation-delay: 6.2s">📨 Sent task_update → alice</div>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -429,13 +506,13 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">The pattern</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Claim → detect → hold → talk</h2>
+          <h2 class="sec-title">Claim → detect → delegate → deliver</h2>
         </div>
         <div class="steps">
-          <div class="step"><div class="num">STEP 01</div><h3>Claim intent</h3><p>Before editing, the agent calls <span class="mono">claim_intent</span> with the files and symbols it's about to touch.</p></div>
-          <div class="step"><div class="num">STEP 02</div><h3>Detect overlap</h3><p>Tower compares the intent against every active claim and grades the overlap: hard, soft, or clear.</p></div>
-          <div class="step"><div class="num">STEP 03</div><h3>Clear or hold</h3><p>No overlap → proceed. Hard conflict → the edit is held and the agent is told who holds it and why.<div class="verdict"><span class="v-clear">✔ CLEARED</span> &nbsp; or &nbsp; <span class="v-hold">⛔ HOLD</span></div></p></div>
-          <div class="step"><div class="num">STEP 04</div><h3>Talk it out</h3><p>Held? The agents negotiate: <span class="mono">send_message</span> hands off a task ("take billing"), and the other agent replies with a <span class="mono">task_update</span> when it's merged.</p></div>
+          <div class="step"><div class="num">STEP 01</div><h3>Claim intent</h3><p>Before editing, an agent calls <span class="mono">claim_intent</span> with the files and symbols it's about to touch — and gets any collisions in the same reply.</p></div>
+          <div class="step"><div class="num">STEP 02</div><h3>Detect &amp; hold</h3><p>Tower grades the overlap: clear, soft, or hard. A hard conflict holds the edit and tells the agent who holds it, why, and their ETA.</p></div>
+          <div class="step"><div class="num">STEP 03</div><h3>Delegate</h3><p>Held or out of scope? Hand it off: <span class="mono">send_message</span> with <span class="mono">kind:"task"</span> — or the board's send box — assigns it to another agent.</p></div>
+          <div class="step"><div class="num">STEP 04</div><h3>Deliver</h3><p>A worker accepts it, runs the agent headless, commits, opens a PR, and replies with a <span class="mono">task_update</span> carrying the sha. You see it live on the board.</p></div>
         </div>
       </div>
     </section>
@@ -445,7 +522,7 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">Cleared for takeoff</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Install in one line</h2>
+          <h2 class="sec-title">Install in one line</h2>
         </div>
         <div class="tabs">
           <button class="tab active" data-tab="cc">Claude Code</button>
@@ -454,15 +531,19 @@
           <button class="tab" data-tab="src">From source</button>
         </div>
         <div class="tabpanel active" id="cc">
-          <pre><span class="c"># In your repo — writes .mcp.json, agent rules, and (with --hooks) enforcement:</span>
+          <pre><span class="c"># See it work first — a live collision + delegation, in 30 seconds:</span>
+<span class="g">npx</span> -y tower-mcp demo
+
+<span class="c"># In your repo — writes .mcp.json, agent rules, and (with --hooks) enforcement:</span>
 <span class="g">npx</span> -y tower-mcp setup
 
 <span class="c"># Joining a team server?</span>
 <span class="g">npx</span> -y tower-mcp setup --url https://tower-xxxx.onrender.com/mcp --token &lt;secret&gt; --hooks</pre>
           <p class="lead-p" style="margin-top: 1rem">
-            One command: it merges the <span class="mono">tower</span> server into
+            <span class="mono">setup</span> merges the <span class="mono">tower</span> server into
             <span class="mono">.mcp.json</span> and adds the claim-first rule to
-            <span class="mono">CLAUDE.md</span>. Reload your editor — done. Details:
+            <span class="mono">CLAUDE.md</span>. Reload your editor — done. Stuck? Run
+            <span class="mono">tower doctor</span>. Details:
             <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/enforcement.md">enforcement</a>.
           </p>
         </div>
@@ -485,7 +566,7 @@
 <span class="k">args</span> = [<span class="g">"-y"</span>, <span class="g">"mcp-remote"</span>, <span class="g">"https://tower-xxxx.onrender.com/mcp"</span>, <span class="g">"--header"</span>, <span class="g">"Authorization: Bearer &lt;secret&gt;"</span>]</pre>
           <p class="lead-p" style="margin-top: 1rem">
             Then add the claim-first rule to <span class="mono">AGENTS.md</span> — your Codex
-            now sees (and talks to) everyone else's agents.
+            now sees (and can be handed tasks by) everyone else's agents.
           </p>
         </div>
         <div class="tabpanel" id="src">
@@ -500,8 +581,8 @@
     <section>
       <div class="wrap">
         <div class="sec-head">
-          <span class="eyebrow">Instrument panel</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Seventeen MCP tools</h2>
+          <span class="eyebrow">The wire contract</span>
+          <h2 class="sec-title">Seventeen MCP tools</h2>
         </div>
         <div class="tools">
           <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions in one call</span></div>
@@ -510,8 +591,8 @@
           <div class="tool"><span class="name">complete_claim</span><span class="desc">Release on commit (records the sha)</span></div>
           <div class="tool"><span class="name">release_claim</span><span class="desc">Abandon a claim</span></div>
           <div class="tool"><span class="name">list_claims</span><span class="desc">Live claim state</span></div>
-          <div class="tool"><span class="name">log_decision</span><span class="desc">Record a decision + the why</span></div>
-          <div class="tool"><span class="name">get_decisions</span><span class="desc">Recall decisions before acting</span></div>
+          <div class="tool"><span class="name">log_decision</span><span class="desc">Record a decision or team rule + the why</span></div>
+          <div class="tool"><span class="name">get_decisions</span><span class="desc">Recall decisions &amp; rules before acting</span></div>
           <div class="tool"><span class="name">next_task</span><span class="desc">A module that's safe to start now</span></div>
           <div class="tool"><span class="name">send_message</span><span class="desc">Message another agent — or hand it a task</span></div>
           <div class="tool"><span class="name">fetch_messages</span><span class="desc">Read the inbox; unread count rides every claim</span></div>
@@ -520,7 +601,7 @@
           <div class="tool"><span class="name">list_tasks</span><span class="desc">Delegated work by status, recipient, assignee</span></div>
           <div class="tool"><span class="name">request_approval</span><span class="desc">Park a task for a human tap (remote approve)</span></div>
           <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject from the board — or your phone</span></div>
-          <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence: see which machines are ready</span></div>
+          <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence + capacity for each machine</span></div>
         </div>
       </div>
     </section>
@@ -530,14 +611,14 @@
       <div class="wrap two-col">
         <div>
           <span class="eyebrow">Flight plan</span>
-          <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Where this is going</h2>
+          <h2 class="sec-title">Where this is going</h2>
         </div>
         <ul class="road">
-          <li>Predictive conflict detection (learned from your merge history)</li>
-          <li>Auto-resolution — a reconciliation agent for overlapping diffs</li>
+          <li>Capacity-aware routing — big tasks to the worker with the most headroom</li>
+          <li>Predictive conflict detection, learned from your merge history</li>
           <li>Cross-repo / org-wide intent graph + API-contract break detection</li>
-          <li>Enterprise: policy engine, SSO, audit ledger</li>
-          <li>A2A adapter for cross-vendor agent delegation</li>
+          <li>Tower Cloud: per-user identity, SSO, audit ledger (enterprise)</li>
+          <li>A2A adapter for cross-protocol agent delegation</li>
         </ul>
       </div>
     </section>
@@ -546,13 +627,13 @@
     <section id="cloud">
       <div class="wrap">
         <span class="eyebrow">Deploy</span>
-        <h2 style="color: #fff; font-size: clamp(1.5rem, 3vw, 2.1rem); margin-top: 0.5rem">Run it yourself — or let us run it</h2>
+        <h2 class="sec-title">Run it yourself — or let us run it</h2>
         <div class="cloud">
           <div class="plan">
             <h3>Self-host</h3>
             <div class="price">Free · open source (MIT)</div>
             <ul>
-              <li>Local mode + hosted HTTP server</li>
+              <li>Local mode + hosted HTTP server, all 17 tools</li>
               <li>One-click deploy to Render / Railway / Fly — a permanent URL, no tunnels</li>
               <li>Your data stays on your own infrastructure</li>
             </ul>
@@ -562,13 +643,13 @@
             <h3>Tower Cloud<span class="soon">COMING SOON</span></h3>
             <div class="price">Managed · for teams &amp; enterprise</div>
             <ul>
-              <li>A permanent, always-on server — zero setup, no servers to babysit</li>
-              <li>Team accounts, org workspaces, SSO &amp; audit (enterprise)</li>
-              <li>Gets smarter over time — conflict prediction learned from real history</li>
+              <li>Always-on server — zero setup, plus per-user identity (no shared token)</li>
+              <li>Push approvals, history, SSO &amp; audit for the whole org</li>
+              <li>Gets smarter over time — conflict prediction from real history</li>
             </ul>
             <!-- Waitlist capture. Set ENDPOINT (in the script below) to your Formspree form
                  or Google Apps Script URL — full step-by-step in docs/WAITLIST.md.
-                 Until then it opens a pre-filled email to the maintainer. -->
+                 Empty ENDPOINT falls back to a pre-filled GitHub issue. -->
             <form class="wait" id="wait">
               <input type="email" required placeholder="you@team.com" aria-label="Work email" />
               <button class="btn btn-primary" type="submit">Join the waitlist</button>
@@ -587,6 +668,7 @@
         </div>
         <div class="nav-links">
           <a href="https://github.com/Rohanxmalik/Tower">GitHub</a>
+          <a href="https://www.npmjs.com/package/tower-mcp">npm</a>
           <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
           <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/protocol.md">Protocol</a>
         </div>

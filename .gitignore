@@ -21,3 +21,6 @@ team-claude.md
 # Internal strategy docs — keep out of the public repo
 FUTURE.md
 TECHNICAL-BRIEF.md
+
+# Playwright MCP scratch output
+.playwright-mcp/

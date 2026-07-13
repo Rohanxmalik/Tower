@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { TOWER_VERSION } from "@tower/shared";
 import { startHttp } from "./transport.js";
 import { TowerService } from "./service.js";
 
@@ -30,11 +31,11 @@ async function mcpClient(server: Server, token?: string): Promise<Client> {
 }
 
 describe("HTTP transport", () => {
-  it("serves a health check", async () => {
+  it("serves a health check with the server version (worker handshake)", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0 });
     const res = await fetch(url(httpServer, "/health"));
-    expect(await res.json()).toEqual({ ok: true, service: "tower" });
+    expect(await res.json()).toEqual({ ok: true, service: "tower", version: TOWER_VERSION });
   });
 
   it("lets two clients share one Tower (B sees A's claim)", async () => {
@@ -361,5 +362,98 @@ describe("board", () => {
       req.end();
     });
     expect(status).toBe(403);
+  });
+});
+
+describe("0.7.0 endpoints — rules, push, rate limit", () => {
+  const auth = { authorization: "Bearer secret", "content-type": "application/json" };
+
+  it("logs a team rule via /api/decision and surfaces it in the board snapshot", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const res = await fetch(url(httpServer, "/api/decision"), {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ title: "always write tests", author: "board", tags: ["rule"] }),
+    });
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    expect(id).toBeTruthy();
+    const board = await fetch(url(httpServer, "/api/board"), { headers: auth });
+    const snap = (await board.json()) as { rules: { title: string }[] };
+    expect(snap.rules[0]!.title).toBe("always write tests");
+  });
+
+  it("rejects an invalid decision body and requires auth", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const bad = await fetch(url(httpServer, "/api/decision"), {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ body: "no title" }),
+    });
+    expect(bad.status).toBe(400);
+    const noAuth = await fetch(url(httpServer, "/api/decision"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "x", author: "y" }),
+    });
+    expect(noAuth.status).toBe(401);
+  });
+
+  it("serves the service worker without auth", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const res = await fetch(url(httpServer, "/board-sw.js"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("javascript");
+    expect(await res.text()).toContain("showNotification");
+  });
+
+  it("hands out a stable VAPID public key and stores a subscription", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    const k1 = (await (
+      await fetch(url(httpServer, "/api/push-key"), { headers: auth })
+    ).json()) as {
+      key: string;
+    };
+    const k2 = (await (
+      await fetch(url(httpServer, "/api/push-key"), { headers: auth })
+    ).json()) as {
+      key: string;
+    };
+    expect(k1.key).toBeTruthy();
+    expect(k1.key).toBe(k2.key);
+
+    const sub = await fetch(url(httpServer, "/api/push-subscribe"), {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        endpoint: "https://push.example/abc",
+        keys: { p256dh: "p", auth: "a" },
+      }),
+    });
+    expect((await sub.json()) as { ok: boolean }).toEqual({ ok: true });
+    expect(service.store.listPushSubs()).toHaveLength(1);
+
+    const unauthKey = await fetch(url(httpServer, "/api/push-key"));
+    expect(unauthKey.status).toBe(401);
+  });
+
+  it("rate limits write bursts from one IP (31st create → 429)", async () => {
+    const service = new TowerService();
+    httpServer = await startHttp(service, { port: 0, token: "secret" });
+    let lastStatus = 0;
+    for (let i = 0; i < 31; i++) {
+      const res = await fetch(url(httpServer, "/api/task"), {
+        method: "POST",
+        headers: auth,
+        body: JSON.stringify({ repo: "acme/app", body: `task ${i}` }),
+      });
+      lastStatus = res.status;
+      if (i < 30) expect(res.status).toBe(200);
+    }
+    expect(lastStatus).toBe(429);
   });
 });

@@ -133,6 +133,14 @@ export const BOARD_HTML = `<!doctype html>
   .pdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .pdot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
   .pdot.off { background: var(--muted); }
+  .pdot.low { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  #filter { width: 100%; margin-bottom: 0.5rem; }
+  #rules .rule { padding: 0.4rem 0; border-top: 1px solid var(--line); font-size: 0.85rem; }
+  #rules .rule:first-child { border-top: 0; }
+  #rules .rule .by { color: var(--muted); font-size: 0.72rem; }
+  #ruleform { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+  #ruleform input { flex: 1; }
+  #notify { font-size: 0.78rem; padding: 0.35rem 0.7rem; }
   .edge { color: var(--muted); }
   .tline { color: var(--ink); margin: 0.15rem 0; }
   .tline .st { margin-left: 0.4rem; }
@@ -163,6 +171,13 @@ export const BOARD_HTML = `<!doctype html>
   </div>
   <div class="row">
     <button class="btn-go" type="submit">Delegate task</button>
+    <select id="size" aria-label="task size" title="Advisory size — large tasks prefer fresh workers">
+      <option value="">size: auto</option>
+      <option value="s">small</option>
+      <option value="m">medium</option>
+      <option value="l">large</option>
+    </select>
+    <button id="notify" type="button" title="Buzz this phone when a task needs approval">🔔 Notify me</button>
     <span class="hint muted" id="sendhint">Pick a worker (or ★ everyone); one that's online runs it now.</span>
   </div>
 </form>
@@ -174,6 +189,7 @@ export const BOARD_HTML = `<!doctype html>
   <div class="cols">
     <div>
       <h2>Delegated tasks — who asked whom &amp; what came back</h2>
+      <input id="filter" type="search" placeholder="filter tasks — text, agent, or status" autocomplete="off" />
       <div class="card"><div id="tasks"><span class="empty">No tasks yet. Delegate one above, or run <b>tower send --task</b>.</span></div></div>
 
       <h2>Editing right now</h2>
@@ -183,6 +199,15 @@ export const BOARD_HTML = `<!doctype html>
     <div>
       <h2>Who's connected</h2>
       <div class="card"><div id="roster"><span class="empty">No agents seen yet.</span></div></div>
+
+      <h2>Team rules — every delegated task carries these</h2>
+      <div class="card">
+        <div id="rules"><span class="empty">No rules pinned. Add one — agents will follow it on every task.</span></div>
+        <form id="ruleform">
+          <input id="ruletext" placeholder="e.g. always write tests first" autocomplete="off" />
+          <button type="submit">Pin</button>
+        </form>
+      </div>
 
       <h2>COMMS — activity log</h2>
       <div class="card" id="comms"><div id="feed"><span class="empty">Nothing has happened yet.</span></div></div>
@@ -228,6 +253,9 @@ export const BOARD_HTML = `<!doctype html>
     poll();
   }
   forgetBtn.hidden = !token();
+  document.getElementById("filter").addEventListener("input", function () {
+    if (window.__data) render(window.__data);
+  });
   function token() { return localStorage.getItem("tower-token") || ""; }
   function authHeaders(extra) {
     var h = extra || {};
@@ -287,10 +315,13 @@ export const BOARD_HTML = `<!doctype html>
     if (!body) return;
     var to = document.getElementById("to").value.trim() || "*";
     var repo = (window.__repo) || "team/app";
+    var payload = { repo: repo, body: body, toAgentId: to, fromAgentId: "board" };
+    var size = document.getElementById("size").value;
+    if (size) payload.size = size;
     fetch("api/task", {
       method: "POST",
       headers: authHeaders({ "content-type": "application/json" }),
-      body: JSON.stringify({ repo: repo, body: body, toAgentId: to, fromAgentId: "board" }),
+      body: JSON.stringify(payload),
     })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function () {
@@ -323,6 +354,68 @@ export const BOARD_HTML = `<!doctype html>
       .catch(function () { setStatus("err", "offline — approval not sent, try again"); });
   }
 
+  // --- pin a team rule (rides every delegated prompt) ---------------------
+  document.getElementById("ruleform").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var t = document.getElementById("ruletext").value.trim();
+    if (!t) return;
+    fetch("api/decision", {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ title: t, author: "board", tags: ["rule"] }),
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function () { document.getElementById("ruletext").value = ""; poll(); })
+      .catch(function (s) {
+        setStatus("err", s === 401 ? "token needed — enter it top right" : "could not pin rule (error " + s + ")");
+      });
+  });
+
+  // --- push notifications: buzz this phone when a task needs approval -----
+  var notifyBtn = document.getElementById("notify");
+  function b64ToBytes(b64) {
+    var pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    var raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    var arr = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    notifyBtn.hidden = true;
+  } else if (localStorage.getItem("tower-push") === "on") {
+    notifyBtn.textContent = "🔔 on";
+    notifyBtn.disabled = true;
+  }
+  notifyBtn.addEventListener("click", function () {
+    Notification.requestPermission()
+      .then(function (perm) {
+        if (perm !== "granted") { notifyBtn.textContent = "🔕 blocked"; return null; }
+        return navigator.serviceWorker.register("board-sw.js").then(function (reg) {
+          return fetch("api/push-key", { headers: authHeaders({}) })
+            .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+            .then(function (j) {
+              return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(j.key) });
+            })
+            .then(function (sub) {
+              return fetch("api/push-subscribe", {
+                method: "POST",
+                headers: authHeaders({ "content-type": "application/json" }),
+                body: JSON.stringify(sub.toJSON()),
+              });
+            })
+            .then(function (r) {
+              if (!r.ok) throw r.status;
+              localStorage.setItem("tower-push", "on");
+              notifyBtn.textContent = "🔔 on";
+              notifyBtn.disabled = true;
+            });
+        });
+      })
+      .catch(function (s) {
+        notifyBtn.textContent = s === 401 ? "🔔 token needed" : "🔔 failed — retry";
+      });
+  });
+
   // --- render ------------------------------------------------------------
   function repoOf(data) {
     // A live worker's repo is ground truth (it read it from git); tasks/claims can
@@ -334,6 +427,7 @@ export const BOARD_HTML = `<!doctype html>
 
   function render(data) {
     window.__repo = repoOf(data);
+    window.__data = data;
 
     // replies: task_update messages keyed by the task id they reply to
     var replies = {};
@@ -371,10 +465,17 @@ export const BOARD_HTML = `<!doctype html>
       done: ["done", "done"], failed: ["failed", "failed"] };
     var tasksEl = document.getElementById("tasks");
     tasksEl.replaceChildren();
-    if (!data.tasks.length) {
-      tasksEl.appendChild(el("span", "empty", "No tasks yet. Delegate one above, or run tower send --task."));
+    var q = (document.getElementById("filter").value || "").trim().toLowerCase();
+    var shown = !q
+      ? data.tasks
+      : data.tasks.filter(function (t) {
+          var hay = t.body + " " + t.fromAgentId + " " + (t.assigneeAgentId || "") + " " + t.toAgentId + " " + t.status;
+          return hay.toLowerCase().indexOf(q) !== -1;
+        });
+    if (!shown.length) {
+      tasksEl.appendChild(el("span", "empty", q ? "No tasks match that filter." : "No tasks yet. Delegate one above, or run tower send --task."));
     } else {
-      data.tasks.forEach(function (t) {
+      shown.forEach(function (t) {
         var node = el("div", "task");
         var l1 = el("div", "line1");
         var from = t.fromAgentId === "board" ? "You (from the board)" : t.fromAgentId;
@@ -455,10 +556,13 @@ export const BOARD_HTML = `<!doctype html>
     data.tasks.forEach(function (t) { note(t.fromAgentId, ""); note(t.assigneeAgentId, ""); if (t.toAgentId !== "*") note(t.toAgentId, ""); });
     data.messages.forEach(function (m) { note(m.fromAgentId, ""); if (m.toAgentId !== "*") note(m.toAgentId, ""); });
     // PRESENCE — which agents have a live worker (heartbeated recently).
-    var online = {}, runnerOf = {};
+    var online = {}, runnerOf = {}, statusOf = {};
     (data.workers || []).forEach(function (w) {
-      online[w.agentId] = true; runnerOf[w.agentId] = w.runner || "";
-      note(w.agentId, (seen[w.agentId] && seen[w.agentId].doing) || "worker online" + (w.runner ? " · " + w.runner : ""));
+      online[w.agentId] = true; runnerOf[w.agentId] = w.runner || ""; statusOf[w.agentId] = w.status || "ok";
+      var doing = w.status === "low"
+        ? "low capacity — cooling down"
+        : "worker online" + (w.runner ? " · " + w.runner : "");
+      note(w.agentId, (seen[w.agentId] && seen[w.agentId].doing) || doing);
     });
     var rosterEl = document.getElementById("roster");
     rosterEl.replaceChildren();
@@ -466,7 +570,7 @@ export const BOARD_HTML = `<!doctype html>
     if (!ids.length) rosterEl.appendChild(el("span", "empty", "No agents seen yet."));
     ids.forEach(function (id) {
       var a = el("div", "agent");
-      a.appendChild(el("span", "pdot " + (online[id] ? "on" : "off")));
+      a.appendChild(el("span", "pdot " + (online[id] ? (statusOf[id] === "low" ? "low" : "on") : "off")));
       a.appendChild(el("span", "name", id));
       a.appendChild(el("span", "doing" + (seen[id].doing ? " busy" : ""), seen[id].doing || (online[id] ? "online" : "seen earlier")));
       rosterEl.appendChild(a);
@@ -508,7 +612,10 @@ export const BOARD_HTML = `<!doctype html>
     var optEveryone = el("option", "", "★ everyone"); optEveryone.value = "*"; sel.appendChild(optEveryone);
     var onlineIds = Object.keys(online);
     onlineIds.forEach(function (id) {
-      var o = el("option", "", id + " — online" + (runnerOf[id] ? " · " + runnerOf[id] : ""));
+      var label = statusOf[id] === "low"
+        ? id + " — low capacity (queues)"
+        : id + " — online" + (runnerOf[id] ? " · " + runnerOf[id] : "");
+      var o = el("option", "", label);
       o.value = id; sel.appendChild(o);
     });
     ids.filter(function (id) { return !online[id]; }).forEach(function (id) {
@@ -519,7 +626,21 @@ export const BOARD_HTML = `<!doctype html>
     for (var si = 0; si < sel.options.length; si++) if (sel.options[si].value === prev) { keep = true; break; }
     sel.value = keep ? prev : "*";
 
-    renderMap(data, online, runnerOf, seen, repliesFor(data));
+    // TEAM RULES — pinned guidance that rides every delegated prompt
+    var rulesEl = document.getElementById("rules");
+    rulesEl.replaceChildren();
+    var rules = data.rules || [];
+    if (!rules.length) {
+      rulesEl.appendChild(el("span", "empty", "No rules pinned. Add one — agents will follow it on every task."));
+    }
+    rules.forEach(function (rl) {
+      var row = el("div", "rule");
+      row.appendChild(el("div", "", "📌 " + rl.title));
+      row.appendChild(el("div", "by", (rl.author || "") + " · " + fmtAge(data.now - rl.createdAt) + " ago"));
+      rulesEl.appendChild(row);
+    });
+
+    renderMap(data, online, runnerOf, statusOf, seen, repliesFor(data));
 
     var n = data.claims.length, tq = data.tasks.filter(function (t) { return t.status === "open" || t.status === "accepted"; }).length;
     setStatus("ok", "connected — " + onlineIds.length + " worker(s) online, " + tq + " task(s) in flight");
@@ -534,7 +655,7 @@ export const BOARD_HTML = `<!doctype html>
   var TASK_LABEL = { open: "waiting", accepted: "running", done: "done", failed: "failed" };
 
   // MAP — command hierarchy: repo root → commanders → the agents they've tasked → replies.
-  function renderMap(data, online, runnerOf, seen, replies) {
+  function renderMap(data, online, runnerOf, statusOf, seen, replies) {
     var mapEl = document.getElementById("map");
     mapEl.replaceChildren();
     var repo = (data.tasks[0] || data.claims[0] || data.messages[0] || {}).repo || "this repo";
@@ -554,7 +675,7 @@ export const BOARD_HTML = `<!doctype html>
 
     function agentNode(id) {
       var node = el("span", "agent-node");
-      node.appendChild(el("span", "pdot " + (online[id] ? "on" : "off")));
+      node.appendChild(el("span", "pdot " + (online[id] ? (statusOf[id] === "low" ? "low" : "on") : "off")));
       node.appendChild(el("span", "nm", id));
       if (runnerOf[id]) node.appendChild(el("span", "rn", runnerOf[id]));
       node.title = "Tap to command " + id;
@@ -632,8 +753,8 @@ export const BOARD_HTML = `<!doctype html>
         var now = data.now;
         // Include worker presence in the change signature, but not lastSeen — every
         // heartbeat bumps it, and re-rendering per poll detaches buttons mid-tap.
-        var wsig = (data.workers || []).map(function (w) { return w.agentId + "|" + w.repo + "|" + w.runner; }).sort();
-        var sig = JSON.stringify([data.claims, data.conflicts, data.messages, data.tasks, wsig]);
+        var wsig = (data.workers || []).map(function (w) { return w.agentId + "|" + w.repo + "|" + w.runner + "|" + (w.status || "ok"); }).sort();
+        var sig = JSON.stringify([data.claims, data.conflicts, data.messages, data.tasks, wsig, data.rules]);
         if (sig !== lastSig || now - lastRenderAt >= 15000) {
           lastSig = sig;
           lastRenderAt = now;
@@ -649,4 +770,30 @@ export const BOARD_HTML = `<!doctype html>
 </script>
 </body>
 </html>
+`;
+
+/** Served at /board-sw.js — static notification display only, no data access.
+ * Push events arrive even with the board tab closed; clicking focuses/opens it. */
+export const BOARD_SW_JS = `
+self.addEventListener("push", function (e) {
+  var d = {};
+  try { d = e.data.json(); } catch (_) {}
+  e.waitUntil(
+    self.registration.showNotification(d.title || "Tower", {
+      body: d.body || "",
+      tag: d.tag || "tower",
+    })
+  );
+});
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url.indexOf("/board") !== -1) return list[i].focus();
+      }
+      return self.clients.openWindow("/board");
+    })
+  );
+});
 `;

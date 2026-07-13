@@ -108,6 +108,34 @@ a free tier and is the easiest — here's every click:**
 All three read `$PORT` automatically. Set `TOWER_TOKEN` and you're done — that's your
 shared team secret.
 
+## Data persistence on Render
+
+Everything Tower knows lives in **one SQLite file**: claims, messages, delegated tasks,
+and decisions (including team rules). Tower always writes it to `.tower/tower.db`
+**inside the server's working directory** — there is no flag or env var to point it
+elsewhere. In the Docker image the server runs in `/app`, so the file is
+**`/app/.tower/tower.db`**.
+
+**On the free tier there is no persistent disk.** Every deploy and every restart starts
+from an empty database — claims, messages, tasks, and rules are wiped. That's fine for
+demos and trying Tower out (claims expire in 15 minutes anyway), but messages and
+decisions are meant to be durable team memory, and on the free tier they aren't.
+
+For real use, pick one:
+
+1. **Add Render's persistent disk** (needs a paid instance, ~$7/mo). In the dashboard:
+   your `tower` service → **Disks** → **Add disk**, mount path **`/app/.tower`**, 1 GB is
+   plenty. Or do it in the blueprint: uncomment the `disk:` block in
+   [`render.yaml`](../render.yaml) (it already mounts `tower-data` at `/app/.tower`) and
+   switch `plan: free` to a paid plan. The mount path must be exactly `/app/.tower` —
+   that's where the DB lives, and it can't be moved. One caveat: the container runs as
+   the unprivileged `node` user, so if the platform mounts the disk owned by root,
+   writes fail at startup — chown the mount or override the user (see the note in the
+   [`Dockerfile`](../Dockerfile)).
+2. **Run on a box you control.** The Docker recipes below already persist the DB via a
+   volume mounted at `/app/.tower` — survives restarts, upgrades, and reboots, no
+   monthly fee.
+
 ## Host it — Docker (self-managed)
 
 With Docker Compose:
@@ -287,6 +315,7 @@ agent is physically blocked from editing `auth.ts` while A is on it.
   there is no persistent disk**, so every deploy/restart wipes them. Fine for trying Tower
   out; for real use, upgrade to a paid instance and re-add the disk (see the commented
   `disk:` block in [`render.yaml`](../render.yaml)) or self-host with the Docker volume.
+  Full steps: [Data persistence on Render](#data-persistence-on-render).
 - Old completed/expired claims and old messages are pruned automatically after 7 days.
 - **Trust model:** one shared token = one team. Any token holder can act as any agent id
   (there's no per-agent auth yet), so share the token only with people you'd give push

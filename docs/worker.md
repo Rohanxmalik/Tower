@@ -107,6 +107,155 @@ The worker never touches the branch you have checked out:
 If the run fails or exceeds the max runtime, the task is completed as `failed` with the
 error as the result — the delegator hears about failures too, not just successes.
 
+## Keeping the worker alive
+
+`tower work` is a foreground process: close the terminal (or drop the SSH session) and
+the worker dies with it. A machine that should pick up tasks around the clock needs a
+supervisor that restarts the worker on crash and starts it at boot.
+
+**One rule for every recipe below:** a supervised worker has no terminal to confirm on,
+so it must run with `--approve remote` (a human taps Approve on the board) or `--auto`
+(fully unattended — read [Security](#security--read-this-before---auto) first). A plain
+`tower work` without a TTY prints a hint and exits.
+
+Two things every recipe has to carry: the **environment** (`TOWER_URL` / `TOWER_TOKEN`)
+and the **working directory** (the repo clone the worker runs tasks in).
+
+### pm2 (macOS / Linux / Windows)
+
+```bash
+npm i -g pm2 tower-mcp
+cd /path/to/your/clone                 # the repo the worker works in
+export TOWER_URL=https://tower-xxxx.onrender.com/mcp
+export TOWER_TOKEN=<your-token>
+pm2 start "tower work --approve remote" --name tower-worker
+pm2 save                               # remember the process list across reboots
+pm2 startup                            # prints ONE command — run it so pm2 itself starts at boot
+```
+
+Useful afterwards: `pm2 logs tower-worker` (tail output), `pm2 restart tower-worker`
+(after an upgrade). pm2 snapshots the environment at `pm2 start` — if you rotate the
+token, `pm2 restart tower-worker --update-env` from a shell with the new value.
+
+### Windows without pm2
+
+**Task Scheduler** (built in) — one line, starts the worker at logon:
+
+```powershell
+schtasks /Create /TN TowerWorker /SC ONLOGON /TR "cmd /c cd /d C:\code\app && npx -y tower-mcp work --approve remote"
+```
+
+Set the env first, at the user level, because scheduled tasks don't inherit your open
+terminal: `setx TOWER_URL https://tower-xxxx.onrender.com/mcp` and
+`setx TOWER_TOKEN <your-token>`. Remove with `schtasks /Delete /TN TowerWorker /F`.
+Note a logon task starts the worker but won't restart it if it crashes mid-day.
+
+**NSSM** (a real Windows service, restarts on crash, runs before anyone logs in —
+`choco install nssm` or [nssm.cc](https://nssm.cc)):
+
+```powershell
+nssm install TowerWorker "C:\Program Files\nodejs\npx.cmd" -y tower-mcp work --approve remote
+nssm set TowerWorker AppDirectory C:\code\app
+nssm set TowerWorker AppEnvironmentExtra TOWER_URL=https://tower-xxxx.onrender.com/mcp TOWER_TOKEN=<your-token>
+nssm start TowerWorker
+```
+
+### Linux: systemd
+
+```ini
+# /etc/systemd/system/tower-worker.service
+[Unit]
+Description=Tower worker (delegated-task daemon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alice
+WorkingDirectory=/home/alice/code/app
+Environment=TOWER_URL=https://tower-xxxx.onrender.com/mcp
+Environment=TOWER_TOKEN=<your-token>
+ExecStart=/usr/bin/npx -y tower-mcp work --approve remote
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now tower-worker
+journalctl -u tower-worker -f          # tail the worker's log
+```
+
+The kill switch still works under every supervisor: create `.tower/STOP` in the repo and
+the worker exits **cleanly**, so `Restart=on-failure` (and pm2/NSSM equivalents) won't
+resurrect it. Delete the file and restart the service to resume.
+
+## Capacity & budget
+
+New in 0.7.0. Delegation only works if the receiving machine actually has tokens to
+spend — so the worker now notices when it doesn't, and lets you cap how much it will.
+
+**Rate-limit cooldown.** When a task run fails with a rate-limit-looking error — an HTTP
+429, or output containing "rate limit", "quota", or "usage limit" — the worker assumes
+the local agent is out of tokens and enters a **10-minute cooldown**: it reports status
+`low` in its heartbeats, the board shows the machine as **low capacity**, and it accepts
+no new tasks until the cooldown ends. Nothing is lost — open tasks stay open, and get
+picked up when capacity returns (or by another worker on the same inbox).
+
+**`--budget <n>`** caps how many tasks this worker will **start** in a rolling 24 hours:
+
+```bash
+tower work --auto --budget 20     # at most 20 task starts per rolling 24 h
+```
+
+The counter is in-memory — restarting the worker resets it. Use it to keep an `--auto`
+worker from burning a whole subscription overnight.
+
+**Size tags.** A task can carry an advisory size (`s` / `m` / `l`) so senders can signal
+weight — big tasks prefer workers with capacity. It's advisory only; nothing enforces it.
+
+Why this matters: **delegating costs the sender approximately nothing** — the tokens are
+spent on the machine that runs the task. An out-of-tokens teammate can still push work to
+a machine with budget left: alice's rate-limited agent hands the actual work to bob's
+fresh one. Capacity is self-reported (agent vendors expose no "tokens remaining" API), so
+treat `low` as a strong hint, not a guarantee.
+
+## Version handshake
+
+New in 0.7.0. On startup, a worker pointed at a team server (`TOWER_URL` set) compares
+its own version with the server's `/health` version and **warns** when the major.minor
+differs — e.g. a 0.7 worker against a 0.6 server. It never blocks: a drifted worker
+still polls and runs tasks. The warning is your cue to `npm i -g tower-mcp@latest` on
+the worker machine, or redeploy the server, whichever is behind. (`npx -y tower-mcp`
+users get the latest automatically.)
+
+## Team rules ride every task
+
+New in 0.7.0. Decisions tagged **`rule`** are prepended to every delegated task prompt —
+the runner sees your team's standing orders before it sees the task body.
+
+Two ways to set them:
+
+- **From the board** — the **Team-rules** panel pins a rule in a couple of taps. That
+  makes guardrails **phone-editable**: change a rule from the couch and the very next
+  delegated task obeys it. No git commit, no redeploy, no editor.
+- **From an agent** — call `log_decision` with the tag:
+
+  ```jsonc
+  log_decision {
+    "title": "All new endpoints need a rate limit.",
+    "author": "alice",
+    "tags": ["rule"]
+  }
+  ```
+
+Keep rules short and imperative ("Never commit directly to main.", "New code ships with
+tests."). They're instructions to the running agent — the same trust level as the task
+body itself, and visible to everyone on the board.
+
 ## Security — read this before `--auto`
 
 **Running a worker means teammates who hold the `TOWER_TOKEN` can execute code on your

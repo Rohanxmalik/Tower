@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^9.17.0",
     "prettier": "^3.4.2",

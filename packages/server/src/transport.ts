@@ -3,9 +3,16 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
-import { CreateTaskInput, ResolveApprovalInput } from "@tower/shared";
+import {
+  CreateTaskInput,
+  LogDecisionInput,
+  PushSubscriptionInput,
+  ResolveApprovalInput,
+  TOWER_VERSION,
+} from "@tower/shared";
 import { buildMcpServer } from "./mcp.js";
-import { BOARD_HTML } from "./board.js";
+import { BOARD_HTML, BOARD_SW_JS } from "./board.js";
+import { ensureVapidKeys, sendApprovalPush } from "./push.js";
 import { TowerService } from "./service.js";
 
 /** Constant-time string comparison; length mismatch still compares a full buffer. */
@@ -38,6 +45,8 @@ function isLocalHost(hostHeader: string | undefined): boolean {
  */
 const MAX_AUTH_FAILURES = 10;
 const AUTH_WINDOW_MS = 60_000;
+/** Hard cap on tracked IPs — an attacker rotating addresses can't grow the map forever. */
+const MAX_TRACKED_IPS = 10_000;
 
 class AuthThrottle {
   private readonly failures = new Map<string, { count: number; resetAt: number }>();
@@ -63,6 +72,39 @@ class AuthThrottle {
     } else {
       this.failures.set(ip, { count: 1, resetAt: Date.now() + AUTH_WINDOW_MS });
     }
+  }
+
+  /** Periodic cleanup: entries expire lazily on access, but an IP never seen again
+   * would linger — sweep drops them, and the cap bounds worst-case memory. */
+  sweep(): void {
+    const now = Date.now();
+    for (const [ip, e] of this.failures) if (e.resetAt <= now) this.failures.delete(ip);
+    if (this.failures.size > MAX_TRACKED_IPS) this.failures.clear();
+  }
+}
+
+/** Per-IP cap on authenticated writes (task/rule creation, push subscribe) — a token
+ * holder can't flood the DB or spam workers by scripting the board endpoints. */
+const MAX_WRITES_PER_WINDOW = 30;
+
+class WriteLimiter {
+  private readonly hits = new Map<string, { count: number; resetAt: number }>();
+
+  allow(ip: string): boolean {
+    const now = Date.now();
+    const e = this.hits.get(ip);
+    if (!e || e.resetAt <= now) {
+      this.hits.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+      return true;
+    }
+    this.hits.set(ip, { count: e.count + 1, resetAt: e.resetAt });
+    return e.count + 1 <= MAX_WRITES_PER_WINDOW;
+  }
+
+  sweep(): void {
+    const now = Date.now();
+    for (const [ip, e] of this.hits) if (e.resetAt <= now) this.hits.delete(ip);
+    if (this.hits.size > MAX_TRACKED_IPS) this.hits.clear();
   }
 }
 
@@ -93,10 +135,28 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   app.use(express.json({ limit: "256kb" }));
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "tower" });
+    // version lets workers detect major.minor drift against the server (handshake).
+    res.json({ ok: true, service: "tower", version: TOWER_VERSION });
   });
 
   const throttle = new AuthThrottle();
+  const writes = new WriteLimiter();
+
+  // Web push: parked-for-approval tasks buzz every subscribed phone, no open tab needed.
+  const vapidKeys = ensureVapidKeys(service.store);
+  service.onApprovalRequested = (task) => {
+    void sendApprovalPush(service.store, vapidKeys, task);
+  };
+
+  const clientIp = (req: express.Request): string =>
+    req.ip ?? req.socket.remoteAddress ?? "unknown";
+
+  /** 429s write bursts from one IP; call after authorize() on mutating routes. */
+  const limitWrites = (req: express.Request, res: express.Response): boolean => {
+    if (writes.allow(clientIp(req))) return true;
+    res.status(429).json({ error: "rate limited — slow down" });
+    return false;
+  };
 
   /** Shared gate for /mcp and /api/board: bearer token (with brute-force lockout) or,
    * in token-less local mode, the DNS-rebinding Host guard. Sends the error response
@@ -107,7 +167,7 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
       // A valid token always wins — teammates behind a NAT/proxy must never be
       // locked out by someone else's failed attempts on the shared address.
       if (safeEqual(header, `Bearer ${opts.token}`)) return true;
-      const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
+      const ip = clientIp(req);
       if (throttle.isLocked(ip)) {
         res.status(429).json({ error: "too many failed auth attempts — try again later" });
         return false;
@@ -141,6 +201,13 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
     res.type("html").send(BOARD_HTML);
   });
 
+  // The board's service worker (push notifications). Must be same-origin and is
+  // fetched by the browser without headers, so it is served unauthenticated — it
+  // contains only static notification-display code, no data.
+  app.get("/board-sw.js", (_req, res) => {
+    res.type("application/javascript").send(BOARD_SW_JS);
+  });
+
   app.get("/api/board", (req, res) => {
     if (!authorize(req, res)) return;
     res.json(service.boardSnapshot());
@@ -149,12 +216,45 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   // Create a delegated task from the board (incl. mobile) — a worker picks it up.
   app.post("/api/task", (req, res) => {
     if (!authorize(req, res)) return;
+    if (!limitWrites(req, res)) return;
     const parsed = CreateTaskInput.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "repo and body are required" });
       return;
     }
     res.json(service.createTask(parsed.data));
+  });
+
+  // Pin a team rule (or any decision) from the board — tagged "rule" entries are
+  // prepended to every delegated task prompt by the workers.
+  app.post("/api/decision", (req, res) => {
+    if (!authorize(req, res)) return;
+    if (!limitWrites(req, res)) return;
+    const parsed = LogDecisionInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "title and author are required" });
+      return;
+    }
+    res.json(service.logDecision(parsed.data));
+  });
+
+  // Web push opt-in: the board fetches the public key, subscribes, and posts the
+  // subscription here so parked tasks can buzz the phone.
+  app.get("/api/push-key", (req, res) => {
+    if (!authorize(req, res)) return;
+    res.json({ key: vapidKeys.publicKey });
+  });
+
+  app.post("/api/push-subscribe", (req, res) => {
+    if (!authorize(req, res)) return;
+    if (!limitWrites(req, res)) return;
+    const parsed = PushSubscriptionInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "endpoint and keys are required" });
+      return;
+    }
+    service.store.addPushSub(parsed.data.endpoint, JSON.stringify(parsed.data));
+    res.json({ ok: true });
   });
 
   // Approve or reject a parked task (the phone taps ✓/✗).
@@ -200,5 +300,13 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
 
   return new Promise((resolve) => {
     const httpServer = app.listen(opts.port, opts.host ?? "127.0.0.1", () => resolve(httpServer));
+    // Bound throttle/limiter memory on long-lived servers; unref'd so it never
+    // holds the process open, cleared on close so tests shut down cleanly.
+    const sweeper = setInterval(() => {
+      throttle.sweep();
+      writes.sweep();
+    }, 5 * 60_000);
+    sweeper.unref();
+    httpServer.on("close", () => clearInterval(sweeper));
   });
 }

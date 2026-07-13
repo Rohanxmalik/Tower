@@ -3,6 +3,36 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.7.0 — 2026-07-13
+
+- **`tower demo`** — the 30-second wow moment: one command boots an in-memory Tower,
+  seeds two agents into a hard collision plus a delegated task with its reply, and opens
+  the live board (`#token=demo`). Nothing touches disk; Ctrl+C throws it away.
+- **`tower doctor`** — setup diagnostics in one command: Node ≥22, git + clean tree,
+  `claude`/`codex`/`gh` on PATH, server reachability, token accepted, version drift.
+  Exits 1 on blocking problems.
+- **Phones buzz on approvals (web push).** Opt in with the board's **🔔 Notify me**
+  button; when a worker parks a task, every subscribed browser gets a notification —
+  no open tab needed. VAPID keys are generated per server and persisted; bounced
+  subscriptions clean themselves up. New endpoints: `GET /api/push-key`,
+  `POST /api/push-subscribe`, `GET /board-sw.js`.
+- **Team rules ride every task.** Decisions tagged `rule` (pinned from the board's new
+  **Team rules** panel — `POST /api/decision` — or via `log_decision`) are prepended to
+  every delegated task prompt. Phone-editable guardrails; no git commit needed.
+- **Capacity-aware workers.** A rate-limit-looking failure puts the worker in a 10-min
+  cooldown: it reports status `low` (board shows _low capacity_), accepts nothing, and
+  recovers on its own. `--budget <n>` caps task starts per rolling 24 h. Tasks can carry
+  an advisory `size` (`s`/`m`/`l`). `heartbeat_worker` gained a `status` field.
+- **Version handshake.** `/health` now reports the server version; workers warn on
+  major.minor drift at startup (never block). One version constant (`TOWER_VERSION`)
+  now feeds the MCP server, the remote client, and `/health`.
+- **Board:** task filter box, capacity labels in the roster/dropdown/map, rules panel.
+- **Hardening:** per-IP rate limit on write endpoints (30/min), periodic sweep + cap on
+  the throttle/limiter maps (rotating IPs can't grow memory), lockout-map bounds.
+- Docs: keeping the worker alive (pm2 / Task Scheduler / NSSM / systemd), Render data
+  persistence, capacity & budget, the demo-GIF production script; issue templates and
+  launch assets (`launch/`).
+
 ## 0.6.1 — 2026-07-12
 
 Security + correctness release from a full pre-launch audit (three independent review

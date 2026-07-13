@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { TOOL_SCHEMAS } from "@tower/shared";
+import { TOOL_SCHEMAS, TOWER_VERSION } from "@tower/shared";
 import type {
   Conflict,
   ClaimIntentInput,
@@ -23,7 +23,8 @@ import type {
 } from "@tower/shared";
 import { TowerService } from "./service.js";
 
-const SERVER_INFO = { name: "tower", version: "0.6.1" } as const;
+// One source of truth for the release version — see TOWER_VERSION in @tower/shared.
+const SERVER_INFO = { name: "tower", version: TOWER_VERSION } as const;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:

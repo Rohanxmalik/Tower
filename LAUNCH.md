@@ -18,8 +18,10 @@ compound.
 committed and must be published before announcing**: `cd packages/cli && npm publish`).
 One self-contained package, `npx -y tower-mcp setup`
 onboards a repo in one command. To ship a new version: bump `packages/cli/package.json`
-(+ the version strings in `packages/server/src/mcp.ts` and `packages/cli/src/remote.ts`),
-`npm run build && npm test`, then `npm publish` from `packages/cli`.
+
+- `TOWER_VERSION` in `packages/shared/src/protocol.ts` (one constant feeds the MCP
+  server, remote client, and /health), `npm run build && npm test`, then `npm publish`
+  from `packages/cli`.
 
 ## 2. Website (GitHub Pages)
 

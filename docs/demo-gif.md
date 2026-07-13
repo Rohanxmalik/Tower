@@ -1,8 +1,8 @@
 # The 20-second demo GIF — production script
 
 One GIF, two placements: the **README hero** (first thing a visitor sees) and the
-**Show HN** post. It has to prove the whole claim in one breath: *type a task on your
-phone, a machine somewhere does the work, you get a PR link.*
+**Show HN** post. It has to prove the whole claim in one breath: _type a task on your
+phone, a machine somewhere does the work, you get a PR link._
 
 Target: **≤ 25 seconds, 800 px wide, ≤ 10 MB** (GitHub renders README images up to
 10 MB — over that, the hero is a broken link).
@@ -15,17 +15,17 @@ One continuous frame, split-screen:
   device mode.
 - **Right:** the worker's terminal (`tower work --auto`), visible the whole time.
 
-The viewer must see both sides *simultaneously* — the phone commanding, the terminal
+The viewer must see both sides _simultaneously_ — the phone commanding, the terminal
 obeying. That juxtaposition is the product.
 
 ## Shot list
 
-| Time    | On screen                                                                                                                        |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 0–3s    | Board open on the phone, worker terminal idle alongside (`tower work` banner + polling). One beat of stillness — let it register.  |
-| 3–8s    | Type into the send box: **"Add a /ping route to server.js"**. Pick the live worker in the recipient dropdown. Tap **Delegate**.    |
-| 8–15s   | The worker terminal wakes: task accepted, branch created, headless `claude` runs. Board chip flips OPEN → ACCEPTED.                 |
-| 15–20s  | Terminal prints `✅ task … done — branch tower/task-… · <PR link>`. Board chip flips to **DONE** with the PR link. Tap the link.    |
+| Time   | On screen                                                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 0–3s   | Board open on the phone, worker terminal idle alongside (`tower work` banner + polling). One beat of stillness — let it register. |
+| 3–8s   | Type into the send box: **"Add a /ping route to server.js"**. Pick the live worker in the recipient dropdown. Tap **Delegate**.   |
+| 8–15s  | The worker terminal wakes: task accepted, branch created, headless `claude` runs. Board chip flips OPEN → ACCEPTED.               |
+| 15–20s | Terminal prints `✅ task … done — branch tower/task-… · <PR link>`. Board chip flips to **DONE** with the PR link. Tap the link.  |
 
 End on the PR page (or the DONE chip if the PR page is too busy) — hold 1 second, cut.
 

@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { TOWER_VERSION } from "@tower/shared";
 
 /** Hosted Tower connection details. */
 export interface RemoteConfig {
@@ -32,7 +33,7 @@ export async function withRemote<T>(
   const transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
     requestInit: cfg.token ? { headers: { authorization: `Bearer ${cfg.token}` } } : {},
   });
-  const client = new Client({ name: "tower-cli", version: "0.6.1" });
+  const client = new Client({ name: "tower-cli", version: TOWER_VERSION });
   await client.connect(transport);
   try {
     return await fn(async (tool, args) => {

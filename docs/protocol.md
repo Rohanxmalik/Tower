@@ -23,7 +23,10 @@ transport and MCP standardized agent-to-tool access.
   the **same id** — workers `accept_task` and `complete_task` it.
 - **Worker** — a `tower work` daemon that runs delegated tasks. It calls `heartbeat_worker`
   each poll; the board treats a worker seen in the last 30s as **online**, so you can see
-  (and target) machines that are actually ready to run work.
+  (and target) machines that are actually ready to run work. The heartbeat carries a
+  self-reported **status** (`ok` | `low` — cooling down after a rate-limit failure or over
+  its `--budget`), and tasks may carry an advisory **size** (`s`/`m`/`l`). Decisions tagged
+  `rule` are team-wide standing orders: workers prepend them to every delegated prompt.
 
 ## Severity
 

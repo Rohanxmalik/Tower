@@ -31,11 +31,12 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.6 — early, building in public.** Agent messaging/task delegation, the
+> Status: **v0.7 — early, building in public.** Agent messaging/task delegation, the
 > `tower work` worker daemon, remote human approval, the phone remote-control board with
-> live worker presence and the command Map, semantic collision detection, three enforcement
-> layers, and the GitHub Action all work end-to-end today (202 tests, 80% coverage gate).
-> Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+> push notifications, live worker presence + capacity, phone-editable team rules that ride
+> every delegated prompt, the command Map, `tower demo` / `tower doctor`, semantic collision
+> detection, three enforcement layers, and the GitHub Action all work end-to-end today
+> (246 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 
@@ -66,7 +67,14 @@ Two agents reach for the same symbol; the second is caught before its first keys
 
 ## Quickstart (30 seconds)
 
-Needs **Node 22+** (uses built-in `node:sqlite`, no native build). In your repo:
+Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Want to _see_ it
+before wiring anything up?
+
+```bash
+npx -y tower-mcp demo             # boots a live board: two agents collide, a task round-trips
+```
+
+Then, in your repo:
 
 ```bash
 npx -y tower-mcp setup            # writes .mcp.json + agent rules; add --hooks for enforcement

@@ -24,3 +24,6 @@ TECHNICAL-BRIEF.md
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# HyperFrames video projects (large render artifacts)
+videos/

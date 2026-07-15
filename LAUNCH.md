@@ -87,6 +87,10 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
 > sha. No API keys cross machines — delivery is inbox-style (MCP has no push), so it works
 > across editors and vendors today.
 >
+> It also works from a phone: the live board has a send box and Approve/Reject buttons,
+> with web-push so your phone buzzes when an agent wants permission. I typed a task on my
+> phone from the couch; a headless Claude on my laptop wrote the code and opened the PR.
+>
 > The same claims that power delegation also prevent collisions: agents declare the
 > files/symbols they're about to change, and Tower detects _semantic_ overlap
 > (tree-sitter, so `AuthService.verify` conflicts even across different diff hunks) before
@@ -95,8 +99,10 @@ Respond to every comment in the first 2 hours — that decides HN ranking.
 > a live radar board (`/board`) showing every claim and the agents' conversation, and a
 > GitHub Action that flags overlapping open PRs.
 >
-> Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). Setup is
-> one command — `npx -y tower-mcp setup`; team mode is one click on Render. MIT.
+> Model-agnostic (it's just MCP), Node 22+, no native deps (uses node:sqlite). See it
+> without installing anything: `npx -y tower-mcp demo` boots a live board with a staged
+> collision + delegation. Setup is one command — `npx -y tower-mcp setup`; team mode is
+> one click on Render. MIT.
 >
 > Repo: https://github.com/Rohanxmalik/Tower · Site: https://rohanxmalik.github.io/Tower/
 >

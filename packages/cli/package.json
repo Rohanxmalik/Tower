@@ -1,6 +1,6 @@
 {
   "name": "tower-mcp",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Air-traffic control for AI agents editing a shared repo — semantic pre-flight collision detection over MCP. Model-agnostic (Claude Code, Cursor, Codex).",
   "type": "module",
   "license": "MIT",

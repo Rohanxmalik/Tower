@@ -182,6 +182,10 @@ export class TowerService {
     return { ok, task: ok ? (this.store.getTask(input.taskId) ?? null) : null };
   }
 
+  /** Optional hook fired when a task finishes (done or failed) — the HTTP transport
+   * wires web push here so the delegator's phone hears the outcome. */
+  onTaskCompleted?: (task: DelegatedTask) => void;
+
   completeTask(input: CompleteTaskInput): OkOutput {
     const ok = this.store.completeTask(input.taskId, input.agentId, {
       success: input.success,
@@ -202,6 +206,7 @@ export class TowerService {
         body: `[${outcome}] ${input.result || task.body}${refs ? ` (${refs})` : ""}`,
         replyTo: task.id,
       });
+      this.onTaskCompleted?.(task);
     }
     return { ok };
   }

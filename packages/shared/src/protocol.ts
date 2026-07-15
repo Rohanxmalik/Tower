@@ -9,7 +9,7 @@ import { z } from "zod";
 /** One version string for the whole release: the MCP server, the remote client and
  * `/health` all report this, and the worker warns when major.minor drifts from the
  * server it talks to. Bump together with packages/cli/package.json. */
-export const TOWER_VERSION = "0.7.0";
+export const TOWER_VERSION = "0.7.1";
 
 // ---------------------------------------------------------------------------
 // Core domain types

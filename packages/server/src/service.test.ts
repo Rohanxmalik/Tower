@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import type { DelegatedTask } from "@tower/shared";
 import { TowerService } from "./service.js";
 import { TowerStore } from "./store/sqlite.js";
 import { parsePolicy } from "./engine/sequencer.js";
@@ -316,5 +317,49 @@ describe("worker presence (service)", () => {
     const snap = service.boardSnapshot();
     expect(snap.workers.map((w) => w.agentId)).toEqual(["bob"]);
     expect(snap.workers[0]!.runner).toBe("claude");
+  });
+});
+
+describe("onTaskCompleted hook (web-push wiring point)", () => {
+  it("fires once with the finished task", () => {
+    const service = new TowerService();
+    const seen: DelegatedTask[] = [];
+    service.onTaskCompleted = (t) => seen.push(t);
+    const { id } = service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting",
+    });
+    service.acceptTask({ taskId: id, agentId: "bob" });
+    service.completeTask({
+      taskId: id,
+      agentId: "bob",
+      success: true,
+      result: "done",
+      commitSha: "ab12f3d",
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.status).toBe("done");
+    expect(seen[0]!.commitSha).toBe("ab12f3d");
+  });
+
+  it("does not fire when completion is refused (wrong assignee)", () => {
+    const service = new TowerService();
+    let fired = 0;
+    service.onTaskCompleted = () => {
+      fired += 1;
+    };
+    const { id } = service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "x",
+    });
+    service.acceptTask({ taskId: id, agentId: "bob" });
+    service.completeTask({ taskId: id, agentId: "mallory", success: true, result: "nope" });
+    expect(fired).toBe(0);
   });
 });

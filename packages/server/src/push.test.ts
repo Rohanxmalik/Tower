@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { TowerStore } from "./store/sqlite.js";
-import { ensureVapidKeys, sendApprovalPush, type PushKeys } from "./push.js";
+import { ensureVapidKeys, sendApprovalPush, sendTaskDonePush, type PushKeys } from "./push.js";
 import type { DelegatedTask } from "@tower/shared";
 
 const KEYS: PushKeys = { publicKey: "pub-key", privateKey: "priv-key" };
@@ -66,5 +66,61 @@ describe("sendApprovalPush", () => {
       throw Object.assign(new Error("boom"), { statusCode: 500 });
     });
     expect(store.listPushSubs()).toHaveLength(1);
+  });
+});
+
+describe("sendTaskDonePush", () => {
+  const finished = (over: Partial<DelegatedTask>): DelegatedTask => ({
+    ...task,
+    status: "done",
+    assigneeAgentId: "bob",
+    result: "rate limit 30/min added",
+    ...over,
+  });
+
+  it("announces a finished task with the assignee and PR ref", async () => {
+    const store = new TowerStore();
+    store.addPushSub("https://push.example/e1", JSON.stringify({ endpoint: "e1" }));
+    const sent: string[] = [];
+    await sendTaskDonePush(
+      store,
+      KEYS,
+      finished({ prUrl: "https://github.com/acme/app/pull/42", commitSha: "ab12f3d9c0ffee00" }),
+      async (_sub, payload) => {
+        sent.push(payload);
+      },
+    );
+    const p = JSON.parse(sent[0]!) as { title: string; body: string; tag: string };
+    expect(p.title).toContain("done");
+    expect(p.body).toContain("bob");
+    expect(p.body).toContain("rate limit 30/min");
+    expect(p.body).toContain("pull/42");
+    expect(p.tag).toBe("t1");
+  });
+
+  it("announces a failure distinctly", async () => {
+    const store = new TowerStore();
+    store.addPushSub("https://push.example/e1", JSON.stringify({ endpoint: "e1" }));
+    const sent: string[] = [];
+    await sendTaskDonePush(
+      store,
+      KEYS,
+      finished({ status: "failed", result: "runner exited 1" }),
+      async (_sub, payload) => {
+        sent.push(payload);
+      },
+    );
+    const p = JSON.parse(sent[0]!) as { title: string; body: string };
+    expect(p.title).toContain("failed");
+    expect(p.body).toContain("runner exited 1");
+  });
+
+  it("drops dead endpoints just like approval pushes", async () => {
+    const store = new TowerStore();
+    store.addPushSub("https://push.example/dead", JSON.stringify({ endpoint: "dead" }));
+    await sendTaskDonePush(store, KEYS, finished({}), async () => {
+      throw Object.assign(new Error("gone"), { statusCode: 410 });
+    });
+    expect(store.listPushSubs()).toHaveLength(0);
   });
 });

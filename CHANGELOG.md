@@ -3,6 +3,14 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.7.1 — 2026-07-16
+
+- **Your phone buzzes when the work lands.** Push notifications now fire on task
+  completion too — "task done ✓" with the PR link and sha, or "task failed ✗" with the
+  reason — not just when a task needs approval. Same one-time 🔔 opt-in on the board.
+- Site: cookie-less visit counts (GoatCounter) on the landing page only — the Tower
+  product itself still has no telemetry.
+
 ## 0.7.0 — 2026-07-13
 
 - **`tower demo`** — the 30-second wow moment: one command boots an in-memory Tower,

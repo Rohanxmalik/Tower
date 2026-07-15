@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 > push notifications, live worker presence + capacity, phone-editable team rules that ride
 > every delegated prompt, the command Map, `tower demo` / `tower doctor`, semantic collision
 > detection, three enforcement layers, and the GitHub Action all work end-to-end today
-> (246 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+> (251 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 

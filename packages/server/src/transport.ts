@@ -12,7 +12,7 @@ import {
 } from "@tower/shared";
 import { buildMcpServer } from "./mcp.js";
 import { BOARD_HTML, BOARD_SW_JS } from "./board.js";
-import { ensureVapidKeys, sendApprovalPush } from "./push.js";
+import { ensureVapidKeys, sendApprovalPush, sendTaskDonePush } from "./push.js";
 import { TowerService } from "./service.js";
 
 /** Constant-time string comparison; length mismatch still compares a full buffer. */
@@ -142,10 +142,14 @@ export function startHttp(service: TowerService, opts: HttpOptions): Promise<Ser
   const throttle = new AuthThrottle();
   const writes = new WriteLimiter();
 
-  // Web push: parked-for-approval tasks buzz every subscribed phone, no open tab needed.
+  // Web push: parked-for-approval tasks buzz every subscribed phone, no open tab
+  // needed — and finished work buzzes too, closing the loop.
   const vapidKeys = ensureVapidKeys(service.store);
   service.onApprovalRequested = (task) => {
     void sendApprovalPush(service.store, vapidKeys, task);
+  };
+  service.onTaskCompleted = (task) => {
+    void sendTaskDonePush(service.store, vapidKeys, task);
   };
 
   const clientIp = (req: express.Request): string =>

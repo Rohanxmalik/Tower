@@ -54,6 +54,8 @@ Commands:
                              runs unattended; --approve remote waits for a board/phone tap.
                              --budget caps tasks per rolling 24h; after a rate-limit
                              failure the worker cools down 10 min and reports low capacity.
+                             --permission-mode bypass lets a task run git/tests/builds
+                             (claude runner) — use only with --approve remote / a trusted clone.
 
 Run with no command to print this help.`;
 
@@ -271,6 +273,7 @@ export async function run(argv: string[]): Promise<number> {
           agent: { type: "string" },
           repo: { type: "string" },
           runner: { type: "string" },
+          "permission-mode": { type: "string" },
           cmd: { type: "string" },
           interval: { type: "string" },
           auto: { type: "boolean" },
@@ -297,11 +300,20 @@ export async function run(argv: string[]): Promise<number> {
         process.stderr.write(`unknown --approve "${values.approve}" (only: remote)\n`);
         return 1;
       }
+      const permMode = values["permission-mode"];
+      if (permMode != null && permMode !== "acceptEdits" && permMode !== "bypass") {
+        process.stderr.write(
+          `unknown --permission-mode "${permMode}" (acceptEdits | bypass). ` +
+            `bypass lets a task run git/tests/builds — only with --approve remote or a trusted clone.\n`,
+        );
+        return 1;
+      }
       const defaults = gitDefaults(cwd);
       const opts: WorkerOptions = {
         agentId: values.agent ?? defaults.defaultFrom,
         repo: values.repo ?? defaults.defaultRepo,
         runner,
+        ...(permMode ? { permissionMode: permMode as "acceptEdits" | "bypass" } : {}),
         ...(values.cmd ? { cmdTemplate: values.cmd } : {}),
         ...(toNum(values.interval) != null ? { intervalMs: toNum(values.interval)! * 1000 } : {}),
         ...(values.auto ? { auto: true } : {}),

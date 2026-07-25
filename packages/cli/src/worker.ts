@@ -74,6 +74,10 @@ export interface WorkerOptions {
   agentId: string;
   repo: string;
   runner: "claude" | "codex" | "cmd";
+  /** claude runner: "acceptEdits" (default — edits auto-accepted, Bash still gated) or
+   * "bypass" (--dangerously-skip-permissions — lets the task run git pull/tests/builds).
+   * Only sensible where a human approves each task (--approve remote) or on a trusted clone. */
+  permissionMode?: "acceptEdits" | "bypass";
   /** runner "cmd": operator-authored shell command; receives the task prompt on STDIN. */
   cmdTemplate?: string;
   intervalMs?: number;
@@ -120,7 +124,14 @@ export function runnerCommand(
   // string (no args array → no DEP0190) and carries no untrusted text — the prompt is
   // piped on stdin, so there is nothing to escape or inject.
   if (opts.runner === "claude") {
-    return { cmd: "claude -p --permission-mode acceptEdits", args: [], input: prompt, shell: true };
+    // acceptEdits (default) auto-accepts file edits but gates Bash — a task that needs to
+    // run git pull / tests / a build gets blocked headlessly. "bypass" removes the gate so
+    // the task can run commands (safe only with per-task human approval / a trusted clone).
+    const perm =
+      opts.permissionMode === "bypass"
+        ? "--dangerously-skip-permissions"
+        : "--permission-mode acceptEdits";
+    return { cmd: `claude -p ${perm}`, args: [], input: prompt, shell: true };
   }
   if (opts.runner === "codex") {
     return { cmd: "codex exec --full-auto -", args: [], input: prompt, shell: true };
@@ -183,6 +194,7 @@ interface TaskApi {
     result: string;
     commitSha?: string;
     prUrl?: string;
+    filesChanged?: number;
   }): Promise<void>;
 }
 
@@ -307,7 +319,9 @@ async function runTask(
     rulesHeader +
     `${task.body}\n\n` +
     `(You are completing a task delegated via Tower by agent "${task.fromAgentId}". ` +
-    `Work only within this repository; make the change complete and keep tests green.)`;
+    `Work only within this repository; make the change complete and keep tests green. ` +
+    `Tower's worker commits and pushes your changes on a fresh branch automatically when ` +
+    `you finish — do NOT run git add / commit / push yourself.)`;
   const runner = runnerCommand(opts, prompt);
   const timeoutMs = (opts.maxMinutes ?? 15) * 60_000;
   const run = await exec(runner.cmd, runner.args, {
@@ -335,8 +349,13 @@ async function runTask(
   const notes: string[] = [];
   let commitSha: string | undefined;
   let prUrl: string | undefined;
+  // How many files the run touched — 0 means the runner did nothing. Surfaced on the task
+  // so the board can show a no-op run as amber, not a green "done" (ISSUES/001).
+  let filesChanged = 0;
 
   if (staged.code !== 0) {
+    const numstat = await git("diff", "--cached", "--numstat");
+    filesChanged = numstat.out.split("\n").filter((l) => l.trim() !== "").length;
     const title = task.body.split("\n")[0]!.slice(0, 60);
     await git("commit", "-m", `tower task ${id8}: ${title}`);
     commitSha = (await git("rev-parse", "HEAD")).out.trim();
@@ -372,11 +391,12 @@ async function runTask(
     taskId: task.id,
     success: true,
     result,
+    filesChanged,
     ...(commitSha ? { commitSha } : {}),
     ...(prUrl ? { prUrl } : {}),
   });
   out(
-    `✅ task ${id8} done — branch ${branch}` +
+    `✅ task ${id8} ${filesChanged === 0 ? "done (no file changes)" : "done"} — branch ${branch}` +
       (commitSha ? ` @ ${commitSha.slice(0, 7)}` : "") +
       (prUrl ? ` · ${prUrl}` : ""),
   );

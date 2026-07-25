@@ -97,6 +97,7 @@ export const BOARD_HTML = `<!doctype html>
   .st.needsok { color: var(--amber); border-color: var(--amber); background: rgba(240,180,41,0.12); }
   .st.running { color: var(--cyan); border-color: var(--cyan); }
   .st.done { color: var(--green); border-color: var(--green); }
+  .st.noop { color: var(--amber); border-color: var(--amber); background: rgba(240,180,41,0.10); }
   .st.failed { color: var(--red); border-color: var(--red); }
   .when { color: var(--muted); font-size: 0.72rem; }
 
@@ -491,6 +492,9 @@ export const BOARD_HTML = `<!doctype html>
         if (t.status === "open" && t.approval === "approved") { cls = "running"; sl = ["approved — queued", ""]; }
         if (t.status === "open" && t.approval === "rejected") { cls = "failed"; sl = ["you rejected this", ""]; }
         if (t.approval === "pending") { cls = "needsok"; sl = ["needs your OK", ""]; }
+        // A "done" run that changed nothing shows amber "no changes", not green — it committed
+        // nothing, so it shouldn't read as work landed (ISSUES/001).
+        if (t.status === "done" && t.filesChanged === 0) { cls = "noop"; sl = ["done · no changes", ""]; }
         l1.appendChild(el("span", "st " + cls, sl[0]));
         l1.appendChild(el("span", "when", "  " + fmtAge(data.now - t.createdAt) + " ago"));
         node.appendChild(l1);

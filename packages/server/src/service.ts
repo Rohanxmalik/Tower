@@ -192,18 +192,29 @@ export class TowerService {
       result: input.result,
       ...(input.commitSha ? { commitSha: input.commitSha } : {}),
       ...(input.prUrl ? { prUrl: input.prUrl } : {}),
+      ...(input.filesChanged != null ? { filesChanged: input.filesChanged } : {}),
     });
     if (ok) {
       // Close the loop on the COMMS channel so the delegator hears the outcome.
       const task = this.store.getTask(input.taskId)!;
-      const outcome = input.success ? "done" : "FAILED";
+      // A "done" run that changed nothing isn't really a success — call it out so the
+      // delegator doesn't read a green update as "work landed".
+      const outcome = !input.success
+        ? "FAILED"
+        : input.filesChanged === 0
+          ? "done · no changes"
+          : "done";
       const refs = [input.commitSha, input.prUrl].filter(Boolean).join(" · ");
+      const files =
+        input.filesChanged != null && input.filesChanged > 0
+          ? ` · ${input.filesChanged} file${input.filesChanged === 1 ? "" : "s"} changed`
+          : "";
       this.store.sendMessage({
         fromAgentId: input.agentId,
         toAgentId: task.fromAgentId,
         repo: task.repo,
         kind: "task_update",
-        body: `[${outcome}] ${input.result || task.body}${refs ? ` (${refs})` : ""}`,
+        body: `[${outcome}] ${input.result || task.body}${refs ? ` (${refs})` : ""}${files}`,
         replyTo: task.id,
       });
       this.onTaskCompleted?.(task);

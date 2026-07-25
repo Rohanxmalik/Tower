@@ -219,6 +219,9 @@ export const DelegatedTask = z.object({
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
   result: z.string().optional(),
+  /** Files the run changed. 0 = the runner did nothing (board shows amber, not green
+   * "done"); undefined = pre-0.7.2 task or not reported. */
+  filesChanged: z.number().int().nonnegative().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
 });
@@ -271,6 +274,9 @@ export const CompleteTaskInput = z.object({
   result: z.string().default(""),
   commitSha: z.string().optional(),
   prUrl: z.string().optional(),
+  /** How many files the run changed (0 = no-op). Surfaced on the board so a task that
+   * committed nothing doesn't read as a green success. */
+  filesChanged: z.number().int().nonnegative().optional(),
 });
 export type CompleteTaskInput = z.infer<typeof CompleteTaskInput>;
 

@@ -176,21 +176,22 @@ your phone:
 Same `TOWER_TOKEN` as everything else — anyone who can open your board can drive your
 worker, so share it like push access. Details → [docs/worker.md](./docs/worker.md).
 
-## The 17 tools
+## The 18 tools
 
-| Tool                                           | Purpose                                                                |
-| ---------------------------------------------- | ---------------------------------------------------------------------- |
-| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)           |
-| `check_collision`                              | Dry-run collision check, no claim persisted                            |
-| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                            |
-| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                       |
-| `list_claims`                                  | Live claim state                                                       |
-| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                    |
-| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                |
-| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents |
-| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR      |
-| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone   |
-| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks    |
+| Tool                                           | Purpose                                                                     |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)                |
+| `check_collision`                              | Dry-run collision check, no claim persisted                                 |
+| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                                 |
+| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                            |
+| `list_claims`                                  | Live claim state                                                            |
+| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                         |
+| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                     |
+| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents      |
+| `pending`                                      | Read-only count of unread messages + open tasks waiting for you (the nudge) |
+| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR           |
+| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone        |
+| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks         |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 

@@ -14,6 +14,7 @@ import type {
   OkOutput,
   SendMessageOutput,
   FetchMessagesOutput,
+  PendingOutput,
 } from "@tower/shared";
 import { renderConflicts, renderClaimsTable, formatAgo } from "./render.js";
 import { remoteConfig, withRemote, type RemoteCall } from "./remote.js";
@@ -582,6 +583,47 @@ export async function cmdInbox(
         return r;
       })();
   out(renderMessages(messages, Date.now()));
+}
+
+/** Read-only nudge: how many tasks/messages are waiting for you. Marks nothing read,
+ * prints nothing when the inbox is clear — meant to run from a Claude Code hook so an
+ * interactive agent gets "🗼 Tower: N tasks waiting" without polling the board. */
+export async function cmdNudge(
+  cwd: string,
+  args: { agentId: string; repo?: string; json?: boolean },
+  out: Writer = stdout,
+  build?: BuildOptions,
+): Promise<void> {
+  const input = { agentId: args.agentId, ...(args.repo ? { repo: args.repo } : {}) };
+  const remote = remoteConfig();
+  const { unreadMessages, openTasks } = remote
+    ? ((await withRemote(remote, (call) => call("pending", input))) as PendingOutput)
+    : (() => {
+        const service = buildService(cwd, build);
+        const r = service.pending(input);
+        service.store.close();
+        return r;
+      })();
+
+  if (args.json) {
+    out(JSON.stringify({ unreadMessages, openTasks }));
+    return;
+  }
+  if (unreadMessages + openTasks === 0) return; // silent when nothing waits
+
+  // A delegated task IS an unread message (same id), so it's counted in both. Report the
+  // inbox unread total as the headline and call out how many of them are delegated tasks —
+  // don't add the two numbers, or a single task reads as "2 things waiting".
+  const taskNote =
+    openTasks > 0 ? ` (${openTasks} delegated task${openTasks === 1 ? "" : "s"})` : "";
+  const headline =
+    unreadMessages > 0
+      ? `${unreadMessages} unread${taskNote}`
+      : `${openTasks} open delegated task${openTasks === 1 ? "" : "s"}`;
+  out(
+    `🗼 Tower: ${headline} waiting for ${args.agentId}. ` +
+      `Call fetch_messages / list_tasks to pick up.`,
+  );
 }
 
 /** Poll the active-claims table until interrupted. */

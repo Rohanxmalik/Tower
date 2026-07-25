@@ -344,6 +344,20 @@ export type FetchMessagesInput = z.infer<typeof FetchMessagesInput>;
 export const FetchMessagesOutput = z.object({ messages: z.array(Message) });
 export type FetchMessagesOutput = z.infer<typeof FetchMessagesOutput>;
 
+/** Read-only "what's waiting for me" — unread messages + open tasks addressed to the
+ * agent (or "*"). Marks nothing read; powers the interactive nudge. */
+export const PendingInput = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().optional(),
+});
+export type PendingInput = z.infer<typeof PendingInput>;
+
+export const PendingOutput = z.object({
+  unreadMessages: z.number().int().nonnegative(),
+  openTasks: z.number().int().nonnegative(),
+});
+export type PendingOutput = z.infer<typeof PendingOutput>;
+
 /** Registry consumed by the MCP server to declare tools. */
 export const TOOL_SCHEMAS = {
   claim_intent: { input: ClaimIntentInput, output: ClaimIntentOutput },
@@ -357,6 +371,7 @@ export const TOOL_SCHEMAS = {
   next_task: { input: NextTaskInput, output: NextTaskOutput },
   send_message: { input: SendMessageInput, output: SendMessageOutput },
   fetch_messages: { input: FetchMessagesInput, output: FetchMessagesOutput },
+  pending: { input: PendingInput, output: PendingOutput },
   accept_task: { input: AcceptTaskInput, output: AcceptTaskOutput },
   complete_task: { input: CompleteTaskInput, output: OkOutput },
   list_tasks: { input: ListTasksInput, output: ListTasksOutput },

@@ -54,6 +54,7 @@ All seventeen tools take and return JSON validated by the schemas in
 | `next_task`        | Ask the sequencer for a task whose module is safe to start now.       |
 | `send_message`     | Message or delegate a task to another agent (`toAgentId`, or `"*"`).  |
 | `fetch_messages`   | Read the caller's inbox; fetched messages are marked read.            |
+| `pending`          | Read-only count of unread messages + open tasks; marks nothing read.  |
 | `accept_task`      | Claim an open delegated task — first accept wins, sets the assignee.  |
 | `complete_task`    | Finish a task (done/failed) with a result, optional commit sha + PR.  |
 | `list_tasks`       | List delegated tasks by repo, status, recipient, or assignee.         |

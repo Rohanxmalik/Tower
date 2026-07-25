@@ -20,14 +20,14 @@ export const BOARD_HTML = `<!doctype html>
     --mono: "IBM Plex Mono", "Cascadia Code", Consolas, Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
-  body { background: var(--bg); color: var(--ink); font-family: var(--ui); line-height: 1.5;
-    padding: 1rem; max-width: 1100px; margin: 0 auto; -webkit-font-smoothing: antialiased; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--ui); line-height: 1.55;
+    padding: 1.75rem 1.5rem 4rem; max-width: 1160px; margin: 0 auto; -webkit-font-smoothing: antialiased; }
   h1 { font-size: 1rem; letter-spacing: 0.28em; color: #fff; font-weight: 700; }
   h1 small { color: var(--muted); letter-spacing: 0.1em; font-weight: 400; font-size: 0.72rem; }
   h2 { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
-    margin: 1.4rem 0 0.6rem; font-weight: 600; }
-  header { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;
-    border-bottom: 1px solid var(--line); padding-bottom: 0.8rem; }
+    margin: 2rem 0 0.8rem; font-weight: 600; }
+  header { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+    border-bottom: 1px solid var(--line); padding-bottom: 1.1rem; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
   .dot.err { background: var(--red); box-shadow: 0 0 8px var(--red); }
@@ -37,41 +37,44 @@ export const BOARD_HTML = `<!doctype html>
   #forget:hover { color: var(--ink); border-color: var(--ink); }
   input, textarea, select, button { font-family: var(--ui); font-size: 0.85rem; }
   input, textarea, select { background: var(--panel2); border: 1px solid var(--line); color: var(--ink);
-    padding: 0.5rem 0.6rem; border-radius: 6px; }
-  input:focus, textarea:focus { outline: 1px solid var(--cyan); }
+    padding: 0.6rem 0.75rem; border-radius: 8px; transition: border-color 0.15s; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(82,204,240,0.12); }
   button { cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-    padding: 0.5rem 0.9rem; border-radius: 6px; font-weight: 600; }
+    padding: 0.6rem 1.05rem; border-radius: 8px; font-weight: 600; transition: border-color 0.15s, filter 0.15s; }
   button:hover { border-color: var(--cyan); }
   .btn-go { background: var(--cyan); color: #05121a; border-color: var(--cyan); }
   .btn-ok { background: var(--green); color: #04150c; border-color: var(--green); }
   .btn-no { background: transparent; color: var(--red); border-color: var(--red); }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem; }
+  .btn-go:hover, .btn-ok:hover { filter: brightness(1.08); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.15rem 1.2rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.22); }
   .muted { color: var(--muted); }
-  .cols { display: grid; grid-template-columns: 1fr 300px; gap: 1.2rem; align-items: start; }
+  .cols { display: grid; grid-template-columns: 1fr 322px; gap: 1.6rem; align-items: start; }
   @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
 
   /* Send box — the mobile remote */
-  #send { display: grid; gap: 0.5rem; margin-top: 1rem; }
-  #send .row { display: flex; gap: 0.5rem; }
-  #send textarea { flex: 1; resize: vertical; min-height: 2.6rem; }
+  #send { display: grid; gap: 0.7rem; margin: 1.2rem 0 0.4rem; }
+  #send .row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+  #send textarea { flex: 1; resize: vertical; min-height: 3rem; min-width: 14rem; }
   #send input.to { width: 8rem; }
-  #send .hint { font-size: 0.72rem; }
-  @media (max-width: 520px) { #send .row { flex-direction: column; } #send input.to { width: 100%; } }
+  #send .hint { font-size: 0.74rem; flex-basis: 100%; margin-top: 0.05rem; }
+  @media (max-width: 520px) { #send .row { flex-direction: column; align-items: stretch; } #send input.to { width: 100%; } }
 
+  #approvals:not(:empty), #collisions:not(:empty) { margin-top: 1.1rem; }
   /* Approvals — needs your OK */
-  .approve { border-color: var(--amber); background: rgba(240,180,41,0.07); display: grid; gap: 0.5rem;
-    margin-bottom: 0.6rem; }
+  .approve { border-color: var(--amber); background: rgba(240,180,41,0.07); display: grid; gap: 0.6rem;
+    margin-bottom: 0.7rem; }
   .approve .q { color: #fff; }
   .approve .cmd { color: var(--amber); font-family: var(--mono); font-size: 0.82rem; }
   .approve .btns { display: flex; gap: 0.5rem; }
 
   /* Collision banner */
   .collision { border-color: var(--red); background: rgba(255,92,92,0.08); color: #fff;
-    margin-bottom: 0.5rem; }
-  .collision .why { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
+    margin-bottom: 0.7rem; }
+  .collision .why { color: var(--muted); font-size: 0.82rem; margin-top: 0.3rem; }
 
   /* Delegation tree */
-  .task { border-top: 1px solid var(--line); padding: 0.7rem 0; }
+  .task { border-top: 1px solid var(--line); padding: 0.9rem 0; }
   .task:first-child { border-top: 0; }
   .task .line1 { color: var(--ink); }
   .task .who { color: #fff; font-weight: 600; }
@@ -98,23 +101,23 @@ export const BOARD_HTML = `<!doctype html>
   .when { color: var(--muted); font-size: 0.72rem; }
 
   /* Roster + editing + activity */
-  .agent { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0; border-top: 1px solid var(--line); }
-  .agent:first-child { border-top: 0; }
+  .agent { display: flex; align-items: baseline; gap: 0.55rem; padding: 0.55rem 0; border-top: 1px solid var(--line); }
+  .agent:first-child { border-top: 0; padding-top: 0.1rem; }
   .agent .name { color: #fff; font-weight: 600; font-size: 0.85rem; }
   .agent .doing { color: var(--muted); font-size: 0.78rem; }
   .agent .busy { color: var(--amber); }
-  .edit { padding: 0.45rem 0; border-top: 1px solid var(--line); font-size: 0.85rem; }
-  .edit:first-child { border-top: 0; }
+  .edit { padding: 0.55rem 0; border-top: 1px solid var(--line); font-size: 0.85rem; }
+  .edit:first-child { border-top: 0; padding-top: 0.1rem; }
   .edit b { color: #fff; } .edit .file { color: var(--cyan); font-family: var(--mono); font-size: 0.8rem; }
   .edit .clash { color: var(--red); }
-  .ev { padding: 0.35rem 0; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--ink); }
-  .ev:first-child { border-top: 0; }
+  .ev { padding: 0.5rem 0; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--ink); line-height: 1.5; }
+  .ev:first-child { border-top: 0; padding-top: 0.1rem; }
   .ev .t { color: var(--muted); font-size: 0.72rem; }
-  #comms { max-height: 40vh; overflow-y: auto; }
+  #comms { max-height: 44vh; overflow-y: auto; }
   .empty { color: var(--muted); font-size: 0.85rem; }
   /* Tabs (Board | Map) */
-  .tabs { display: flex; gap: 0.4rem; margin: 1rem 0 0.2rem; }
-  .tabs button { background: var(--panel2); font-size: 0.85rem; padding: 0.45rem 1rem; }
+  .tabs { display: flex; gap: 0.5rem; margin: 1.3rem 0 0.4rem; }
+  .tabs button { background: var(--panel2); font-size: 0.85rem; padding: 0.55rem 1.15rem; }
   .tabs button.active { background: var(--cyan); color: #05121a; border-color: var(--cyan); }
   select.to { width: 11rem; }
   @media (max-width: 520px) { select.to { width: 100%; } }
@@ -178,8 +181,8 @@ export const BOARD_HTML = `<!doctype html>
       <option value="l">large</option>
     </select>
     <button id="notify" type="button" title="Buzz this phone when a task needs approval">🔔 Notify me</button>
-    <span class="hint muted" id="sendhint">Pick a worker (or ★ everyone); one that's online runs it now.</span>
   </div>
+  <span class="hint muted" id="sendhint">Pick a worker (or ★ everyone); one that's online runs it now.</span>
 </form>
 
 <div id="approvals"></div>

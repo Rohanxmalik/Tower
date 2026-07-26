@@ -10,6 +10,7 @@ import {
   cmdNextTask,
   cmdSend,
   cmdInbox,
+  cmdNudge,
   cmdSetup,
   gatherSendArgs,
   gitDefaults,
@@ -47,6 +48,7 @@ Commands:
                              (--from/--repo are inferred from git; flags for scripts:
                               --to <id|*> --body <text> [--task] [--reply-to <id>])
   inbox [--agent <id>]       Read your messages (marks them read; agent inferred from git)
+  nudge [--agent <id>] [--json]  Count tasks+messages waiting (marks nothing read; for a Claude Code hook)
   work [--auto | --approve remote] [--runner claude|codex|cmd] [--allow-from a,b] [--budget n]
                              Worker daemon: picks up delegated tasks, runs your local
                              agent headlessly, commits on a branch, opens a PR, reports
@@ -343,6 +345,25 @@ export async function run(argv: string[]): Promise<number> {
       await cmdInbox(cwd, {
         agentId,
         ...(values.repo ? { repo: values.repo } : {}),
+      });
+      return 0;
+    }
+
+    case "nudge": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          agent: { type: "string" },
+          repo: { type: "string" },
+          json: { type: "boolean" },
+        },
+        allowPositionals: false,
+      });
+      const agentId = values.agent ?? gitDefaults(cwd).defaultFrom;
+      await cmdNudge(cwd, {
+        agentId,
+        ...(values.repo ? { repo: values.repo } : {}),
+        ...(values.json ? { json: true } : {}),
       });
       return 0;
     }

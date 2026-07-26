@@ -182,6 +182,40 @@ describe("messaging", () => {
     expect(res.unreadMessages).toBe(1);
   });
 
+  it("pending counts open tasks + unread messages without marking read", () => {
+    const service = new TowerService();
+    // an open task addressed to bob, and an unread plain message
+    service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "task",
+      body: "add rate limiting",
+    });
+    service.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      repo: "team/app",
+      kind: "message",
+      body: "heads up",
+    });
+
+    const first = service.pending({ agentId: "bob", repo: "team/app" });
+    expect(first.openTasks).toBe(1);
+    // the task message + the plain message are both unread
+    expect(first.unreadMessages).toBe(2);
+
+    // read-only: calling again returns the same counts (nothing was marked read)
+    const second = service.pending({ agentId: "bob", repo: "team/app" });
+    expect(second).toEqual(first);
+
+    // nobody else's inbox is affected
+    expect(service.pending({ agentId: "dana", repo: "team/app" })).toEqual({
+      unreadMessages: 0,
+      openTasks: 0,
+    });
+  });
+
   it("boardSnapshot includes the recent message feed", () => {
     const service = new TowerService();
     service.sendMessage({

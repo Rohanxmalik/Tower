@@ -20,6 +20,8 @@ import type {
   SendMessageOutput,
   FetchMessagesInput,
   FetchMessagesOutput,
+  PendingInput,
+  PendingOutput,
   AcceptTaskInput,
   AcceptTaskOutput,
   CompleteTaskInput,
@@ -175,6 +177,18 @@ export class TowerService {
 
   fetchMessages(input: FetchMessagesInput): FetchMessagesOutput {
     return { messages: this.store.fetchMessages(input) };
+  }
+
+  /** Read-only count of what's waiting for an agent: unread messages + open tasks
+   * addressed to it (or "*"). Marks nothing read — this is the interactive nudge. */
+  pending(input: PendingInput): PendingOutput {
+    const unreadMessages = this.store.unreadCount(input.agentId);
+    const openTasks = this.store.listTasks({
+      ...(input.repo ? { repo: input.repo } : {}),
+      forAgentId: input.agentId,
+      status: "open",
+    }).length;
+    return { unreadMessages, openTasks };
   }
 
   acceptTask(input: AcceptTaskInput): AcceptTaskOutput {

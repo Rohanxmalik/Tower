@@ -270,6 +270,39 @@ describe("cmdSend / cmdInbox (agent comms)", () => {
     await cmdInbox(dir, { agentId: "bob" }, again.out);
     expect(again.lines.join("\n")).toContain("empty");
   });
+
+  it("nudge surfaces waiting work read-only, and stays silent when clear", async () => {
+    const { cmdSend, cmdNudge } = await import("./commands.js");
+    await cmdSend(
+      dir,
+      { from: "alice", to: "bob", repo: "team/app", body: "add rate limiting", task: true },
+      collect().out,
+    );
+    await cmdSend(
+      dir,
+      { from: "alice", to: "bob", repo: "team/app", body: "heads up", task: false },
+      collect().out,
+    );
+
+    // human-readable nudge: 2 unread (the task + the message), 1 is a delegated task
+    const nudge = collect();
+    await cmdNudge(dir, { agentId: "bob", repo: "team/app" }, nudge.out);
+    const text = nudge.lines.join("\n");
+    expect(text).toContain("🗼 Tower:");
+    expect(text).toContain("2 unread");
+    expect(text).toContain("1 delegated task");
+    expect(text).toContain("bob");
+
+    // read-only: json shows the same counts on a second call (nothing marked read)
+    const json = collect();
+    await cmdNudge(dir, { agentId: "bob", repo: "team/app", json: true }, json.out);
+    expect(JSON.parse(json.lines.join(""))).toEqual({ unreadMessages: 2, openTasks: 1 });
+
+    // nobody waiting → silent (prints nothing)
+    const quiet = collect();
+    await cmdNudge(dir, { agentId: "dana", repo: "team/app" }, quiet.out);
+    expect(quiet.lines.join("")).toBe("");
+  });
 });
 
 describe("interactive send (gatherSendArgs)", () => {

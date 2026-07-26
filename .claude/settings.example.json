@@ -1,10 +1,15 @@
 {
-  "//": "Copy to .claude/settings.json to ENFORCE Tower on this repo. Requires `npm run build` first.",
+  "//": "Copy to .claude/settings.json. PreToolUse ENFORCES Tower (blocks conflicting edits); UserPromptSubmit NUDGES you when a teammate delegated work. Requires `npm run build` first. For a remote team Tower, set TOWER_URL / TOWER_TOKEN in the environment.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [{ "type": "command", "command": "node hooks/pretooluse-tower.mjs" }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "node hooks/userpromptsubmit-nudge.mjs" }]
       }
     ]
   }

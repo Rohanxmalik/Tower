@@ -1,12 +1,12 @@
 # Tower 🗼
 
 [![CI](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml)
-![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-3fb950)
+![Node ≥22.5](https://img.shields.io/badge/node-%E2%89%A522.5-3fb950)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **Multiplayer for your team's AI coding agents.**
 
-**[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — setup: `npx -y tower-mcp setup`
+**[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs/quickstart.md)** — setup: `npx -y tower-mcp setup`
 
 Every great work tool went multiplayer — Docs beat Word, Figma beat Photoshop. AI is
 still the one everyone uses alone: one prompt, one box, one person.
@@ -14,10 +14,11 @@ still the one everyone uses alone: one prompt, one box, one person.
 Tower is an [MCP](https://modelcontextprotocol.io) server that turns your team's coding
 agents — Claude Code, Cursor, Codex, on different machines and different accounts — into
 **one crew on one repo**. Your agent **delegates a task** to your teammate's agent; theirs
-does the work with _their_ tokens, commits it, and **reports back with the sha** — while
-the whole team watches it on **one live board** instead of a thousand private threads. And
-because everyone declares intent before editing, no two agents ever burn tokens on the
-same code — collisions are held **before the first keystroke**, not found at merge.
+does the work with _their_ tokens, commits it, and **reports back with the sha** — and the
+task, the reply and the sha all land on **one shared board** the whole team can see,
+instead of a thousand private threads. And because everyone declares intent before editing,
+no two agents ever burn tokens on the same code — collisions are held **before the first
+keystroke**, not found at merge.
 
 ```
 YOUR MACHINE — alice                          THEIR MACHINE — bob
@@ -35,12 +36,9 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.7 — early, building in public.** Agent messaging/task delegation, the
-> `tower work` worker daemon, remote human approval, the phone remote-control board with
-> push notifications, live worker presence + capacity, phone-editable team rules that ride
-> every delegated prompt, the command Map, `tower demo` / `tower doctor`, semantic collision
-> detection, three enforcement layers, and the GitHub Action all work end-to-end today
-> (262 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+> Status: **v0.8 — early, building in public.** Everything below works end-to-end today,
+> under an 80% coverage gate enforced in CI. What's shipped and what's next:
+> [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 
@@ -51,13 +49,49 @@ conflict. Tower is the missing collaboration layer: a shared tower every agent t
 It sits _above_ git and _uses_ MCP; it doesn't replace either. Model-agnostic by
 construction — coordination only matters if the _other_ vendor's agent is in the room.
 
-## See a collision get stopped (5 seconds)
+## The six words you need
+
+| Word            | What it means here                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **MCP**         | the standard way agents call external tools. Claude Code, Cursor and Codex all speak it — so Tower works with all of them, no plugin |
+| **claim**       | an agent saying _"I'm about to edit these files/functions"_ **before** it edits. The core move                                       |
+| **symbol**      | a named function, class or method — so two agents editing _different_ functions in one file aren't treated as colliding              |
+| **hard / soft** | `hard` = same symbol, or someone claimed the whole file → stop. `soft` = same file, different symbols → proceed carefully            |
+| **board**       | a web page showing every agent's active claims, tasks and messages                                                                   |
+| **worker**      | `tower work` — a daemon on a machine that picks up delegated tasks and runs a coding agent headlessly                                |
+
+Claims expire on their own (15-minute TTL, refreshed by heartbeats), so a crashed agent
+never locks a file forever.
+
+## See it — 30 seconds
+
+Needs **Node 22.5+** (it uses the built-in `node:sqlite`, so there's nothing to compile).
+Nothing to install, nothing written to disk:
 
 ```bash
-npm run demo
+npx -y tower-mcp demo
 ```
 
-Two agents reach for the same symbol; the second is caught before its first keystroke:
+**This opens a browser tab** with a live board, seeded with a real hard collision and a
+completed delegation:
+
+```
+Tower demo is live → http://localhost:52410/board#token=demo
+
+What you're seeing: alice and bob both claimed AuthService.verify — a HARD
+collision caught before either wrote a line. Below it: a delegated task with
+bob's reply + commit, a broadcast still waiting, and a pinned team rule.
+Ctrl+C stops the demo (nothing was written to disk).
+```
+
+Didn't work? `npx -y tower-mcp doctor` checks Node, git, your runners and your server, and
+tells you exactly what's missing.
+
+<details><summary>Prefer a terminal-only demo? (needs a clone)</summary>
+
+```bash
+npm run demo    # after: git clone … && npm install
+```
 
 ```
 ⛔ COLLISION — AuthService.verify
@@ -69,19 +103,24 @@ Two agents reach for the same symbol; the second is caught before its first keys
      [f] force     — re-run guard with --force; you own the merge risk
 ```
 
-## Quickstart (30 seconds)
+</details>
 
-Needs **Node 22+** (uses built-in `node:sqlite`, no native build). Want to _see_ it
-before wiring anything up?
+## Install it in your repo
+
+**What `setup` writes** — all of it in your repo, nothing global, no network calls you
+didn't configure:
+
+| Path                                   | What                                                                |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `.mcp.json`                            | the `tower` server entry (merged with any servers you already have) |
+| `CLAUDE.md`                            | the claim-first rule appended (created if you don't have one)       |
+| `AGENTS.md`                            | same rule appended — only if the file already exists                |
+| `.tower/`                              | your local SQLite state (claims, messages, tasks). Safe to delete   |
+| `.gitignore`                           | `.tower/` appended, so you never commit the local db                |
+| `.git/hooks/pre-commit`, `post-commit` | **only with `--hooks`**                                             |
 
 ```bash
-npx -y tower-mcp demo             # boots a live board: two agents collide, a task round-trips
-```
-
-Then, in your repo:
-
-```bash
-npx -y tower-mcp setup            # writes .mcp.json + agent rules; add --hooks for enforcement
+npx -y tower-mcp setup
 ```
 
 Reload your editor — done. Joining a team server instead?
@@ -158,6 +197,11 @@ it polls for delegated tasks, confirms with you (or runs unattended with `--auto
 `claude -p` / `codex exec` headlessly, and PRs the result. Full guide + security model →
 [docs/worker.md](./docs/worker.md).
 
+**A worker needs three things** (run `npx -y tower-mcp doctor` and it checks all of them):
+a **clean git working tree** — it refuses to run on uncommitted changes, so it never mixes
+your work into a task's commit; `claude` or `codex` **on PATH**; and authenticated `gh` if
+you want pull requests (without it, branches still push).
+
 Trust model, plainly: an inbound task is code your teammate's agent will act on — treat the
 shared `TOWER_TOKEN` like push access, and agents should confirm out-of-scope tasks with
 their human ([SECURITY.md](./SECURITY.md)).
@@ -207,7 +251,7 @@ MCP clients (Claude Code / Cursor / Codex)
         ▼
 Tower server ── collision engine (tree-sitter) · agent inbox · sequencer · SQLite · /board UI
         ▲
-tower CLI: init · setup · serve · status · watch · claim · guard · send · inbox · work · next-task · complete
+tower CLI: demo · doctor · init · setup · serve · status · watch · claim · guard · send · inbox · nudge · work · next-task · complete
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so
@@ -306,6 +350,21 @@ same-WiFi mode + click-by-click Render steps + per-editor config →
 
 > 🚀 **Don't want to host it?** [Tower Cloud](https://rohanxmalik.github.io/Tower/#cloud) —
 > a managed, always-on coordination server for teams — is coming. Join the waitlist.
+
+## Trust, data, and how to remove it
+
+- **No telemetry.** Tower makes no network calls except the ones you configure. The board
+  page loads zero external resources — no CDN, no fonts, no analytics.
+- **Your data stays in your repo.** Claims, messages, tasks and decisions live in
+  `.tower/tower.db` — a plain SQLite file. Delete the folder and it's gone.
+- **No API keys cross machines.** A worker shells out to the `claude` / `codex` already
+  installed on _that_ machine. Tower never sees a vendor credential.
+- **`TOWER_TOKEN` is a shared secret — treat it like push access.** Anyone holding it can
+  delegate a task to a worker on your team. See [SECURITY.md](./SECURITY.md).
+- **Tower never blocks you by failing.** Every hook fails _open_: if Tower is unreachable
+  or a hook errors, your edit and your commit go through.
+- **To remove it:** delete `.tower/`, drop the `tower` entry from `.mcp.json`, and delete
+  `.git/hooks/pre-commit` and `post-commit` if you installed them with `--hooks`.
 
 ## Monorepo layout
 

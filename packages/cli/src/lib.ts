@@ -66,13 +66,6 @@ Then add to your agent's rules (CLAUDE.md / .cursorrules):
   with a "task_update" via "send_message" when done.
 `;
 
-export const POST_COMMIT_HOOK = `#!/bin/sh
-# Tower post-commit hook: release the current agent's claims on commit.
-# Install: copy to .git/hooks/post-commit and chmod +x.
-# (Wire your agentId/claimId as you prefer; this is a template.)
-exit 0
-`;
-
 /** Verbatim copy of examples/git-hooks/pre-commit, embedded so "tower setup" can install it anywhere. */
 export const PRE_COMMIT_HOOK = `#!/bin/sh
 # Tower pre-commit guard — universal enforcement for ANY agent or editor.
@@ -137,7 +130,7 @@ if [ -f "$CLAIM_FILE" ]; then
   CLAIM_ID=$(cat "$CLAIM_FILE")
   SHA=$(git rev-parse HEAD)
   # Best-effort; never block a commit on Tower. \`tower claim\`/\`guard\` write .tower/claim-id.
-  node packages/cli/dist/index.js complete --claim "$CLAIM_ID" --sha "$SHA" >/dev/null 2>&1 || true
+  npx -y tower-mcp complete --claim "$CLAIM_ID" --sha "$SHA" >/dev/null 2>&1 || true
   rm -f "$CLAIM_FILE"
 fi
 exit 0

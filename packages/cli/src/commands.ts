@@ -194,11 +194,29 @@ function installHook(hooksDir: string, name: string, content: string, out: Write
   out(`✔ .git/hooks/${name} installed`);
 }
 
+/**
+ * Keep `.tower/` out of the user's commits — claiming or serving creates a SQLite
+ * db there, and without this the next `git status` shows an unexplained binary.
+ * Idempotent: never adds the entry twice, never rewrites an unrelated line.
+ */
+export function setupGitignore(cwd: string, out: Writer = stdout): void {
+  const path = join(cwd, ".gitignore");
+  const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+  if (/^\.tower\/?\s*$/m.test(existing)) return;
+  const prefix = existing === "" || existing.endsWith("\n") ? "" : "\n";
+  writeFileSync(
+    path,
+    `${existing}${prefix}\n# Tower's local state (claims, messages, tasks)\n.tower/\n`,
+  );
+  out(`✔ .gitignore — added .tower/`);
+}
+
 /** One-command onboarding: .mcp.json + agent rules (+ git hooks with --hooks). */
 export function cmdSetup(cwd: string, opts: SetupOpts, out: Writer = stdout): void {
   setupMcpJson(cwd, opts, out);
   setupRulesFile(cwd, "CLAUDE.md", true, out);
   setupRulesFile(cwd, "AGENTS.md", false, out);
+  setupGitignore(cwd, out);
   if (opts.hooks) {
     const hooksDir = join(cwd, ".git", "hooks");
     if (existsSync(hooksDir)) {

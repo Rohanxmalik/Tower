@@ -379,6 +379,26 @@ describe("cmdSetup (one-command onboarding)", () => {
     expect(text).toContain("npx -y tower-mcp send");
   });
 
+  it("gitignores .tower/ so the user never commits the local db", () => {
+    cmdSetup(dir, {}, () => {});
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toContain(".tower/");
+  });
+
+  it("appends to an existing .gitignore without clobbering it, and only once", () => {
+    writeFileSync(join(dir, ".gitignore"), "node_modules\n");
+    cmdSetup(dir, {}, () => {});
+    cmdSetup(dir, {}, () => {}); // idempotent — running setup twice is normal
+    const text = readFileSync(join(dir, ".gitignore"), "utf8");
+    expect(text).toContain("node_modules");
+    expect(text.match(/^\.tower\/$/gm)).toHaveLength(1);
+  });
+
+  it("leaves .gitignore alone when .tower/ is already listed", () => {
+    writeFileSync(join(dir, ".gitignore"), "a\n.tower\nb\n");
+    cmdSetup(dir, {}, () => {});
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe("a\n.tower\nb\n");
+  });
+
   it("writes team mode (type http + Authorization header) when --url and --token are given", () => {
     cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
     const config = readJson(join(dir, ".mcp.json"));

@@ -84,6 +84,34 @@ The worker runs whatever local agent you point it at:
 | `codex`  | `codex exec --full-auto`                  | Codex CLI non-interactive mode     |
 | `cmd`    | your own command (`--cmd "..."`)          | Reads the task prompt on **stdin** |
 
+### Letting a task run git, tests, or a build (`--permission-mode`)
+
+The `claude` runner defaults to `--permission-mode acceptEdits`, which lets the task
+**edit files** but gates Bash behind a permission prompt — and headless runs have no TTY
+to approve it. So by default a delegated task can write code but cannot `git pull`, run
+`npm test`, or build. (It will often try anyway and then report something misleading like
+"I couldn't push" — which is doubly confusing because the **worker** does the committing
+and pushing, not the runner.)
+
+```bash
+tower work --approve remote --permission-mode bypass
+```
+
+`bypass` runs the runner with `--dangerously-skip-permissions`, so an approved task can
+run the commands it needs.
+
+> ⚠️ **This lets an approved task run any command on that machine.** Only use it where a
+> human approves each task (`--approve remote`, or the default terminal confirmation), or
+> on a dedicated clone/VM. That trust boundary is the point of the flag — but it is a real
+> one. `acceptEdits` remains the default; any other value is rejected.
+
+### Did the task actually change anything?
+
+The worker reports **`filesChanged`** with every completed task. A run that finished but
+changed **no files** shows an amber **"done · no changes"** chip on the board instead of a
+green one, and the `task_update` says so — so a permission-blocked or no-op run can't read
+as a success.
+
 The task body becomes the prompt, and **every runner receives it on stdin** — task text
 is never substituted into the shell command line, so a hostile task body can't inject
 shell commands on the worker machine. (`--cmd` templates with the old `{{task}}`

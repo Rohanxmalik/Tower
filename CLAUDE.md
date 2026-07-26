@@ -1,9 +1,11 @@
 # CLAUDE.md — Tower
 
-Tower is an MCP server that stops two AI agents from colliding on the same code:
-agents register edit **intent** before editing, and Tower detects semantic overlap
-(tree-sitter symbols) with other active agents, warning **before** the edit — not at
-merge time.
+Tower is **multiplayer for AI coding agents** — an MCP server that puts a team's agents
+(any vendor, any machine) on one shared layer: they message each other, delegate whole
+tasks across machines, and the team watches it on one live board. The safety floor
+underneath: agents register edit **intent** before editing, and Tower detects semantic
+overlap (tree-sitter symbols) with other active agents, warning **before** the edit — not
+at merge time.
 
 ## 🛑 The claim-first rule (dogfooding Tower)
 

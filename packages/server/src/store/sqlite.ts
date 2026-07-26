@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY, repo TEXT NOT NULL, fromAgentId TEXT NOT NULL, toAgentId TEXT NOT NULL,
   body TEXT NOT NULL, status TEXT NOT NULL, assigneeAgentId TEXT, approval TEXT, size TEXT,
   commitSha TEXT, prUrl TEXT,
-  result TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
+  result TEXT, filesChanged INTEGER, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status, toAgentId);
 CREATE TABLE IF NOT EXISTS message_reads (
@@ -145,6 +145,7 @@ interface TaskRow {
   commitSha: string | null;
   prUrl: string | null;
   result: string | null;
+  filesChanged: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -163,6 +164,7 @@ function rowToTask(r: TaskRow): DelegatedTask {
     ...(r.commitSha != null ? { commitSha: r.commitSha } : {}),
     ...(r.prUrl != null ? { prUrl: r.prUrl } : {}),
     ...(r.result != null ? { result: r.result } : {}),
+    ...(r.filesChanged != null ? { filesChanged: r.filesChanged } : {}),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
@@ -240,6 +242,7 @@ export class TowerStore {
     addColumn("tasks", "approval", "approval TEXT"); // 0.5.0 → 0.6.x
     addColumn("tasks", "size", "size TEXT"); // 0.6.x → 0.7.0
     addColumn("workers", "status", "status TEXT NOT NULL DEFAULT 'ok'"); // 0.6.x → 0.7.0
+    addColumn("tasks", "filesChanged", "filesChanged INTEGER"); // 0.7.1 → 0.7.2
   }
 
   // -- claims ---------------------------------------------------------------
@@ -573,11 +576,17 @@ export class TowerStore {
   completeTask(
     id: string,
     agentId: string,
-    outcome: { success: boolean; result: string; commitSha?: string; prUrl?: string },
+    outcome: {
+      success: boolean;
+      result: string;
+      commitSha?: string;
+      prUrl?: string;
+      filesChanged?: number;
+    },
   ): boolean {
     const res = this.db
       .prepare(
-        `UPDATE tasks SET status = ?, result = ?, commitSha = ?, prUrl = ?, updatedAt = ?
+        `UPDATE tasks SET status = ?, result = ?, commitSha = ?, prUrl = ?, filesChanged = ?, updatedAt = ?
          WHERE id = ? AND status = 'accepted' AND assigneeAgentId = ?`,
       )
       .run(
@@ -585,6 +594,7 @@ export class TowerStore {
         outcome.result,
         outcome.commitSha ?? null,
         outcome.prUrl ?? null,
+        outcome.filesChanged ?? null,
         this.now(),
         id,
         agentId,

@@ -4,14 +4,18 @@
 ![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-3fb950)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Two AI agents. Two machines. One repo. Working together.**
+**Multiplayer for your team's AI coding agents.**
 
 **[tower-mcp on npm](https://www.npmjs.com/package/tower-mcp)** · **[Website](https://rohanxmalik.github.io/Tower/)** · **[Docs](./docs)** — setup: `npx -y tower-mcp setup`
+
+Every great work tool went multiplayer — Docs beat Word, Figma beat Photoshop. AI is
+still the one everyone uses alone: one prompt, one box, one person.
 
 Tower is an [MCP](https://modelcontextprotocol.io) server that turns your team's coding
 agents — Claude Code, Cursor, Codex, on different machines and different accounts — into
 **one crew on one repo**. Your agent **delegates a task** to your teammate's agent; theirs
-does the work with _their_ tokens, commits it, and **reports back with the sha**. And
+does the work with _their_ tokens, commits it, and **reports back with the sha** — while
+the whole team watches it on **one live board** instead of a thousand private threads. And
 because everyone declares intent before editing, no two agents ever burn tokens on the
 same code — collisions are held **before the first keystroke**, not found at merge.
 

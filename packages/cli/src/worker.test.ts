@@ -90,6 +90,23 @@ const baseOpts: WorkerOptions = {
   pr: false,
 };
 
+describe("runnerCommand (claude permission mode)", () => {
+  it("gates Bash by default so edits are safe (acceptEdits)", () => {
+    const { cmd } = runnerCommand({ ...baseOpts, runner: "claude" }, "do the thing");
+    expect(cmd).toContain("--permission-mode acceptEdits");
+    expect(cmd).not.toContain("dangerously");
+  });
+
+  it("--permission-mode bypass lets a task run git/tests/builds (ISSUES/002)", () => {
+    const { cmd } = runnerCommand(
+      { ...baseOpts, runner: "claude", permissionMode: "bypass" },
+      "do the thing",
+    );
+    expect(cmd).toContain("--dangerously-skip-permissions");
+    expect(cmd).not.toContain("acceptEdits");
+  });
+});
+
 describe("cmdWork (worker daemon)", () => {
   it("accepts an open task, runs the agent, commits on a branch, and completes it", async () => {
     initRepo();
@@ -103,6 +120,7 @@ describe("cmdWork (worker daemon)", () => {
     expect(task?.status).toBe("done");
     expect(task?.assigneeAgentId).toBe("bob");
     expect(task?.commitSha).toBe(git(["rev-parse", `tower/task-${id8}`]));
+    expect(task?.filesChanged).toBe(1); // script.cjs writes out.txt
 
     // the work branch exists and its commit contains out.txt
     const shown = git(["show", "--name-only", "--pretty=format:", `tower/task-${id8}`]);
@@ -174,6 +192,30 @@ describe("cmdWork (worker daemon)", () => {
     expect(task?.status).toBe("done");
     expect(task?.commitSha).toBeUndefined();
     expect(task?.result).toContain("no file changes");
+    expect(task?.filesChanged).toBe(0); // ISSUES/001: board shows this as amber "no changes"
+
+    // the delegator's task_update calls it out rather than reading as a plain "done"
+    const svc = buildService(dir);
+    const upd = svc
+      .fetchMessages({ agentId: "alice", unreadOnly: true })
+      .messages.find((m) => m.kind === "task_update");
+    svc.store.close();
+    expect(upd?.body).toContain("no changes");
+  });
+
+  it("passes filesChanged and tells the runner the worker owns git commits", async () => {
+    initRepo();
+    const id = seedTask("alice", "bob", "edit a file");
+    let promptSeen = "";
+    const exec: Exec = (cmd, args, opts) => {
+      if (cmd === "git") return defaultExec(cmd, args, opts);
+      promptSeen = opts.input ?? ""; // the runner receives the task prompt on stdin
+      writeFileSync(join(dir, "out.txt"), "changed by the agent");
+      return Promise.resolve({ code: 0, out: "" });
+    };
+    await cmdWork(dir, { ...baseOpts, exec }, collect().out);
+    expect(promptSeen).toContain("do NOT run git");
+    expect(taskById(id)?.filesChanged).toBe(1);
   });
 
   it("treats a runner timeout as failure with a clear result", async () => {

@@ -15,7 +15,7 @@ when you're there — directory UIs change.
   (tree-sitter symbols) before the collision happens — not at merge time. Agents
   message each other and delegate whole tasks across machines: type a task on your
   phone, a worker daemon runs a headless agent, commits on a branch, and opens a PR.
-  17 tools, model-agnostic (Claude Code / Cursor / Codex), zero native deps, MIT.
+  18 tools, model-agnostic (Claude Code / Cursor / Codex), zero native deps, MIT.
 - **Categories/tags:** developer-tools, collaboration, git, agents, coordination
 - **Repo:** https://github.com/Rohanxmalik/Tower
 - **Install (solo, stdio):**

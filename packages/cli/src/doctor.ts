@@ -67,15 +67,17 @@ export async function runChecks(
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
 
-  // Node ≥ 22 — tower runs on the built-in node:sqlite.
-  const major = Number(/^v?(\d+)/.exec(deps.nodeVersion)?.[1] ?? 0);
+  // Node ≥ 22.5 — that's the release the built-in node:sqlite landed in.
+  const [, maj = "0", min = "0"] = /^v?(\d+)\.(\d+)/.exec(deps.nodeVersion) ?? [];
+  const major = Number(maj);
+  const modernNode = major > 22 || (major === 22 && Number(min) >= 5);
   results.push(
-    major >= 22
-      ? { name: "node", level: "ok", detail: `${deps.nodeVersion} (needs ≥22)` }
+    modernNode
+      ? { name: "node", level: "ok", detail: `${deps.nodeVersion} (needs ≥22.5)` }
       : {
           name: "node",
           level: "fail",
-          detail: `${deps.nodeVersion} — Tower needs Node 22+ (built-in SQLite). https://nodejs.org`,
+          detail: `${deps.nodeVersion} — Tower needs Node 22.5+ (built-in SQLite). https://nodejs.org`,
         },
   );
 

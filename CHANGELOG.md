@@ -3,6 +3,51 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.8.0 — 2026-07-27
+
+- **Your agent gets tapped on the shoulder.** New 18th MCP tool **`pending`** — a
+  read-only count of unread messages + open tasks waiting for an agent, marking nothing
+  read. It powers **`tower nudge [--agent <id>] [--json]`** (local or remote; silent when
+  nothing's waiting) and a **UserPromptSubmit hook** (`hooks/userpromptsubmit-nudge.mjs`,
+  wired in `.claude/settings.example.json`), so an interactive Claude Code agent sees
+  _"2 tasks waiting"_ on its next prompt. MCP has no push channel; this closes the gap
+  without running a worker daemon.
+- **Delegated tasks can finally run git, tests, and builds.** The headless `claude` runner
+  defaults to `--permission-mode acceptEdits`, which gates Bash behind a TTY that isn't
+  there — so a task could write code but never verify or commit it, then report a
+  misleading _"I couldn't push"_. **`tower work --permission-mode bypass`** runs the runner
+  with `--dangerously-skip-permissions` so an approved task can run commands (`acceptEdits`
+  stays the default; unknown values are rejected). The task prompt now also states that
+  **the worker owns commit and push**, so the runner stops attempting git itself.
+- **A run that changed nothing no longer shows green.** The worker reports
+  **`filesChanged`**; a 0-file run renders an amber **"done · no changes"** chip on the
+  board and says so in the `task_update`. Stored in a new nullable `tasks.filesChanged`
+  column, migrated in place — existing databases upgrade cleanly.
+- **`setup --hooks` installed a post-commit hook that could never run.** It was hardcoded
+  to `node packages/cli/dist/index.js`, a path that only exists inside this monorepo, and
+  the failure was swallowed — so claims never cleared and teammates saw phantom locks. It
+  now calls `npx -y tower-mcp`, matching the pre-commit hook.
+- **`setup` adds `.tower/` to your `.gitignore`**, so the local SQLite db stops showing up
+  as an unexplained binary in `git status`.
+- **Two scary warnings gone from first run.** Every command printed Node's `DEP0190`
+  shell-args deprecation ("can lead to security vulnerabilities") and the `node:sqlite`
+  `ExperimentalWarning` before any useful output. Both silenced — the sqlite filter is
+  scoped to that one warning, everything else still surfaces.
+- **Node requirement stated honestly: 22.5+**, not 22. `node:sqlite` landed in 22.5, and
+  below it you now get a one-line explanation instead of a raw `Cannot find module` stack
+  trace. `engines`, `doctor` and the docs all agree now.
+- **Board polish** — roomier padding, wider right column, focus rings, and the send-form
+  hint no longer overflows its row on narrow phones.
+- **Repositioning, and a copy audit against the code.** Tower now leads with _multiplayer
+  for AI coding agents_; collision detection is the safety floor, not the pitch. Every
+  public claim was re-checked against the implementation and corrected where the code
+  didn't back it: the board is a **live status board refreshed every 2s**, not a live
+  session transcript; the site had advertised "seventeen tools" and omitted `pending`;
+  "real-time" and "TTL countdowns" are gone; and the PreToolUse hook's real granularity is
+  now documented — it claims **whole files**, so two agents in different functions of one
+  file still block each other.
+- The npm package now ships a README and LICENSE (the package page was blank).
+
 ## 0.7.1 — 2026-07-16
 
 - **Your phone buzzes when the work lands.** Push notifications now fire on task

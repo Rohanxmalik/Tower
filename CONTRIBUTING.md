@@ -5,7 +5,7 @@ and moving fast — issues, PRs, and protocol feedback are all welcome.
 
 ## Getting set up
 
-Requires **Node 22+** (Tower uses the built-in `node:sqlite`, so there is no native
+Requires **Node 22.5+** (Tower uses the built-in `node:sqlite`, so there is no native
 module to compile).
 
 ```bash

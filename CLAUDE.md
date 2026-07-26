@@ -53,7 +53,7 @@ Wire contract: [docs/protocol.md](docs/protocol.md). Full design: [MVP-SPEC.md](
 - **TDD, tests first.** 80% coverage gate is enforced; keep it green.
 - **Zod at every boundary** — schemas in `packages/shared/src/protocol.ts` are canonical;
   don't redefine wire types elsewhere.
-- **Node 22+** (uses the built-in `node:sqlite` — no native modules).
+- **Node 22.5+** (uses the built-in `node:sqlite` — no native modules).
 - Symbols come from **tree-sitter ASTs** (TS/JS/Python); unknown languages fall back to a
   file-level symbol.
 - Keep files small and focused; commit messages use Conventional Commits.

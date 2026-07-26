@@ -242,7 +242,7 @@ export class TowerStore {
     addColumn("tasks", "approval", "approval TEXT"); // 0.5.0 → 0.6.x
     addColumn("tasks", "size", "size TEXT"); // 0.6.x → 0.7.0
     addColumn("workers", "status", "status TEXT NOT NULL DEFAULT 'ok'"); // 0.6.x → 0.7.0
-    addColumn("tasks", "filesChanged", "filesChanged INTEGER"); // 0.7.1 → 0.7.2
+    addColumn("tasks", "filesChanged", "filesChanged INTEGER"); // 0.7.1 → 0.8.0
   }
 
   // -- claims ---------------------------------------------------------------

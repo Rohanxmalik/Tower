@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.8 — early, building in public.** Everything below works end-to-end today,
+> Status: **v0.8.0 — early, building in public.** Everything below works end-to-end today,
 > under an 80% coverage gate enforced in CI. What's shipped and what's next:
 > [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 

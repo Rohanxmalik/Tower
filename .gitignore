@@ -27,3 +27,8 @@ TECHNICAL-BRIEF.md
 
 # HyperFrames video projects (large render artifacts)
 videos/
+
+# Internal launch playbook + dogfooding issue log — never publish
+LAUNCH-POSTS.md
+ISSUES/
+sheet3.png

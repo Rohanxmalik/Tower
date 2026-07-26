@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { TOWER_VERSION } from "@tower/shared";
 import {
   runChecks,
   cmdDoctor,
@@ -60,8 +61,8 @@ function fakeFetch(version: string | undefined, boardStatus = 200): typeof fetch
 function deps(over: Partial<DoctorDeps> = {}): DoctorDeps {
   return {
     exec: okExec,
-    fetchImpl: fakeFetch("0.7.0"),
-    nodeVersion: "v22.3.0",
+    fetchImpl: fakeFetch(TOWER_VERSION),
+    nodeVersion: "v22.5.0",
     env: {},
     ...over,
   };
@@ -82,6 +83,16 @@ describe("runChecks", () => {
     const rs = await runChecks({}, deps({ nodeVersion: "v18.19.0" }));
     expect(byName(rs, "node")?.level).toBe("fail");
     expect(byName(rs, "node")?.detail).toContain("22");
+  });
+
+  it("fails on 22.0-22.4 — node:sqlite only landed in 22.5", async () => {
+    for (const v of ["v22.0.0", "v22.4.1"]) {
+      const rs = await runChecks({}, deps({ nodeVersion: v }));
+      expect(byName(rs, "node")?.level, v).toBe("fail");
+      expect(byName(rs, "node")?.detail, v).toContain("22.5");
+    }
+    const ok = await runChecks({}, deps({ nodeVersion: "v22.5.0" }));
+    expect(byName(ok, "node")?.level).toBe("ok");
   });
 
   it("fails when not inside a git repository", async () => {
@@ -130,13 +141,13 @@ describe("runChecks", () => {
   it("fails on a rejected token and warns on a lockout", async () => {
     const rejected = await runChecks(
       { url: "http://tower.example", token: "wrong" },
-      deps({ fetchImpl: fakeFetch("0.7.0", 401) }),
+      deps({ fetchImpl: fakeFetch(TOWER_VERSION, 401) }),
     );
     expect(byName(rejected, "token")?.level).toBe("fail");
 
     const locked = await runChecks(
       { url: "http://tower.example", token: "t" },
-      deps({ fetchImpl: fakeFetch("0.7.0", 429) }),
+      deps({ fetchImpl: fakeFetch(TOWER_VERSION, 429) }),
     );
     expect(byName(locked, "token")?.level).toBe("warn");
   });

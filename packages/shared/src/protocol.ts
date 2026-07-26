@@ -9,7 +9,7 @@ import { z } from "zod";
 /** One version string for the whole release: the MCP server, the remote client and
  * `/health` all report this, and the worker warns when major.minor drifts from the
  * server it talks to. Bump together with packages/cli/package.json. */
-export const TOWER_VERSION = "0.7.1";
+export const TOWER_VERSION = "0.8.0";
 
 // ---------------------------------------------------------------------------
 // Core domain types
@@ -220,7 +220,7 @@ export const DelegatedTask = z.object({
   prUrl: z.string().optional(),
   result: z.string().optional(),
   /** Files the run changed. 0 = the runner did nothing (board shows amber, not green
-   * "done"); undefined = pre-0.7.2 task or not reported. */
+   * "done"); undefined = pre-0.8.0 task or not reported. */
   filesChanged: z.number().int().nonnegative().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),

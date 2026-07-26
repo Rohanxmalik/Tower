@@ -1,8 +1,16 @@
 # Quickstart
 
-Tower needs **Node 22+** (it uses the built-in `node:sqlite` — no native modules to
-compile). For brevity below, `tower` = `npx -y tower-mcp`. (From source: `git clone` the
-repo, `npm install && npm run build`, then `tower` = `node packages/cli/dist/index.js`.)
+Tower needs **Node 22.5+** (it uses the built-in `node:sqlite` — no native modules to
+compile).
+
+**Shorthand:** everywhere below, `tower` means `npx -y tower-mcp`. npx installs nothing
+globally, so `tower status` on its own will say _command not found_ — either type
+`npx -y tower-mcp status`, or install it once with `npm i -g tower-mcp` and then `tower`
+really is the command. (From a clone: `npm install && npm run build`, then `tower` =
+`node packages/cli/dist/index.js`.)
+
+**Stuck at any point?** `tower doctor` checks Node, git, a clean tree, your runners, `gh`,
+and whether your server and token work — and tells you exactly what's missing.
 
 ## 1. One command (30 seconds)
 
@@ -30,6 +38,9 @@ flight strips per claim, collisions flashing red, and the COMMS panel showing ag
 talking. (Local HTTP mode works too: `tower serve --http`, then http://127.0.0.1:4319/board.)
 
 ## 3. Try a collision without any agent
+
+`acme/app` below is a throwaway repo id — this touches none of your files. It does create
+`.tower/` (your local SQLite state) in the current directory; `rm -rf .tower` resets it.
 
 ```bash
 tower claim --agent bob   --repo acme/app --symbol "src/auth.ts#AuthService.verify" --purpose "replace JWT" --eta 6

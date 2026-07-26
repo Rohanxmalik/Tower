@@ -14,6 +14,10 @@ Cursor and Codex don't expose a blocking file-edit hook yet. Layer 3 is the univ
 backstop: whatever tool wrote the code, the **commit is refused** while a teammate's agent
 holds a hard-conflicting claim.
 
+Layer 1 is just `tower setup` (it writes the claim-first rule into your rules file).
+**Layer 3 is documented first below**, because it works everywhere and needs nothing but
+npx; Layer 2 follows.
+
 ## Layer 3: the universal pre-commit guard (Cursor, Codex, anything)
 
 ```bash
@@ -33,7 +37,13 @@ For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 
 ## Layer 2: the Claude Code PreToolUse hook
 
-## How it works
+> **This layer currently needs a clone of Tower itself.** The hook script
+> (`hooks/pretooluse-tower.mjs`) imports the built CLI by relative path, and neither
+> `hooks/` nor `.claude/` ships in the npm package — so `npx -y tower-mcp` users get
+> layers 1 and 3, not 2. Making the hook installable from the package is on the roadmap.
+> Layer 3 (below) is the universal backstop and needs no clone.
+
+### How it works
 
 `hooks/pretooluse-tower.mjs` runs before every `Edit` / `Write` / `MultiEdit`:
 
@@ -45,7 +55,7 @@ For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 It **fails open** — any error in the hook allows the edit, so a hook bug can never brick
 your session.
 
-## Enable it
+### Enable it (from a clone of Tower)
 
 ```bash
 npm run build                       # the hook imports the built CLI

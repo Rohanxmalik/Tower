@@ -264,7 +264,9 @@ A tool call the agent _chooses_ to make isn't a safety net. Tower has **three en
 layers** — stack them:
 
 1. **MCP tools + rules file** — every agent (Claude, Cursor, Codex) claims before editing.
-2. **Claude Code PreToolUse hook** — a conflicting `Edit`/`Write` is physically **blocked**:
+   `tower setup` writes this for you.
+2. **Claude Code PreToolUse hook** — a conflicting `Edit`/`Write` is physically **blocked**.
+   ⚠️ **Needs a clone of Tower today** — the hook script isn't in the npm package yet:
    ```bash
    npm run build
    cp .claude/settings.example.json .claude/settings.json   # then reload Claude Code

@@ -38,7 +38,7 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All seventeen tools take and return JSON validated by the schemas in
+All eighteen tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool               | Purpose                                                               |

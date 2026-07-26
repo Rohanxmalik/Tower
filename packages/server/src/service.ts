@@ -63,7 +63,7 @@ export interface TowerServiceOptions {
 
 /**
  * The transport-agnostic core of Tower. Wires the store, collision engine and
- * sequencer into the seventeen operations exposed over MCP. Kept free of MCP/HTTP so
+ * sequencer into the eighteen operations exposed over MCP. Kept free of MCP/HTTP so
  * it can be unit-tested directly and reused by any transport.
  */
 export class TowerService {

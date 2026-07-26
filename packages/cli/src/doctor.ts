@@ -23,11 +23,27 @@ export type CheckExec = (
   shell?: boolean,
 ) => Promise<{ code: number; out: string }>;
 
+/**
+ * Node ≥22 deprecates passing a separate args array alongside `shell: true`
+ * (DEP0190) and prints a "can lead to security vulnerabilities" warning on every
+ * run — the first thing a new user sees. Fold the args into the command string
+ * instead. Safe here because every arg we pass is a fixed literal (`--version`),
+ * never user input.
+ */
+export function shellSafeExec(
+  cmd: string,
+  args: string[],
+  shell?: boolean,
+): { file: string; args: string[] } {
+  return shell ? { file: [cmd, ...args].join(" "), args: [] } : { file: cmd, args };
+}
+
 export const realExec: CheckExec = (cmd, args, shell) =>
   new Promise((resolve) => {
+    const spawned = shellSafeExec(cmd, args, shell);
     execFile(
-      cmd,
-      args,
+      spawned.file,
+      spawned.args,
       // shell:true lets the Windows .cmd shims (claude/codex/gh) spawn at all.
       { ...(shell ? { shell: true } : {}), timeout: 15_000 },
       (err, stdout, stderr) => {

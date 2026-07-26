@@ -1,3 +1,5 @@
+// MUST be first: installs the node:sqlite warning filter before the store loads.
+import "./hush.js";
 import { parseArgs } from "node:util";
 import {
   cmdInit,

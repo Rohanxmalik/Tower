@@ -2,10 +2,37 @@ import { describe, it, expect } from "vitest";
 import {
   runChecks,
   cmdDoctor,
+  shellSafeExec,
   type CheckExec,
   type CheckResult,
   type DoctorDeps,
 } from "./doctor.js";
+
+describe("shellSafeExec (DEP0190 — no scary warning on first run)", () => {
+  it("folds args into the command when a shell is used", () => {
+    // Passing a separate args array alongside shell:true makes Node print
+    // "can lead to security vulnerabilities" — the first thing a new user sees.
+    expect(shellSafeExec("claude", ["--version"], true)).toEqual({
+      file: "claude --version",
+      args: [],
+    });
+  });
+
+  it("passes args through untouched without a shell", () => {
+    expect(shellSafeExec("git", ["status", "--porcelain"], false)).toEqual({
+      file: "git",
+      args: ["status", "--porcelain"],
+    });
+    expect(shellSafeExec("git", ["rev-parse"])).toEqual({
+      file: "git",
+      args: ["rev-parse"],
+    });
+  });
+
+  it("handles a shell command that takes no args", () => {
+    expect(shellSafeExec("gh", [], true)).toEqual({ file: "gh", args: [] });
+  });
+});
 
 /** Everything installed and healthy; `git status --porcelain` is clean (empty). */
 const okExec: CheckExec = (cmd, args) =>

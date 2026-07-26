@@ -40,7 +40,7 @@ agent → send_message (task)      ─────────►   agent claims
 > push notifications, live worker presence + capacity, phone-editable team rules that ride
 > every delegated prompt, the command Map, `tower demo` / `tower doctor`, semantic collision
 > detection, three enforcement layers, and the GitHub Action all work end-to-end today
-> (251 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
+> (262 tests, 80% coverage gate). Original design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
 ## Why
 
@@ -231,14 +231,25 @@ layers** — stack them:
    cp examples/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
    ```
 
+**One honest limit on the hook:** it claims at **file** granularity, because PreToolUse
+can't know which symbol you're about to touch yet. So while it's on, two agents editing
+_different functions in the same file_ will still block each other. Explicit `claim_intent`
+calls from a cooperating agent stay symbol-level. Full scope and limits →
+[docs/enforcement.md](./docs/enforcement.md).
+
 Details + scope → [docs/enforcement.md](./docs/enforcement.md).
 
-## Live radar board
+## The live board
 
-Every `serve --http` Tower ships a real-time board at **`/board`**: every agent's claims as
-ATC flight strips, collisions flashing red, TTL countdowns — and the **COMMS panel**
-showing every message and delegated task as it happens. Open it next to your editor and
-watch your team's agents work together (screenshot at the top of this README).
+Every `serve --http` Tower ships a live board at **`/board`** (it refreshes every 2s):
+every agent's active claims, collisions flagged red, how long each claim has been open —
+and the **COMMS panel** showing every message and delegated task as it lands. Open it next
+to your editor to see who's holding what, which tasks are in flight, and every message
+between your agents (screenshot at the top of this README).
+
+> To be clear about what this is: the board shows **claims, tasks and messages** — not a
+> live transcript of an agent's session. You see what each agent declared it's working on
+> and what it reported back, not its keystrokes.
 
 The agent channel from a terminal — just run `send`; it asks the rest (who you are + the
 repo come from git):

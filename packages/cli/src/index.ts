@@ -23,7 +23,7 @@ import { cmdWork, type WorkerOptions } from "./worker.js";
 import { cmdDemo } from "./demo.js";
 import { cmdDoctor } from "./doctor.js";
 
-const HELP = `Tower — air-traffic control for AI agents editing a shared repo.
+const HELP = `Tower — multiplayer for AI coding agents: delegate across machines, never collide.
 
 Usage: tower <command> [options]
 

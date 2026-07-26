@@ -6,13 +6,13 @@
     <title>Tower — multiplayer for your team's AI coding agents</title>
     <meta
       name="description"
-      content="Working with AI is still single-player. Tower makes your team's coding agents multiplayer: delegate a task to a teammate's agent on another machine, watch the work on one live shared board, and never collide on the same code. An MCP server for Claude Code, Cursor, and Codex."
+      content="Working with AI is still single-player. Tower makes your team's coding agents multiplayer: delegate a task to a teammate's agent on another machine, see every claim, task and reply on one shared board, and never collide on the same code. An MCP server for Claude Code, Cursor, and Codex."
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070B0F'/%3E%3Cpath d='M16 5v22M9 27h14M12 11l4-4 4 4' stroke='%2338E08A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
     <meta property="og:title" content="Tower — multiplayer for your team's AI coding agents" />
     <meta
       property="og:description"
-      content="AI agents are still single-player. Tower makes them multiplayer — delegate across machines, watch the work on one live shared board, never collide on the same code. npx tower-mcp demo."
+      content="AI agents are still single-player. Tower makes them multiplayer — delegate across machines, see every claim, task and reply on one shared board, never collide on the same code. npx tower-mcp demo."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
@@ -299,7 +299,7 @@
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
             <a class="btn" href="#install">30-second setup</a>
           </div>
-          <div class="trust">MIT · 251 tests · 17 MCP tools · zero native deps · Node 22+</div>
+          <div class="trust">MIT · 262 tests · 18 MCP tools · zero native deps · Node 22+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
@@ -418,7 +418,7 @@
               <li><b>Approve or reject</b> parked work with one tap. Reject means it never runs.</li>
               <li><b>Get a push notification</b> the moment an agent needs your OK — no open tab required.</li>
               <li><b>Pin team rules</b> that ride <em>every</em> delegated prompt — change a rule from the couch, the next task obeys it.</li>
-              <li><b>See who's connected</b>, who's editing what, and every collision — live.</li>
+              <li><b>See which machines have a worker online</b>, who's editing what, and every collision.</li>
             </ul>
           </div>
           <img
@@ -471,13 +471,13 @@
           <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
           <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Phone-editable guardrails, no git commit.</p></div>
           <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
-          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into a guarantee: a hard-conflicting edit is stopped, reason fed back to the agent. A universal git pre-commit guard covers every other editor.</p></div>
+          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason fed back to the agent. It claims at file granularity (PreToolUse can't know your symbol yet). A universal git pre-commit guard covers every other editor.</p></div>
           <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>
           <div class="card"><div class="tag">agnostic</div><h3>Any agent, any model</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. Coordination is only useful if the other vendor's agent is in the room.</p></div>
           <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A zero-dependency GitHub Action comments when two open PRs touch overlapping lines, and shows which files an agent is editing right now. One workflow file, no server needed.</p></div>
           <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>; agents recall them before acting, so nobody re-litigates a settled call. The same store powers phone-pinned team rules.</p></div>
           <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; <span class="mono">next_task</span> hands each agent work whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
-          <div class="card"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> shows a live collision + delegation in 30 seconds. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
+          <div class="card"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> boots a live board seeded with a real hard collision and a completed delegation — 30 seconds, nothing written to disk. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
         </div>
       </div>
     </section>
@@ -583,7 +583,7 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">The wire contract</span>
-          <h2 class="sec-title">Seventeen MCP tools</h2>
+          <h2 class="sec-title">Eighteen MCP tools</h2>
         </div>
         <div class="tools">
           <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions in one call</span></div>
@@ -603,6 +603,7 @@
           <div class="tool"><span class="name">request_approval</span><span class="desc">Park a task for a human tap (remote approve)</span></div>
           <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject from the board — or your phone</span></div>
           <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence + capacity for each machine</span></div>
+          <div class="tool"><span class="name">pending</span><span class="desc">What's waiting for you — unread messages + open tasks, marks nothing read</span></div>
         </div>
       </div>
     </section>
@@ -634,7 +635,7 @@
             <h3>Self-host</h3>
             <div class="price">Free · open source (MIT)</div>
             <ul>
-              <li>Local mode + hosted HTTP server, all 17 tools</li>
+              <li>Local mode + hosted HTTP server, all 18 tools</li>
               <li>One-click deploy to Render / Railway / Fly — a permanent URL, no tunnels</li>
               <li>Your data stays on your own infrastructure</li>
             </ul>

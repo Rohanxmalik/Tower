@@ -31,5 +31,6 @@ videos/
 # Internal launch playbook + dogfooding issue log — never publish
 LAUNCH-POSTS.md
 GROWTH-PLAYBOOK.md
+LAUNCH-DAY.md
 ISSUES/
 sheet3.png

@@ -16,6 +16,7 @@ import type {
   FetchMessagesOutput,
   PendingOutput,
 } from "@tower/shared";
+import { normalizeRepoUrl, pickRootCommit } from "@tower/shared";
 import { renderConflicts, renderClaimsTable, formatAgo } from "./render.js";
 import { remoteConfig, withRemote, type RemoteCall } from "./remote.js";
 import {
@@ -476,14 +477,35 @@ export interface SendArgs {
   replyTo?: string;
 }
 
-/** Normalize a git remote URL to a stable "host/owner/repo" id (matches the hooks). */
-export function normalizeRepoUrl(url: string): string {
-  return url
-    .replace(/^git@([^:]+):/, "$1/")
-    .replace(/^ssh:\/\/git@/, "")
-    .replace(/^https?:\/\//, "")
-    .replace(/\.git$/, "")
-    .toLowerCase();
+/**
+ * Re-exported so existing callers keep working; the implementation now lives in
+ * `@tower/shared` so the CLI, the server and the hooks all normalize identically.
+ * Three copies of this function was how one team ended up in three partitions.
+ */
+export { normalizeRepoUrl } from "@tower/shared";
+
+/** Root-commit lookups shell out to git, so cache per (cwd, process). */
+const repoIdCache = new Map<string, string | undefined>();
+
+/**
+ * The repository's root commit sha — identical across every clone, fork and mirror,
+ * which is what lets a fork and its upstream share one coordination space.
+ * `undefined` for shallow clones and non-repos; callers fall back to the remote URL.
+ */
+export function gitRepoId(cwd: string): string | undefined {
+  if (repoIdCache.has(cwd)) return repoIdCache.get(cwd);
+  let id: string | undefined;
+  try {
+    const out = execSync("git rev-list --max-parents=0 HEAD", {
+      cwd,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString();
+    id = pickRootCommit(out);
+  } catch {
+    id = undefined; // shallow clone, empty repo, or not a repo at all
+  }
+  repoIdCache.set(cwd, id);
+  return id;
 }
 
 /** Best-effort defaults so `tower send` can skip questions: agent id + repo from git. */
@@ -493,6 +515,7 @@ export function gitDefaults(
 ): {
   defaultFrom: string;
   defaultRepo: string;
+  defaultRepoId?: string;
 } {
   const git = (cmd: string): string => {
     try {
@@ -504,9 +527,11 @@ export function gitDefaults(
     }
   };
   const origin = git("git config --get remote.origin.url");
+  const repoId = gitRepoId(cwd);
   return {
     defaultFrom: env.TOWER_AGENT || git("git config user.name") || "dev",
     defaultRepo: origin ? normalizeRepoUrl(origin) : basename(cwd),
+    ...(repoId ? { defaultRepoId: repoId } : {}),
   };
 }
 

@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     include: ["packages/**/*.test.ts", "action/**/*.test.mjs"],
+    // Strips ambient TOWER_URL/TOWER_TOKEN so the suite can never reach a real server.
+    setupFiles: ["./vitest.setup.ts"],
     server: {
       deps: {
         // node:sqlite is a newer builtin vitest doesn't auto-externalize yet.

@@ -84,6 +84,7 @@ function parseClaimArgs(rest: string[]): ClaimArgs | null {
       purpose: { type: "string" },
       eta: { type: "string" },
       force: { type: "boolean" },
+      "repo-id": { type: "string" },
     },
     allowPositionals: false,
   });
@@ -94,6 +95,7 @@ function parseClaimArgs(rest: string[]): ClaimArgs | null {
   return {
     agentId: values.agent,
     repo: values.repo,
+    ...(values["repo-id"] ? { repoId: values["repo-id"] } : {}),
     branch: values.branch ?? "main",
     files: values.file ?? [],
     symbols: values.symbol ?? [],

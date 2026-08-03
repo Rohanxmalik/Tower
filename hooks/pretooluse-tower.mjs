@@ -10,22 +10,12 @@
 //     "hooks": [{ "type": "command", "command": "node hooks/pretooluse-tower.mjs" }] }] }
 //
 // Requires a build first: `npm run build`. Fails OPEN (never blocks on its own error).
-import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { relative, isAbsolute, basename } from "node:path";
+import { relative, isAbsolute } from "node:path";
+import { repoContext } from "./_tower-lib.mjs";
 
 const ALLOW = 0;
 const BLOCK = 2;
-
-/** Normalize a git remote URL to a stable "host/owner/repo" id shared across clones. */
-function normalizeRepo(url) {
-  return url
-    .replace(/^git@([^:]+):/, "$1/")
-    .replace(/^ssh:\/\/git@/, "")
-    .replace(/^https?:\/\//, "")
-    .replace(/\.git$/, "")
-    .toLowerCase();
-}
 
 function readStdin() {
   try {
@@ -47,26 +37,24 @@ async function main() {
   const rel = isAbsolute(filePath) ? relative(cwd, filePath) : filePath;
   const agentId = `claude-${(input.session_id ?? "code").slice(0, 8)}`;
 
-  let repo = basename(cwd);
-  let branch = "main";
-  const git = (cmd) =>
-    execSync(cmd, { cwd, stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-  try {
-    // Use the git remote origin so teammates on different clone paths share one repo id.
-    const origin = git("git config --get remote.origin.url");
-    repo = origin ? normalizeRepo(origin) : basename(git("git rev-parse --show-toplevel"));
-    branch = git("git rev-parse --abbrev-ref HEAD") || "main";
-  } catch {
-    /* not a git repo — fall back to cwd basename */
-  }
+  // One shared derivation — repo label, fork-proof repoId (root commit sha) and branch.
+  // The hook used to normalize with its own private copy while the MCP path did not,
+  // which put the two in different partitions.
+  const { repo, repoId, branch } = repoContext(cwd);
 
   const { cmdGuard } = await import(new URL("../packages/cli/dist/commands.js", import.meta.url));
   const lines = [];
   const blocked = await cmdGuard(
     cwd,
-    { agentId, repo, branch, files: [rel], symbols: [], purpose: `${tool} ${rel}` },
+    {
+      agentId,
+      repo,
+      ...(repoId ? { repoId } : {}),
+      branch,
+      files: [rel],
+      symbols: [],
+      purpose: `${tool} ${rel}`,
+    },
     (l) => lines.push(l),
   );
 

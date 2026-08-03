@@ -84,6 +84,9 @@ export async function resolveSymbols(
 export interface ClaimArgs {
   agentId: string;
   repo: string;
+  /** Root commit sha. Without it a fork and its upstream stay in separate partitions,
+   * so the CLI and hooks derive it automatically via {@link gitRepoId}. */
+  repoId?: string;
   branch: string;
   files: string[];
   /** Each entry is "path#symbolName". */
@@ -305,11 +308,15 @@ export async function cmdClaim(
   const intent = {
     agentId: args.agentId,
     repo: args.repo,
+    // Fall back to deriving it here, so every caller partitions the same way even if it
+    // forgot to pass one.
+    ...((args.repoId ?? gitRepoId(cwd)) ? { repoId: args.repoId ?? gitRepoId(cwd) } : {}),
     branch: args.branch,
     files: args.files,
     symbols,
     purpose: args.purpose,
     ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
+    ...(args.force ? { force: true } : {}),
   };
 
   const remote = remoteConfig();
@@ -361,9 +368,11 @@ export async function cmdGuard(
   build?: BuildOptions,
 ): Promise<boolean> {
   const symbols = await resolveSymbols(cwd, args.files, args.symbols);
+  const repoId = args.repoId ?? gitRepoId(cwd);
   const scope = {
     agentId: args.agentId,
     repo: args.repo,
+    ...(repoId ? { repoId } : {}),
     branch: args.branch,
     files: args.files,
     symbols,

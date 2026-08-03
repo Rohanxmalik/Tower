@@ -456,6 +456,52 @@ export function resolvePort(
 }
 
 /**
+ * The warning shown when `serve` would run a **local** server while `TOWER_URL` points
+ * somewhere else — the highest-severity defect found in testing, because it fails with
+ * no visible symptom. A decision logged through the MCP tool landed in the local
+ * `.tower/tower.db` while the hosted board stayed empty, so a team can believe it is
+ * coordinating on a shared server while every write goes to a file on one laptop.
+ */
+export function localModeWarning(url: string): string {
+  return [
+    "WARNING: TOWER_URL is set (" + url + "), but `serve` starts a LOCAL server.",
+    "",
+    "   Everything written through it would go to .tower/tower.db on this machine,",
+    "   NOT to the shared Tower - silently. Your teammates would see nothing.",
+    "",
+    "   Point your agent at the hosted server directly instead:",
+    "",
+    '     "tower": { "type": "http", "url": "' + url + '",',
+    '                "headers": { "Authorization": "Bearer <TOWER_TOKEN>" } }',
+    "",
+    "   Or run: npx -y tower-mcp setup --url " + url + " --token <TOWER_TOKEN>",
+  ].join("\n");
+}
+
+/**
+ * Returns the configured remote URL when starting `serve` here would silently create a
+ * **local** server instead — otherwise `undefined`.
+ *
+ * `--http` *is* the server, so `TOWER_URL` is irrelevant in that mode; only the stdio
+ * path (the one an editor spawns) can create the split brain this guards against.
+ */
+export function localServeConflict(
+  args: Pick<ServeArgs, "http">,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  if (args.http) return undefined;
+  const url = env.TOWER_URL?.trim();
+  return url ? url : undefined;
+}
+
+export interface ServeDeps {
+  /** Interactive confirm, used only when stdin is a TTY. */
+  ask?: Ask;
+  isTTY?: boolean;
+  env?: NodeJS.ProcessEnv;
+}
+
+/**
  * Start the coordination server (stdio by default, or HTTP). Returns the HTTP
  * Server when in `--http` mode (so callers/tests can close it); undefined for stdio.
  */
@@ -463,7 +509,27 @@ export async function cmdServe(
   cwd: string,
   args: ServeArgs,
   log: Writer = (l) => process.stderr.write(l + "\n"),
+  deps: ServeDeps = {},
 ): Promise<Server | undefined> {
+  const env = deps.env ?? process.env;
+  const remoteUrl = localServeConflict(args, env);
+  if (remoteUrl) {
+    log(localModeWarning(remoteUrl));
+    const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
+    if (!isTTY) {
+      // Spawned by an MCP client, so nobody can answer — refuse rather than write
+      // somewhere nobody will look.
+      log("");
+      log("   Refusing to start local-only. Register the HTTP endpoint above, or unset TOWER_URL.");
+      throw new Error("serve: TOWER_URL is set - refusing to start a silent local server");
+    }
+    const answer = deps.ask ? await deps.ask("Start a LOCAL server anyway? [y/N]: ") : "";
+    if (!/^y(es)?$/i.test(answer.trim())) {
+      throw new Error("serve: cancelled - TOWER_URL is set");
+    }
+    log("   Continuing with a local server at your request.");
+  }
+
   const service = buildService(cwd);
   if (args.http) {
     const port = resolvePort(args.port);

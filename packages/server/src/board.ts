@@ -566,9 +566,17 @@ export const BOARD_HTML = `<!doctype html>
     var online = {}, runnerOf = {}, statusOf = {};
     (data.workers || []).forEach(function (w) {
       online[w.agentId] = true; runnerOf[w.agentId] = w.runner || ""; statusOf[w.agentId] = w.status || "ok";
+      // Prefer what they're actually holding — the roster's job is to stop duplicate work.
+      var held = (w.claims || [])[0];
       var doing = w.status === "low"
         ? "low capacity — cooling down"
-        : "worker online" + (w.runner ? " · " + w.runner : "");
+        : held && held.purpose
+          ? held.purpose
+          : held
+            ? "editing " + (held.files || []).join(", ")
+            : w.presence === "working"
+              ? "working" + (w.runner ? " · " + w.runner : "")
+              : "idle · last seen " + fmtAge(data.now - w.lastSeen) + " ago";
       note(w.agentId, (seen[w.agentId] && seen[w.agentId].doing) || doing);
     });
     var rosterEl = document.getElementById("roster");
@@ -650,7 +658,14 @@ export const BOARD_HTML = `<!doctype html>
     renderMap(data, online, runnerOf, statusOf, seen, repliesFor(data));
 
     var n = data.claims.length, tq = data.tasks.filter(function (t) { return t.status === "open" || t.status === "accepted"; }).length;
-    setStatus("ok", "connected — " + onlineIds.length + " worker(s) online, " + tq + " task(s) in flight");
+    // The dot is the page's own link state; the counts describe agents. Keeping them in
+    // one sentence made a healthy board read as broken (TWR-09).
+    var working = (data.workers || []).filter(function (w) { return w.presence === "working"; }).length;
+    var here = (data.workers || []).length;
+    var who = here === 0
+      ? "no agents connected"
+      : working + " working" + (here > working ? " · " + (here - working) + " idle" : "");
+    setStatus("ok", "live · " + who + " · " + tq + " task(s) in flight");
   }
 
   function repliesFor(data) {

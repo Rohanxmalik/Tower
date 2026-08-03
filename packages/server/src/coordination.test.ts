@@ -236,3 +236,118 @@ describe("clean path still works", () => {
     expect(ok.claimId).not.toBeNull();
   });
 });
+
+describe("T8 — presence reflects reality (REQ-A / TWR-07 / TWR-11)", () => {
+  /** The store's clock is injectable, so "90 seconds ago" is exact rather than flaky. */
+  function at(now: () => number): TowerService {
+    return new TowerService({ store: new TowerStore({ now, ttlMs: 60_000 }) });
+  }
+
+  it("still shows an agent that acted 90 seconds ago", () => {
+    // The observed failure: one heartbeat appeared, then vanished 30s later while the
+    // agent kept working for another hour.
+    let clock = 1_000_000;
+    const s = at(() => clock);
+    s.heartbeatWorker({ agentId: "alice", repo: "acme/app", runner: "claude", status: "ok" });
+
+    clock += 90_000; // 90s — well past the old 30s window
+    const workers = s.boardSnapshot().workers;
+    expect(workers).toHaveLength(1);
+    expect(workers[0]?.agentId).toBe("alice");
+    expect(workers[0]?.presence).toBe("idle"); // here, but not mid-action
+  });
+
+  it("marks an agent offline once it goes quiet past the long window", () => {
+    let clock = 1_000_000;
+    const s = at(() => clock);
+    s.heartbeatWorker({ agentId: "alice", repo: "acme/app", runner: "claude", status: "ok" });
+
+    clock += 20 * 60 * 1000; // 20 min
+    expect(s.boardSnapshot().workers).toHaveLength(0);
+  });
+
+  it("reports working, and says what the agent is working on", () => {
+    let clock = 1_000_000;
+    const s = at(() => clock);
+    s.heartbeatWorker({ agentId: "alice", repo: "acme/app", runner: "claude", status: "ok" });
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/auth.ts"],
+      symbols: [SYMBOL],
+      purpose: "replace JWT with sessions",
+    });
+
+    const [worker] = s.boardSnapshot().workers;
+    expect(worker?.presence).toBe("working");
+    // The roster joined to claims — the view that actually prevents duplicate work.
+    expect(worker?.claims).toHaveLength(1);
+    expect(worker?.claims[0]?.purpose).toBe("replace JWT with sessions");
+  });
+
+  it("keeps a live agent's claim from expiring underneath it (TWR-11)", () => {
+    let clock = 1_000_000;
+    const s = at(() => clock);
+    const { claimId } = s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [SYMBOL],
+      purpose: "long running task",
+    });
+    expect(claimId).not.toBeNull();
+
+    clock += 50_000; // most of the 60s TTL has passed
+    s.heartbeatWorker({ agentId: "alice", repo: "acme/app", runner: "claude", status: "ok" });
+    clock += 30_000; // would have lapsed without the extension
+
+    expect(s.listClaims({ status: "active" }).claims).toHaveLength(1);
+  });
+});
+
+describe("T5 — first-accept-wins says WHY the loser lost (TWR-10)", () => {
+  function openTask(): string {
+    return svc.sendMessage({
+      fromAgentId: "alice",
+      toAgentId: "*",
+      repo: "acme/app",
+      kind: "task",
+      body: "do the thing",
+    }).id;
+  }
+
+  it("gives exactly one winner, and tells the loser it was already accepted", () => {
+    const id = openTask();
+    const first = svc.acceptTask({ taskId: id, agentId: "bob" });
+    const second = svc.acceptTask({ taskId: id, agentId: "carol" });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(false);
+    // The whole point: distinguishable from a bad id, because losing a race is the
+    // *normal* outcome of a broadcast and shouldn't look like an error.
+    expect(second.reason).toBe("already_accepted");
+  });
+
+  it("distinguishes an unknown id from a lost race", () => {
+    const missing = svc.acceptTask({ taskId: "nope-not-a-task", agentId: "bob" });
+    expect(missing.ok).toBe(false);
+    expect(missing.reason).toBe("not_found");
+  });
+
+  it("accepts a truncated id, since that's what the CLI and board print", () => {
+    const id = openTask();
+    const res = svc.acceptTask({ taskId: id.slice(0, 8), agentId: "bob" });
+    expect(res.ok).toBe(true);
+    expect(res.task?.id).toBe(id);
+  });
+
+  it("says a task is awaiting approval rather than 'already accepted'", () => {
+    const id = openTask();
+    svc.requestApproval({ taskId: id, agentId: "bob" });
+    const res = svc.acceptTask({ taskId: id, agentId: "bob" });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("awaiting_approval");
+  });
+});

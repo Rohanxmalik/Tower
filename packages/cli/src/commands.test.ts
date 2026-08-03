@@ -14,6 +14,8 @@ import {
   cmdSetup,
   resolveSymbols,
   resolvePort,
+  localServeConflict,
+  localModeWarning,
   type ClaimArgs,
 } from "./commands.js";
 import { buildService } from "./lib.js";
@@ -494,5 +496,41 @@ describe("cmdSetup (one-command onboarding)", () => {
     cmdSetup(dir, { hooks: true }, out);
     expect(existsSync(join(dir, ".git", "hooks", "pre-commit"))).toBe(false);
     expect(lines.join("\n").toLowerCase()).toContain("skip");
+  });
+});
+
+describe("TWR-01 — stdio serve never writes locally in silence", () => {
+  const REMOTE = "https://tower-abc.onrender.com/mcp";
+
+  it("flags stdio serve when TOWER_URL is set, and stays quiet otherwise", () => {
+    // The decision, without spinning up a server: only the stdio path can create the
+    // silent split brain, because --http *is* the shared server.
+    expect(localServeConflict({}, { TOWER_URL: REMOTE })).toBe(REMOTE);
+    expect(localServeConflict({}, {})).toBeUndefined();
+    expect(localServeConflict({}, { TOWER_URL: "  " })).toBeUndefined();
+    expect(localServeConflict({ http: true }, { TOWER_URL: REMOTE })).toBeUndefined();
+  });
+
+  it("explains the problem and how to fix it", () => {
+    const text = localModeWarning(REMOTE);
+    expect(text).toContain("LOCAL server");
+    expect(text).toContain(".tower/tower.db");
+    expect(text).toContain(REMOTE);
+    expect(text).toContain("tower-mcp setup --url");
+  });
+
+  it("refuses when nobody can be asked", async () => {
+    const { out, lines } = collect();
+    await expect(
+      cmdServe(dir, {}, out, { env: { TOWER_URL: REMOTE }, isTTY: false }),
+    ).rejects.toThrow(/refusing to start/i);
+    expect(lines.join("\n")).toContain("LOCAL server");
+  });
+
+  it("asks first when there is a TTY, and honours a no", async () => {
+    const { out } = collect();
+    await expect(
+      cmdServe(dir, {}, out, { env: { TOWER_URL: REMOTE }, isTTY: true, ask: async () => "n" }),
+    ).rejects.toThrow(/cancelled/i);
   });
 });

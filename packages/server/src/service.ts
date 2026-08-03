@@ -37,8 +37,18 @@ import type {
 import type { Claim, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
 import { resolveRepoKey } from "@tower/shared";
 
-/** A worker is "online" if it heartbeated within this window. */
+/**
+ * "Actively doing something." Short on purpose — it answers a different question from
+ * "is this agent still here", which is {@link WORKER_CONNECTED_MS}.
+ */
 export const WORKER_ONLINE_MS = 30_000;
+
+/**
+ * "Still here." A session that made a tool call two minutes ago is plainly still
+ * present; a 30-second window made the board report zero agents in the middle of active
+ * multi-agent work, which was the single most misleading thing on it.
+ */
+export const WORKER_CONNECTED_MS = 15 * 60 * 1000;
 
 /** Work completed inside this window still counts as done — redoing it is the same
  * waste as doing it in parallel. */
@@ -215,7 +225,7 @@ export class TowerService {
       messages: this.store.listMessages({ limit: 50 }),
       // Newest 100 — matches the 50-message reply window and keeps the DOM bounded.
       tasks: this.store.listTasks({ limit: 100 }),
-      workers: this.store.listWorkers(WORKER_ONLINE_MS),
+      workers: this.store.listWorkers(WORKER_CONNECTED_MS, WORKER_ONLINE_MS),
       rules: this.store.getDecisions({ tags: ["rule"] }).slice(0, 20),
       now: Date.now(),
     };
@@ -223,6 +233,9 @@ export class TowerService {
 
   heartbeatWorker(input: HeartbeatWorkerInput): OkOutput {
     this.store.heartbeatWorker(input);
+    // A live heartbeat is proof the owner is alive, so its claims should not lapse
+    // underneath it (TWR-11).
+    this.store.touchClaimsFor(input.agentId);
     return { ok: true };
   }
 
@@ -259,8 +272,12 @@ export class TowerService {
   }
 
   acceptTask(input: AcceptTaskInput): AcceptTaskOutput {
-    const ok = this.store.acceptTask(input.taskId, input.agentId);
-    return { ok, task: ok ? (this.store.getTask(input.taskId) ?? null) : null };
+    const result = this.store.acceptTask(input.taskId, input.agentId);
+    if (!result.ok) {
+      return { ok: false, task: null, ...(result.reason ? { reason: result.reason } : {}) };
+    }
+    const id = this.store.resolveTaskId(input.taskId) ?? input.taskId;
+    return { ok: true, task: this.store.getTask(id) ?? null };
   }
 
   /** Optional hook fired when a task finishes (done or failed) — the HTTP transport

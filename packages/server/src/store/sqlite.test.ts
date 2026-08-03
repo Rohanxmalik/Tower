@@ -382,8 +382,8 @@ describe("TowerStore — delegated tasks (lifecycle)", () => {
 
   it("accept is first-accept-wins", () => {
     task();
-    expect(store.acceptTask("task-1", "bob")).toBe(true);
-    expect(store.acceptTask("task-1", "carol")).toBe(false); // already accepted
+    expect(store.acceptTask("task-1", "bob").ok).toBe(true);
+    expect(store.acceptTask("task-1", "carol").ok).toBe(false); // already accepted
     const [t] = store.listTasks({ status: "accepted" });
     expect(t!.assigneeAgentId).toBe("bob");
   });
@@ -482,15 +482,15 @@ describe("TowerStore — task approval gate", () => {
     expect(t.approval).toBe("rejected");
     expect(t.status).toBe("failed");
     // Not even an --auto worker on the same inbox can run it now.
-    expect(store.acceptTask("t1", "dana")).toBe(false);
+    expect(store.acceptTask("t1", "dana").ok).toBe(false);
   });
 
   it("acceptTask respects the gate: pending blocks, approved allows", () => {
     task();
     store.requestApproval("t1", "bob");
-    expect(store.acceptTask("t1", "dana")).toBe(false); // human hasn't decided yet
+    expect(store.acceptTask("t1", "dana").ok).toBe(false); // human hasn't decided yet
     store.resolveApproval("t1", true);
-    expect(store.acceptTask("t1", "dana")).toBe(true); // approved — now it runs
+    expect(store.acceptTask("t1", "dana").ok).toBe(true); // approved — now it runs
   });
 
   it("requestApproval cannot re-park or reset an already-decided task", () => {

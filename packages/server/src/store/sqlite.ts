@@ -19,6 +19,7 @@ import type {
   SymbolRef,
   TaskStatus,
   Worker,
+  AcceptFailure,
 } from "@tower/shared";
 import { normalizeRepoUrl, resolveRepoKey } from "@tower/shared";
 
@@ -576,14 +577,46 @@ export class TowerStore {
   /** First accept wins: only an `open` task can be accepted, atomically. A task that
    * was parked for approval can only be accepted once approved — so a human's Reject
    * (or a still-pending gate) holds even against `--auto` workers on the same inbox. */
-  acceptTask(id: string, agentId: string): boolean {
+  /**
+   * Resolve a task id, accepting a unique **prefix** — the CLI and board both print ids
+   * truncated to 8 characters, so an agent copying what it sees should not get
+   * `not_found`. Ambiguous prefixes resolve to nothing rather than guessing.
+   */
+  resolveTaskId(idOrPrefix: string): string | undefined {
+    const exact = this.db
+      .prepare(`SELECT id FROM tasks WHERE id = ?`)
+      .get(idOrPrefix) as unknown as { id: string } | undefined;
+    if (exact) return exact.id;
+    const matches = this.db
+      .prepare(`SELECT id FROM tasks WHERE id LIKE ? LIMIT 2`)
+      .all(`${idOrPrefix}%`) as unknown as { id: string }[];
+    return matches.length === 1 ? matches[0]!.id : undefined;
+  }
+
+  /**
+   * First-accept-wins, atomically. Returns why it failed rather than a bare `false`:
+   * "already taken by someone else" is the *normal* outcome of a broadcast and must be
+   * distinguishable from a bad id (TWR-10).
+   */
+  acceptTask(id: string, agentId: string): { ok: boolean; reason?: AcceptFailure } {
+    const resolved = this.resolveTaskId(id);
+    if (!resolved) return { ok: false, reason: "not_found" };
     const res = this.db
       .prepare(
         `UPDATE tasks SET status = 'accepted', assigneeAgentId = ?, updatedAt = ?
          WHERE id = ? AND status = 'open' AND (approval IS NULL OR approval = 'approved')`,
       )
-      .run(agentId, this.now(), id);
-    return Number(res.changes) > 0;
+      .run(agentId, this.now(), resolved);
+    if (Number(res.changes) > 0) return { ok: true };
+
+    // The update matched nothing — say which of the three reasons it was.
+    const row = this.db
+      .prepare(`SELECT status, approval FROM tasks WHERE id = ?`)
+      .get(resolved) as unknown as { status: string; approval: string | null } | undefined;
+    if (!row) return { ok: false, reason: "not_found" };
+    if (row.approval === "pending") return { ok: false, reason: "awaiting_approval" };
+    if (row.approval === "rejected") return { ok: false, reason: "rejected" };
+    return { ok: false, reason: "already_accepted" };
   }
 
   /** Park an open task for human approval (remote-approve worker mode). Only an
@@ -705,18 +738,60 @@ export class TowerStore {
   }
 
   /** Workers seen within `windowMs` (online), newest first. */
-  listWorkers(windowMs: number): Worker[] {
-    const cutoff = this.now() - windowMs;
+  /**
+   * Everyone seen inside `connectedMs`, each labelled `working` or `idle` depending on
+   * whether they were active inside the shorter `workingMs` window, and joined to the
+   * claims they currently hold.
+   *
+   * Anyone past `connectedMs` is simply absent from the list — that is `offline`.
+   */
+  listWorkers(connectedMs: number, workingMs = connectedMs): Worker[] {
+    const now = this.now();
     const rows = this.db
       .prepare(`SELECT * FROM workers WHERE lastSeen >= ? ORDER BY lastSeen DESC`)
-      .all(cutoff) as unknown as Worker[];
-    return rows.map((r) => ({
-      agentId: r.agentId,
-      repo: r.repo,
-      runner: r.runner,
-      status: r.status === "low" ? "low" : "ok",
-      lastSeen: r.lastSeen,
-    }));
+      .all(now - connectedMs) as unknown as Worker[];
+
+    // One query for every live claim, then grouped in memory — the roster is small and
+    // this keeps it to two statements regardless of how many agents are connected.
+    const claimRows = this.db
+      .prepare(
+        `SELECT id, agentId, purpose, files FROM claims WHERE status = 'active' AND expiresAt > ?`,
+      )
+      .all(now) as unknown as { id: string; agentId: string; purpose: string; files: string }[];
+    const byAgent = new Map<string, Worker["claims"]>();
+    for (const c of claimRows) {
+      const list = byAgent.get(c.agentId) ?? [];
+      list.push({ claimId: c.id, purpose: c.purpose, files: JSON.parse(c.files) as string[] });
+      byAgent.set(c.agentId, list);
+    }
+
+    return rows.map((r) => {
+      const claims = byAgent.get(r.agentId) ?? [];
+      // Holding a live claim counts as working even if the heartbeat is a little stale —
+      // an agent mid-edit is demonstrably not idle.
+      const working = r.lastSeen >= now - workingMs || claims.length > 0;
+      return {
+        agentId: r.agentId,
+        repo: r.repo,
+        runner: r.runner,
+        status: r.status === "low" ? "low" : "ok",
+        lastSeen: r.lastSeen,
+        presence: working ? ("working" as const) : ("idle" as const),
+        claims,
+      };
+    });
+  }
+
+  /**
+   * Extend every active claim held by an agent that is demonstrably alive (TWR-11).
+   * Claims used to expire on wall-clock TTL alone, so a live agent on a slow task could
+   * have its claim lapse underneath it while a crashed agent kept blocking a file.
+   */
+  touchClaimsFor(agentId: string): number {
+    const res = this.db
+      .prepare(`UPDATE claims SET expiresAt = ? WHERE agentId = ? AND status = 'active'`)
+      .run(this.now() + this.ttlMs, agentId);
+    return Number(res.changes ?? 0);
   }
 
   // -- push subscriptions & small kv (web push) ------------------------------

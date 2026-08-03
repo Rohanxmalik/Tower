@@ -316,9 +316,21 @@ export const AcceptTaskInput = z.object({
 });
 export type AcceptTaskInput = z.infer<typeof AcceptTaskInput>;
 
+/** Why an accept failed. `already_accepted` is the normal first-accept-wins outcome and
+ * the one an agent most needs to tell apart from a genuine error. */
+export const AcceptFailure = z.enum([
+  "not_found",
+  "already_accepted",
+  "awaiting_approval",
+  "rejected",
+]);
+export type AcceptFailure = z.infer<typeof AcceptFailure>;
+
 export const AcceptTaskOutput = z.object({
   ok: z.boolean(),
   task: DelegatedTask.nullable(),
+  /** Present only when `ok` is false. */
+  reason: AcceptFailure.optional(),
 });
 export type AcceptTaskOutput = z.infer<typeof AcceptTaskOutput>;
 
@@ -352,6 +364,18 @@ export type ListTasksOutput = z.infer<typeof ListTasksOutput>;
 export const WorkerStatus = z.enum(["ok", "low"]);
 export type WorkerStatus = z.infer<typeof WorkerStatus>;
 
+/**
+ * Liveness, as three states rather than a binary.
+ *
+ * A 30-second on/off window made the board read "0 workers online" during active
+ * multi-agent work, because `lastSeen` only moved on an explicit `heartbeat_worker`
+ * that ordinary agent sessions never make. Widening the window alone would just let
+ * stale entries linger, so "recently doing something" and "still here" are now
+ * separate questions.
+ */
+export const Presence = z.enum(["working", "idle", "offline"]);
+export type Presence = z.infer<typeof Presence>;
+
 /** A worker daemon announcing it is online and ready to run delegated tasks. */
 export const Worker = z.object({
   agentId: z.string().min(1),
@@ -360,6 +384,12 @@ export const Worker = z.object({
   runner: z.string().default(""),
   status: WorkerStatus.default("ok"),
   lastSeen: z.number().int(),
+  /** working = tool activity or an active claim recently; idle = here but quiet. */
+  presence: Presence.default("idle"),
+  /** What this agent currently holds — the view that actually prevents duplicate work. */
+  claims: z
+    .array(z.object({ claimId: z.string(), purpose: z.string(), files: z.array(z.string()) }))
+    .default([]),
 });
 export type Worker = z.infer<typeof Worker>;
 

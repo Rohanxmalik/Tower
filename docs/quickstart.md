@@ -71,3 +71,14 @@ headlessly, and PRs the result → [worker.md](./worker.md).
 - Blocking enforcement (Claude Code hook + universal pre-commit) → [enforcement.md](./enforcement.md)
 - PR collision reports in CI → [action.md](./action.md)
 - The wire contract (all 19 tools) → [protocol.md](./protocol.md)
+
+## What changed in 0.9.0
+
+- A **hard conflict is refused**, not just reported. Nothing is registered until the clash
+  is resolved; `force: true` overrides and is recorded.
+- **Forks and clones share one coordination space** — claims are keyed on the repository's
+  root commit, so `git@…` vs `https://…` vs a fork under another name are all one place.
+- **Other branches are compared too**, reported as a soft warning rather than silence.
+- **`propose_intent`** — describe what you're about to work on _before researching_, and
+  Tower tells you if someone is already on it, even under a different filename.
+- `tower init --hooks` wires all five Claude Code hooks in one command.

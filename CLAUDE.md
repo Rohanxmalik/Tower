@@ -12,8 +12,13 @@ at merge time.
 **Before editing any file, call the `claim_intent` MCP tool** with the files and
 symbols you're about to change, plus a short `purpose`.
 
-- If a **`hard`** conflict is returned → **stop and ask the user** (another agent is
-  mid-change on that symbol). Offer: wait / take a dependent task / branch from their WIP.
+- Since 0.9.0 a **`hard`** conflict is **refused** — you get `claimId: null`,
+  `blocking: true` and `recommendation: "stand_down"`, and **nothing is registered**.
+  **Stop and ask the user.** Offer: wait / take a dependent task / branch from their WIP.
+  Only re-send with `force: true` if the human says so; the override is recorded.
+- **Before starting research on anything substantial, call `propose_intent`** with a plain
+  English description. It catches someone already doing the same work even when you'd have
+  picked a different filename — the check that fires before the tokens are spent.
 - If a **`soft`** conflict is returned → proceed carefully; you share a file with another
   agent.
 - While editing, call `heartbeat` (~every 60s) so your claim doesn't expire.

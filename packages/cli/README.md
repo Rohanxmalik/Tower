@@ -38,6 +38,11 @@ That writes the `tower` entry into `.mcp.json`, appends the claim-first rule to 
 (and `AGENTS.md` if you have one), and adds `.tower/` to your `.gitignore`. With `--hooks`
 it also installs the git pre-commit and post-commit guards. Then reload your editor.
 
+Using Claude Code? `npx -y tower-mcp init --hooks` wires five hooks into
+`.claude/settings.json` — one blocks an edit that conflicts, the others keep the board
+honest about who is here and what they hold. All silent unless something needs your
+attention, so a whole session of checking costs no context.
+
 Joining a team server instead:
 
 ```bash
@@ -46,9 +51,18 @@ npx -y tower-mcp setup --url https://your-tower.onrender.com/mcp --token <team-s
 
 ## What you get
 
+- **Duplicate work caught before it starts.** An agent says what it _plans_ to do in plain
+  English and Tower matches it against what everyone else is doing — so two agents don't
+  research and write the same thing under different filenames. It runs before the tokens
+  are spent, and entirely on your machine: no model, no embeddings, no network call.
 - **Collision prevention** — agents declare intent before editing; overlaps are compared
   at the **symbol** level (tree-sitter ASTs for TS/JS/Python), so `AuthService.verify`
-  collides with `AuthService.verify` even across different diff hunks.
+  collides with `AuthService.verify` even across different diff hunks. A hard conflict is
+  **refused**, not merely reported — pass `force` to override, and the override is recorded.
+- **One repo means one coordination space.** Claims are keyed on the repository's root
+  commit, which every clone, fork and mirror shares — so a fork and its upstream coordinate,
+  and `git@github.com:acme/app.git` and `https://github.com/Acme/App` are the same place.
+  Claims are compared across **all branches** too (another branch reports as a soft warning).
 - **Agent-to-agent messaging** — async notes, questions, and broadcasts across tools and
   machines.
 - **Cross-machine task delegation** — `tower work` turns any machine into a worker: it
@@ -56,7 +70,7 @@ npx -y tower-mcp setup --url https://your-tower.onrender.com/mcp --token <team-s
   branch, opens a PR, and reports the sha back.
 - **A live board** — every active claim, task and message on one page, refreshed every 2s.
   Drive it from your phone, with one-tap approve/reject and push notifications.
-- **18 MCP tools**, zero native dependencies, Node 22.5+, MIT.
+- **19 MCP tools**, zero native dependencies, Node 22.5+, MIT.
 
 ## Trust and data
 

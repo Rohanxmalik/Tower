@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tower — multiplayer for your team's AI coding agents</title>
+    <title>Tower — stop your AI agents doing the same work twice</title>
     <meta
       name="description"
-      content="Working with AI is still single-player. Tower makes your team's coding agents multiplayer: delegate a task to a teammate's agent on another machine, see every claim, task and reply on one shared board, and never collide on the same code. An MCP server for Claude Code, Cursor, and Codex."
+      content="Two agents doing the same work costs you twice — and git merges it cleanly without saying a word. Tower is the coordination layer your AI coding agents check before they start: it matches intent before the research, claims symbols before the edit, and blocks the collision at the keystroke. An MCP server for Claude Code, Cursor and Codex."
     />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070B0F'/%3E%3Cpath d='M16 5v22M9 27h14M12 11l4-4 4 4' stroke='%2338E08A' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <meta property="og:title" content="Tower — multiplayer for your team's AI coding agents" />
+    <meta property="og:title" content="Tower — stop your AI agents doing the same work twice" />
     <meta
       property="og:description"
-      content="AI agents are still single-player. Tower makes them multiplayer — delegate across machines, see every claim, task and reply on one shared board, never collide on the same code. npx tower-mcp demo."
+      content="Two agents just did the same work twice — and you paid for both. Tower catches the overlap before the tokens are spent, not at merge. Any vendor, any machine, over MCP. npx tower-mcp demo."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
@@ -268,7 +268,7 @@
         </span>
         <div class="nav-links">
           <a class="hide-sm" href="#delegate">Delegate</a>
-          <a class="hide-sm" href="#phone">Phone</a>
+          <a class="hide-sm" href="#tech">How it works</a>
           <a href="#features">Features</a>
           <a href="#install">Install</a>
           <a href="https://github.com/Rohanxmalik/Tower/tree/main/docs">Docs</a>
@@ -281,15 +281,12 @@
     <header class="hero">
       <div class="wrap hero-grid">
         <div>
-          <span class="eyebrow">MCP server · multiplayer for AI coding agents</span>
-          <h1>Your Claude delegates.<br /><span class="glow">Their Codex delivers.</span></h1>
+          <span class="eyebrow">MCP server · coordination for AI coding agents</span>
+          <h1>Two agents just did<br /><span class="glow">the same work twice.</span></h1>
           <p class="lede">
-            Working with AI is still <b>single-player</b> — one prompt, one box, one person.
-            Tower makes your team's coding agents <b>multiplayer</b>. Hand a task to a
-            teammate's agent — even from your phone — and it runs on <b>their</b> machine
-            with <b>their</b> tokens, commits, and <b>opens a PR</b>, while the whole team
-            watches it happen on <b>one live board</b>. And because every agent declares
-            intent first, <b>no two ever collide</b>. Model-agnostic, over MCP.
+            You paid for both. Tower is the layer your agents check before they start —
+            it catches the overlap <b>before the tokens are spent</b>, not at merge.
+            Any vendor, any machine, over MCP.
           </p>
           <div class="cmd">
             <span><span class="prompt">$ </span><code>npx -y tower-mcp demo</code></span>
@@ -332,23 +329,30 @@
     <!-- PROBLEM -->
     <section>
       <div class="wrap two-col">
-        <div class="kicker">Your team pointed its agents at one repo. Two things break.</div>
+        <div class="kicker">Five developers. Fifteen agents. One repo. Nobody can see anybody.</div>
         <div>
           <p class="lead-p">
-            <b>They can't hand off work.</b> Every vendor gives an agent tools and memory —
-            nobody connects it to your teammate's agent. You can't tell your Claude to give
-            the auth task to your co-founder's Codex and get a PR back.
+            <b>The expensive failure isn't the merge conflict.</b> Git catches those, and
+            you fix them in a minute. The one that costs real money is two agents doing the
+            <em>same work</em> — different files, different names, both correct, both billed.
+            Git merges them cleanly and says nothing.
           </p>
           <p class="lead-p">
-            <b>They collide, silently.</b> Git catches <em>text</em> conflicts at merge —
-            after everyone's agents have already burned tokens on the same code. Two people,
-            ten agents, one codebase: the real cost is <b>duplicated work found far too late</b>.
+            <b>By the time a file exists, the money is gone.</b> An agent researches, reads
+            the codebase, drafts a thousand lines of reasoning — then writes. Every check
+            that fires at write time fires <em>after</em> the spend. Every check that
+            compares file paths misses a duplicate that picked a different filename.
           </p>
           <p class="lead-p">
-            Tower is the missing <b>coordination layer</b>: a shared tower every agent talks
-            to over <a href="https://modelcontextprotocol.io">MCP</a>. It sits above git and
-            works with any model — coordination only matters if the <em>other</em> vendor's
-            agent is in the room.
+            <b>Agents make this worse than it is for humans.</b> People coordinate ambiently —
+            standup, a message, someone saying "I've got that." Agents are cheap to spawn,
+            run in parallel by design, and start every session knowing nothing about what
+            anyone else is doing.
+          </p>
+          <p class="lead-p">
+            Tower is the <b>coordination layer</b>: one server every agent talks to over
+            <a href="https://modelcontextprotocol.io">MCP</a>, on any machine, from any
+            vendor. It sits above git, and it answers before the work starts.
           </p>
         </div>
       </div>
@@ -361,7 +365,7 @@
           <span class="eyebrow">The headline</span>
           <h2 class="sec-title">One repo. Two machines. Agents that hand off work.</h2>
           <p class="lead-p" style="max-width: 66ch; margin-top: 0.8rem">
-            You delegate from your terminal (or your phone); their agent picks it up on
+            You delegate from your terminal; their agent picks it up on
             <b>their</b> machine, with <b>their</b> account — no API keys shared, ever. It
             runs headless, commits on a branch, opens a PR, and reports back with the sha.
           </p>
@@ -397,36 +401,6 @@
           itself down when the account hits a rate limit. Full guide →
           <a href="https://github.com/Rohanxmalik/Tower/blob/main/docs/worker.md">docs/worker.md</a>.
         </p>
-      </div>
-    </section>
-
-    <!-- PHONE / BOARD -->
-    <section id="phone">
-      <div class="wrap">
-        <div class="sec-head">
-          <span class="eyebrow">Remote control</span>
-          <h2 class="sec-title">Command your agents from your phone</h2>
-        </div>
-        <div class="split">
-          <div>
-            <p class="lead-p">
-              The live board (<span class="mono">/board</span>) is a remote control, not just
-              a dashboard. Open it on your phone and:
-            </p>
-            <ul class="feat-list">
-              <li><b>Delegate a task</b> in one line — pick any online worker from a dropdown, or broadcast to everyone.</li>
-              <li><b>Approve or reject</b> parked work with one tap. Reject means it never runs.</li>
-              <li><b>Get a push notification</b> the moment an agent needs your OK — no open tab required.</li>
-              <li><b>Pin team rules</b> that ride <em>every</em> delegated prompt — change a rule from the couch, the next task obeys it.</li>
-              <li><b>See which machines have a worker online</b>, who's editing what, and every collision.</li>
-            </ul>
-          </div>
-          <img
-            class="board-shot"
-            src="board.png"
-            alt="Tower live board: a delegated task done with its PR sha, a broadcast task waiting, a red collision banner, a Team rules panel, who's-connected presence dots, and the send box with an approve/notify control."
-          />
-        </div>
       </div>
     </section>
 
@@ -467,7 +441,7 @@
         </div>
         <div class="grid">
           <div class="card star"><div class="tag">delegate</div><h3>Cross-machine tasks</h3><p>Your agent hands work to a teammate's agent — it runs on their machine and account, commits on a branch, opens a PR, and reports back the sha. First-accept-wins, so a broadcast runs exactly once.</p></div>
-          <div class="card star"><div class="tag">phone</div><h3>Remote control</h3><p>Delegate and approve from your phone. Push notifications when a task needs your OK; one-tap sign-in via a <span class="mono">#token</span> link. Your agents, commanded from anywhere.</p></div>
+          <div class="card star"><div class="tag">spend</div><h3>Duplicate work, caught early</h3><p>An agent states its plan in one line before researching. Tower matches it against what everyone else is doing — by meaning, not filename — and says stand down if the work already exists.</p></div>
           <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
           <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Phone-editable guardrails, no git commit.</p></div>
           <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
@@ -475,7 +449,7 @@
           <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>
           <div class="card"><div class="tag">agnostic</div><h3>Any agent, any model</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. Coordination is only useful if the other vendor's agent is in the room.</p></div>
           <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A zero-dependency GitHub Action comments when two open PRs touch overlapping lines, and shows which files an agent is editing right now. One workflow file, no server needed.</p></div>
-          <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>; agents recall them before acting, so nobody re-litigates a settled call. The same store powers phone-pinned team rules.</p></div>
+          <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>; agents recall them before acting, so nobody re-litigates a settled call. The same store powers team-wide pinned rules.</p></div>
           <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; <span class="mono">next_task</span> hands each agent work whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
           <div class="card"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> boots a live board seeded with a real hard collision and a completed delegation — 30 seconds, nothing written to disk. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
         </div>
@@ -502,18 +476,108 @@
       </div>
     </section>
 
-    <!-- HOW -->
-    <section id="how">
+    <!-- HOW IT WORKS — for engineers -->
+    <section id="tech">
       <div class="wrap">
         <div class="sec-head">
-          <span class="eyebrow">The pattern</span>
-          <h2 class="sec-title">Claim → detect → delegate → deliver</h2>
+          <span class="eyebrow">How it works</span>
+          <h2 class="sec-title">Three checks, each cheaper than the one after it</h2>
+          <p class="lead-p">
+            Coordination is only worth it if it costs less than the collision. Tower runs
+            the cheap check first and never asks the model to do work a parser can do.
+          </p>
         </div>
+
         <div class="steps">
-          <div class="step"><div class="num">STEP 01</div><h3>Claim intent</h3><p>Before editing, an agent calls <span class="mono">claim_intent</span> with the files and symbols it's about to touch — and gets any collisions in the same reply.</p></div>
-          <div class="step"><div class="num">STEP 02</div><h3>Detect &amp; hold</h3><p>Tower grades the overlap: clear, soft, or hard. A hard conflict holds the edit and tells the agent who holds it, why, and their ETA.</p></div>
-          <div class="step"><div class="num">STEP 03</div><h3>Delegate</h3><p>Held or out of scope? Hand it off: <span class="mono">send_message</span> with <span class="mono">kind:"task"</span> — or the board's send box — assigns it to another agent.</p></div>
-          <div class="step"><div class="num">STEP 04</div><h3>Deliver</h3><p>A worker accepts it, runs the agent headless, commits, opens a PR, and replies with a <span class="mono">task_update</span> carrying the sha. You see it live on the board.</p></div>
+          <div class="step">
+            <div class="num">BEFORE RESEARCH</div>
+            <h3>Intent match</h3>
+            <p>
+              <span class="mono">propose_intent("rewrite the auth middleware")</span> — one
+              string, one round trip. Tower tokenizes it, strips stopwords, stems, and scores
+              Sørensen–Dice against every active and recently-completed claim. Above the
+              threshold, you get told who is already on it.
+            </p>
+            <p class="lead-p">
+              Catches the duplicate <b>even when the two agents would have written different
+              files</b> — the case no path-based check can see. Runs entirely in-process: no
+              model, no embedding API, no network call.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="num">BEFORE THE EDIT</div>
+            <h3>Symbol claim</h3>
+            <p>
+              <span class="mono">claim_intent</span> with the files and symbols you're about
+              to touch. Tower parses the source with <b>tree-sitter</b> (TS/JS/Python, WASM —
+              nothing to compile) and compares real symbols, so
+              <span class="mono">AuthService.verify</span> collides with
+              <span class="mono">AuthService.verify</span> even when the two diffs are
+              nowhere near each other in the file.
+            </p>
+            <p class="lead-p">
+              Same symbol → <b>hard</b>, and the claim is <b>refused</b>: no claim is written
+              and you get <span class="mono">recommendation: "stand_down"</span>. Same file,
+              different symbols, or another branch → <b>soft</b>: you're told, you proceed.
+              <span class="mono">force: true</span> overrides, and the override is recorded.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="num">AT THE KEYSTROKE</div>
+            <h3>Hook enforcement</h3>
+            <p>
+              An MCP tool is advisory — the agent has to choose to call it. A Claude Code
+              <span class="mono">PreToolUse</span> hook doesn't: a conflicting
+              <span class="mono">Edit</span> exits 2 and never runs, with the reason fed back
+              to the model. A git <span class="mono">pre-commit</span> guard does the same at
+              commit time for any editor, any agent, including a human.
+            </p>
+            <p class="lead-p">
+              Every hook fails <b>open but loud</b>: an outage never blocks your editing, and
+              it says so — silence always means verified-clear, never "didn't check".
+            </p>
+          </div>
+        </div>
+
+        <div class="sec-head" style="margin-top:2.5rem">
+          <h2 class="sec-title" style="font-size:1.3rem">One repo means one coordination space</h2>
+        </div>
+        <div class="split">
+          <div>
+            <p class="lead-p">
+              Coordination is worthless if two people land in different buckets. Tower keys
+              claims on the repository's <b>root commit sha</b> — the one value every clone,
+              fork and mirror shares, and which survives renames and transfers.
+            </p>
+            <p class="lead-p">
+              So a fork coordinates with its upstream, and
+              <span class="mono">git@github.com:acme/app.git</span> is the same place as
+              <span class="mono">https://github.com/Acme/App</span>. Branch is deliberately
+              <em>not</em> part of the key: agents mostly work on separate branches, and two
+              of them rewriting one function still converge into a single merge.
+            </p>
+          </div>
+          <div class="term">
+            <div class="term-head">git rev-list --max-parents=0 HEAD</div>
+            <div class="term-body">
+<pre>acme/app         → caaa8780f2853aec824905cc3278402fc26caa0a
+someone/app-fork → caaa8780f2853aec824905cc3278402fc26caa0a
+
+  same project. same coordination space.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec-head" style="margin-top:2.5rem">
+          <h2 class="sec-title" style="font-size:1.3rem">Why it's cheap enough to leave on</h2>
+        </div>
+        <div class="grid">
+          <div class="card"><div class="tag">context</div><h3>Zero tokens when clear</h3><p>A hook that exits without printing adds nothing to the model's context. You only pay attention when something is actually about to collide.</p></div>
+          <div class="card"><div class="tag">latency</div><h3>One HTTP round trip</h3><p>Matching is a set intersection and a tree-sitter parse — microseconds of CPU, not an inference call. Coordination cost is a request, not a prompt.</p></div>
+          <div class="card"><div class="tag">deps</div><h3>Nothing to compile</h3><p>Built-in <span class="mono">node:sqlite</span> and WASM tree-sitter. No native modules, so <span class="mono">npx</span> works first try on every OS.</p></div>
+          <div class="card"><div class="tag">neutral</div><h3>No vendor integration</h3><p>Tower implements MCP rather than integrating vendors, so Claude Code, Cursor and Codex all work without a plugin. A coordination layer is only useful if the <em>other</em> vendor's agent is in the room.</p></div>
         </div>
       </div>
     </section>
@@ -602,7 +666,7 @@
           <div class="tool"><span class="name">complete_task</span><span class="desc">Finish with result + commit sha; delegator notified</span></div>
           <div class="tool"><span class="name">list_tasks</span><span class="desc">Delegated work by status, recipient, assignee</span></div>
           <div class="tool"><span class="name">request_approval</span><span class="desc">Park a task for a human tap (remote approve)</span></div>
-          <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject from the board — or your phone</span></div>
+          <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject a parked task from the board</span></div>
           <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence + capacity for each machine</span></div>
           <div class="tool"><span class="name">pending</span><span class="desc">What's waiting for you — unread messages + open tasks, marks nothing read</span></div>
         </div>

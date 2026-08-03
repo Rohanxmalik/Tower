@@ -267,7 +267,7 @@ describe("T8 — presence reflects reality (REQ-A / TWR-07 / TWR-11)", () => {
   });
 
   it("reports working, and says what the agent is working on", () => {
-    let clock = 1_000_000;
+    const clock = 1_000_000;
     const s = at(() => clock);
     s.heartbeatWorker({ agentId: "alice", repo: "acme/app", runner: "claude", status: "ok" });
     s.claimIntent({

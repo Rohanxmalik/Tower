@@ -164,7 +164,7 @@ describe("HTTP transport", () => {
     httpServer = await startHttp(service, { port: 0 });
     const client = await mcpClient(httpServer); // Host: 127.0.0.1 — allowed
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(18);
+    expect(tools.length).toBe(19);
   });
 });
 

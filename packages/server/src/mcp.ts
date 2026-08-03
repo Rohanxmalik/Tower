@@ -15,6 +15,7 @@ import type {
   SendMessageInput,
   FetchMessagesInput,
   PendingInput,
+  ProposeIntentInput,
   AcceptTaskInput,
   CompleteTaskInput,
   ListTasksInput,
@@ -39,6 +40,8 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
     "Record an architecture decision and WHY it was made, for the team's shared memory.",
   get_decisions: "Recall past architecture decisions before acting.",
   next_task: "Ask the sequencer for a task whose module is safe to start right now.",
+  propose_intent:
+    "BEFORE you research or write anything: say in plain English what you plan to work on. Returns anyone already doing the same work, matched on meaning rather than file paths — so it catches a duplicate even when you would have picked a different filename. One call per task; it is the cheapest check Tower offers and the only one that fires before your tokens are spent.",
   send_message:
     "Send an async message or task to another agent (toAgentId, or '*' to broadcast). Delivered on their next Tower contact. kind 'task' delegates work; reply with kind 'task_update' (replyTo=the task id) when done.",
   fetch_messages:
@@ -86,6 +89,7 @@ export function buildMcpServer(service: TowerService): McpServer {
     log_decision: (a) => service.logDecision(a as LogDecisionInput),
     get_decisions: (a) => service.getDecisions(a as GetDecisionsInput),
     next_task: (a) => service.nextTask(a as NextTaskInput),
+    propose_intent: (a) => service.proposeIntent(a as ProposeIntentInput),
     send_message: (a) => service.sendMessage(a as SendMessageInput),
     fetch_messages: (a) => service.fetchMessages(a as FetchMessagesInput),
     pending: (a) => service.pending(a as PendingInput),

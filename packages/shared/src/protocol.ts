@@ -101,7 +101,7 @@ export const Message = z.object({
 export type Message = z.infer<typeof Message>;
 
 // ---------------------------------------------------------------------------
-// MCP tool I/O contracts (18 tools)
+// MCP tool I/O contracts (19 tools)
 // ---------------------------------------------------------------------------
 
 export const ClaimIntentInput = z.object({
@@ -137,6 +137,40 @@ export const ClaimIntentOutput = z.object({
   unreadMessages: z.number().int().nonnegative().optional(),
 });
 export type ClaimIntentOutput = z.infer<typeof ClaimIntentOutput>;
+
+/** A claim whose stated purpose describes the same work as a proposed intent. */
+export const IntentMatch = z.object({
+  claimId: z.string(),
+  agentId: z.string(),
+  purpose: z.string(),
+  /** 0-1 lexical overlap between the two purposes. */
+  score: z.number(),
+  since: z.number().int(),
+  files: z.array(z.string()),
+});
+export type IntentMatch = z.infer<typeof IntentMatch>;
+
+/**
+ * Announce *what you plan to work on*, before doing the research — the cheapest possible
+ * check and the only one that catches duplicated effort when the two agents would pick
+ * different filenames.
+ */
+export const ProposeIntentInput = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().min(1),
+  repoId: z.string().optional(),
+  /** Plain English: "write a blog post about prompt injection". */
+  purpose: z.string().min(1),
+});
+export type ProposeIntentInput = z.infer<typeof ProposeIntentInput>;
+
+export const ProposeIntentOutput = z.object({
+  matches: z.array(IntentMatch),
+  /** True when somebody is already doing this. Ask the human before spending tokens. */
+  duplicate: z.boolean().default(false),
+  recommendation: Recommendation.default("proceed"),
+});
+export type ProposeIntentOutput = z.infer<typeof ProposeIntentOutput>;
 
 export const CheckCollisionInput = z.object({
   repo: z.string().min(1),
@@ -405,6 +439,7 @@ export const TOOL_SCHEMAS = {
   request_approval: { input: RequestApprovalInput, output: OkOutput },
   resolve_approval: { input: ResolveApprovalInput, output: OkOutput },
   heartbeat_worker: { input: HeartbeatWorkerInput, output: OkOutput },
+  propose_intent: { input: ProposeIntentInput, output: ProposeIntentOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

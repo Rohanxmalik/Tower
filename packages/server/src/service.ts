@@ -22,6 +22,8 @@ import type {
   FetchMessagesOutput,
   PendingInput,
   PendingOutput,
+  ProposeIntentInput,
+  ProposeIntentOutput,
   AcceptTaskInput,
   AcceptTaskOutput,
   CompleteTaskInput,
@@ -37,8 +39,13 @@ import { resolveRepoKey } from "@tower/shared";
 
 /** A worker is "online" if it heartbeated within this window. */
 export const WORKER_ONLINE_MS = 30_000;
+
+/** Work completed inside this window still counts as done — redoing it is the same
+ * waste as doing it in parallel. */
+export const RECENT_INTENT_MS = 6 * 60 * 60 * 1000;
 import { TowerStore } from "./store/sqlite.js";
 import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
+import { matchIntent } from "./engine/intent.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
 
 /** What the live board renders: claims, the collisions between them, and the comms feed. */
@@ -136,6 +143,28 @@ export class TowerService {
       blocking: false,
       recommendation: "proceed",
       ...mail,
+    };
+  }
+
+  /**
+   * Plan-time duplicate check (DEV-01). The waste this prevents happens *before* any
+   * file exists — by the time an agent touches a claimable path the research tokens are
+   * already spent, and if the two agents pick different filenames no file-level check
+   * ever fires. One call per task, at the moment the agent decides what to do.
+   */
+  proposeIntent(input: ProposeIntentInput): ProposeIntentOutput {
+    const repoKey = resolveRepoKey(input.repoId, input.repo);
+    const cutoff = Date.now() - RECENT_INTENT_MS;
+    const candidates = this.store
+      .listClaims({ repo: input.repo })
+      .filter((c) => (c.repoKey ?? repoKey) === repoKey)
+      .filter((c) => c.status === "active" || c.createdAt >= cutoff);
+
+    const matches = matchIntent(input.purpose, candidates, { agentId: input.agentId });
+    return {
+      matches,
+      duplicate: matches.length > 0,
+      recommendation: matches.length > 0 ? "stand_down" : "proceed",
     };
   }
 

@@ -123,7 +123,7 @@ describe("other tool inputs", () => {
 });
 
 describe("TOOL_SCHEMAS registry", () => {
-  it("exposes exactly the 18 tools", () => {
+  it("exposes exactly the 19 tools", () => {
     expect(Object.keys(TOOL_SCHEMAS).sort()).toEqual(
       [
         "check_collision",
@@ -142,6 +142,7 @@ describe("TOOL_SCHEMAS registry", () => {
         "request_approval",
         "resolve_approval",
         "heartbeat_worker",
+        "propose_intent",
         "fetch_messages",
         "pending",
       ].sort(),

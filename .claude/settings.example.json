@@ -1,15 +1,56 @@
 {
-  "//": "Copy to .claude/settings.json. PreToolUse ENFORCES Tower (blocks conflicting edits); UserPromptSubmit NUDGES you when a teammate delegated work. Requires `npm run build` first. For a remote team Tower, set TOWER_URL / TOWER_TOKEN in the environment.",
+  "//": "Copy to .claude/settings.json, or run `tower init --hooks` to write it for you. SessionStart registers this session on the board; UserPromptSubmit nudges you when a teammate delegated work; PreToolUse BLOCKS an edit that hard-conflicts; PostToolUse keeps presence and your claims alive while you work; SessionEnd releases your claims. All are silent on the happy path, so a whole session of checking costs zero context. Requires `npm run build` first. For a remote team Tower, set TOWER_URL / TOWER_TOKEN.",
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node hooks/pretooluse-tower.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/sessionstart-tower.mjs"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "hooks": [{ "type": "command", "command": "node hooks/userpromptsubmit-nudge.mjs" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/userpromptsubmit-nudge.mjs"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/pretooluse-tower.mjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/posttooluse-tower.mjs"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/sessionend-tower.mjs"
+          }
+        ]
       }
     ]
   }

@@ -47,7 +47,10 @@ try {
   }).trim();
 
   if (out) process.stdout.write(out + "\n");
-} catch {
-  // fail open — never block the prompt
+} catch (err) {
+  // Fail open, but say so. The nudge is allowed to find nothing; it is not allowed to
+  // look like it found nothing when it never ran.
+  process.stderr.write(`Tower: could not check for waiting work — ${err?.message || err}
+`);
 }
 process.exit(0);

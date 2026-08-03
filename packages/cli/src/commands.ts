@@ -103,7 +103,7 @@ function parseSymbols(entries: string[]): { file: string; symbol: string }[] {
 }
 
 /** Write the example policy and print setup instructions. */
-export function cmdInit(cwd: string, out: Writer = stdout): void {
+export function cmdInit(cwd: string, out: Writer = stdout, opts: { hooks?: boolean } = {}): void {
   const p = policyPath(cwd);
   buildService(cwd).store.close(); // ensures .tower/ exists
   if (existsSync(p)) {
@@ -112,8 +112,71 @@ export function cmdInit(cwd: string, out: Writer = stdout): void {
     writeFileSync(p, EXAMPLE_POLICY);
     out(`Wrote ${p}`);
   }
+  if (opts.hooks) installClaudeHooks(cwd, out);
   out("");
   out(MCP_SNIPPET);
+}
+
+/** The Claude Code hook block Tower installs. Silent on the happy path, so a whole
+ * session of per-edit checking costs zero context. */
+export const CLAUDE_HOOKS = {
+  SessionStart: [{ hooks: [{ type: "command", command: "node hooks/sessionstart-tower.mjs" }] }],
+  UserPromptSubmit: [
+    { hooks: [{ type: "command", command: "node hooks/userpromptsubmit-nudge.mjs" }] },
+  ],
+  PreToolUse: [
+    {
+      matcher: "Edit|Write|MultiEdit",
+      hooks: [{ type: "command", command: "node hooks/pretooluse-tower.mjs" }],
+    },
+  ],
+  PostToolUse: [
+    {
+      matcher: "Edit|Write|MultiEdit",
+      hooks: [{ type: "command", command: "node hooks/posttooluse-tower.mjs" }],
+    },
+  ],
+  SessionEnd: [{ hooks: [{ type: "command", command: "node hooks/sessionend-tower.mjs" }] }],
+} as const;
+
+/**
+ * Write the hook block into `.claude/settings.json`, merging with whatever is already
+ * there. The hooks shipped in the repo but nothing installed them, and an unwired hook
+ * enforces nothing — which made "three enforcement layers" true of the code and false of
+ * every actual install.
+ */
+export function installClaudeHooks(cwd: string, out: Writer = stdout): void {
+  const dir = join(cwd, ".claude");
+  const path = join(dir, "settings.json");
+  let settings: { hooks?: Record<string, unknown> } = {};
+  if (existsSync(path)) {
+    try {
+      settings = JSON.parse(readFileSync(path, "utf8")) as { hooks?: Record<string, unknown> };
+    } catch {
+      out(`⚠️  .claude/settings.json exists but is invalid JSON — left untouched.`);
+      return;
+    }
+  }
+
+  // Never clobber a hook the user already wired up for one of these events.
+  const existing = settings.hooks ?? {};
+  const added: string[] = [];
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [event, block] of Object.entries(CLAUDE_HOOKS)) {
+    if (existing[event]) continue;
+    merged[event] = block;
+    added.push(event);
+  }
+
+  if (added.length === 0) {
+    out(`• .claude/settings.json already wires every Tower hook — skipped.`);
+    return;
+  }
+
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path, JSON.stringify({ ...settings, hooks: merged }, null, 2) + "\n");
+  out(`✔ .claude/settings.json — installed ${added.join(", ")}`);
+  out("  (run `npm run build` once so the hooks can load the CLI)");
 }
 
 export interface SetupOpts {
@@ -769,4 +832,75 @@ export async function cmdWatch(
     };
     void tick();
   });
+}
+
+export interface PresenceArgs {
+  agentId: string;
+  repo: string;
+  repoId?: string;
+  runner?: string;
+}
+
+/**
+ * Announce that an agent session is alive, and extend the claims it holds.
+ *
+ * Presence used to depend on an agent volunteering `heartbeat_worker`, which an
+ * interactive editor session never does — so the board reported zero agents during
+ * active multi-agent work. The session-lifecycle hooks call this instead, so liveness
+ * is driven by the harness rather than by agent goodwill.
+ */
+export async function cmdPresence(
+  cwd: string,
+  args: PresenceArgs,
+  out: Writer = stdout,
+): Promise<void> {
+  const payload = {
+    agentId: args.agentId,
+    repo: args.repo,
+    runner: args.runner ?? "interactive",
+    status: "ok" as const,
+  };
+
+  const remote = remoteConfig();
+  if (remote) {
+    await withRemote(remote, async (call) => {
+      await call("heartbeat_worker", payload);
+      return undefined;
+    });
+    out(`presence: ${args.agentId} on ${remote.url}`);
+    return;
+  }
+
+  const service = buildService(cwd);
+  service.heartbeatWorker(payload);
+  service.store.close();
+  out(`presence: ${args.agentId} (local)`);
+}
+
+/**
+ * Release every active claim an agent holds — called when a session ends, so a closed
+ * editor stops blocking files it is no longer editing.
+ */
+export async function cmdRelease(
+  cwd: string,
+  agentId: string,
+  out: Writer = stdout,
+): Promise<number> {
+  const remote = remoteConfig();
+  if (remote) {
+    return withRemote(remote, async (call) => {
+      const { claims } = (await call("list_claims", { status: "active" })) as ListClaimsOutput;
+      const mine = claims.filter((c) => c.agentId === agentId);
+      for (const c of mine) await call("release_claim", { claimId: c.id });
+      out(`released ${mine.length} claim(s) for ${agentId}`);
+      return mine.length;
+    });
+  }
+
+  const service = buildService(cwd);
+  const mine = service.store.listClaims({ status: "active" }).filter((c) => c.agentId === agentId);
+  for (const c of mine) service.store.releaseClaim(c.id);
+  service.store.close();
+  out(`released ${mine.length} claim(s) for ${agentId}`);
+  return mine.length;
 }

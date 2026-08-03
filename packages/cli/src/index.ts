@@ -32,7 +32,9 @@ Commands:
                              the board opens in your browser. In-memory, zero setup.
   doctor [--url u] [--token t]
                              Check this machine: Node, git, runners, gh, server + token
-  init                       Write .tower/policy.yaml + print MCP setup
+  init [--hooks]             Write .tower/policy.yaml + print MCP setup.
+                             --hooks also wires all five Claude Code hooks into
+                             .claude/settings.json (an unwired hook enforces nothing).
   setup [--url <https://...>] [--token t] [--hooks]   One-command onboarding: .mcp.json + rules + git hooks
   serve [--http] [--port n] [--token t]   Start the coordination server
   status                     Show active claims
@@ -127,9 +129,15 @@ export async function run(argv: string[]): Promise<number> {
       );
     }
 
-    case "init":
-      cmdInit(cwd);
+    case "init": {
+      const { values } = parseArgs({
+        args: rest,
+        options: { hooks: { type: "boolean" } },
+        allowPositionals: false,
+      });
+      cmdInit(cwd, undefined, { ...(values.hooks ? { hooks: true } : {}) });
       return 0;
+    }
 
     case "setup": {
       const { values } = parseArgs({

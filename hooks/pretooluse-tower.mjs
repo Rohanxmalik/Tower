@@ -79,4 +79,17 @@ async function main() {
   process.exit(ALLOW);
 }
 
-main().catch(() => process.exit(ALLOW)); // fail open: a hook bug must never brick editing
+// Fail OPEN but LOUD. A hook bug or a Tower outage must never brick editing — but if we
+// silently exit 0, "coordination checked and clear" and "coordination never ran" look
+// identical, and you cannot tell which one you got.
+//
+//   Silence must always mean verified-clear, never "did not check."
+main().catch((err) => {
+  process.stderr.write(
+    `Tower: coordination NOT enforced for this edit — ${err?.message || err}
+` +
+      `       (allowing the edit; another agent may be editing this file)
+`,
+  );
+  process.exit(ALLOW);
+});

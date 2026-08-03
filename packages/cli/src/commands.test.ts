@@ -534,3 +534,46 @@ describe("TWR-01 — stdio serve never writes locally in silence", () => {
     ).rejects.toThrow(/cancelled/i);
   });
 });
+
+describe("T6 — tower init --hooks wires enforcement (REQ-D gap 3)", () => {
+  it("writes all five hooks into .claude/settings.json", () => {
+    cmdInit(dir, () => {}, { hooks: true });
+    const cfg = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8")) as {
+      hooks: Record<string, unknown>;
+    };
+    expect(Object.keys(cfg.hooks).sort()).toEqual([
+      "PostToolUse",
+      "PreToolUse",
+      "SessionEnd",
+      "SessionStart",
+      "UserPromptSubmit",
+    ]);
+  });
+
+  it("does nothing without --hooks", () => {
+    cmdInit(dir, () => {});
+    expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
+  });
+
+  it("never clobbers a hook the user already wired up", () => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const mine = { hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "mine.mjs" }] }] } };
+    writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify(mine));
+
+    cmdInit(dir, () => {}, { hooks: true });
+    const cfg = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8")) as {
+      hooks: Record<string, { hooks: { command: string }[] }[]>;
+    };
+    expect(cfg.hooks.PreToolUse![0]!.hooks[0]!.command).toBe("mine.mjs");
+    expect(cfg.hooks.SessionStart).toBeDefined();
+  });
+
+  it("leaves invalid JSON untouched rather than destroying it", () => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "settings.json"), "{ not json");
+    const { out, lines } = collect();
+    cmdInit(dir, out, { hooks: true });
+    expect(readFileSync(join(dir, ".claude", "settings.json"), "utf8")).toBe("{ not json");
+    expect(lines.join("\n")).toContain("invalid JSON");
+  });
+});

@@ -1,6 +1,19 @@
 # Tower — Testing Findings & Fix Brief
 
-**Status:** open — nothing in here has been fixed yet.
+**Status:** ✅ **all fixed in v0.9.0** (2026-08-04). Every defect below (TWR-01 … TWR-11),
+all four requested capabilities (REQ-A/B/C/D) and DEV-01 are implemented, with acceptance
+tests T1–T8 in `packages/server/src/coordination.test.ts`,
+`packages/server/src/engine/intent.test.ts` and `packages/cli/src/commands.test.ts`.
+325 tests, 81.6% branches.
+
+One extra defect was found while starting the work and is also fixed — **TWR-12: the test
+suite was not hermetic.** `remoteConfig()` defaults to `process.env`, so on any machine
+with `TOWER_URL` exported (the normal state for anyone running a worker) the unit tests
+silently talked to a live hosted server and failed against real claims. `vitest.setup.ts`
+now strips the ambient vars.
+
+**Still to do:** the manual end-to-end check below, and the two-agent live verification —
+both need real machines and cannot be proven by unit tests.
 **Source:** live two-agent session against the hosted instance (`tower-z4xy.onrender.com`, v0.8.0), 2 Aug 2026.
 **Audience:** the Claude Code session that will implement these fixes in this repo.
 
@@ -14,7 +27,7 @@ from the source alone, because several of them only appear when two agents run a
 > Across an entire live session with two agents editing the same repo simultaneously, **every
 > collision check returned `conflicts: []`**. Collision detection has never been observed to
 > fire. The matching logic in `packages/server/src/engine/collision.ts` is correct — the
-> *lookup key* prevents it from ever running.
+> _lookup key_ prevents it from ever running.
 
 Fixing that is the point of this brief.
 
@@ -36,7 +49,7 @@ Two Claude Code agents (`claude-code-rohan`, `claude-mayank`) worked the same re
 
 **Never observed working:**
 
-- A non-empty `conflicts` array — *the core product promise*
+- A non-empty `conflicts` array — _the core product promise_
 - `hard` vs `soft` severity (every claim passed `symbols: []`, so everything is whole-file)
 - First-accept-wins under an actual race
 - The pre-commit hook refusing a commit
@@ -58,7 +71,7 @@ Only CLI subcommands honour `TOWER_URL` via `withRemote`.
 **Observed:** a decision logged through the MCP tool landed in the local `.tower/tower.db`
 while the hosted board stayed empty.
 
-**Why it is the highest severity:** it fails with *no visible symptom*. A team can believe
+**Why it is the highest severity:** it fails with _no visible symptom_. A team can believe
 they are coordinating on a shared server while every write goes to a local SQLite file.
 
 **Fix:** either proxy to the remote when `TOWER_URL` is set, or refuse to start and tell the
@@ -77,7 +90,7 @@ activeClaims(repo, branch) { ... WHERE repo = ? AND branch = ? AND status = 'act
 **Observed:** the two agents registered `github.com/Rohanxmalik/genos-ai` and
 `mayank-9031/genos-ai` and were completely invisible to each other.
 
-**Important nuance:** `hooks/pretooluse-tower.mjs` *does* normalize — it derives repo from
+**Important nuance:** `hooks/pretooluse-tower.mjs` _does_ normalize — it derives repo from
 `git remote origin` through its own `normalizeRepo()`. The **MCP tool path does not**. So
 agents coordinating via hooks and agents calling MCP tools directly land in different
 partitions. Two code paths, two conventions.
@@ -132,7 +145,7 @@ record who forced past what.
 Nothing polls the board. `check_collision`, `list_claims` and `pending` run only when an agent
 volunteers, and the server never returns a recommended action.
 
-**Observed:** the duplicate article was caught by the *human*, not the tool. Without that
+**Observed:** the duplicate article was caught by the _human_, not the tool. Without that
 intervention a duplicate post would have been committed.
 
 ---
@@ -148,7 +161,7 @@ workers: this.store.listWorkers(WORKER_ONLINE_MS)
 never make.
 
 **Observed:** one heartbeat appeared on the board, then vanished 30 seconds later while the
-agent kept working for another hour. The board reads *0 workers online* during active
+agent kept working for another hour. The board reads _0 workers online_ during active
 multi-agent work.
 
 ---
@@ -237,7 +250,7 @@ Three changes together — widening the window alone just makes stale entries li
 - **Automatic heartbeat**, driven by session lifecycle hooks rather than agent goodwill.
 - **Three states:** `working` (tool activity or active claim within ~2 min), `idle` (session
   alive, no recent activity), `offline` (no heartbeat past TTL). Show relative last-seen.
-- **Join the roster to active claims** so each agent shows *what* it is working on. That is the
+- **Join the roster to active claims** so each agent shows _what_ it is working on. That is the
   view that actually prevents duplicate work.
 
 Keep a short window for `working` and a much longer one for `connected`.
@@ -266,15 +279,15 @@ Keep a short window for `working` and a much longer one for `connected`.
 Both are silent by default and fail open. That is the right design: **a hook that exits without
 printing costs zero tokens**, so per-edit checking is free across a whole session.
 
-| Hook | State | Job |
-|---|---|---|
-| `SessionStart` | missing | register worker; inject scoped decisions |
-| `UserPromptSubmit` | exists | nudge — prints only if work waiting |
-| `PreToolUse` | exists | `Edit\|Write\|MultiEdit` → `cmdGuard` → exit 2 blocks |
-| `PostToolUse` | missing | reconcile claim against the real diff |
-| `Stop` / `SessionEnd` | missing | release claims; write decisions; mark offline |
+| Hook                  | State   | Job                                                   |
+| --------------------- | ------- | ----------------------------------------------------- |
+| `SessionStart`        | missing | register worker; inject scoped decisions              |
+| `UserPromptSubmit`    | exists  | nudge — prints only if work waiting                   |
+| `PreToolUse`          | exists  | `Edit\|Write\|MultiEdit` → `cmdGuard` → exit 2 blocks |
+| `PostToolUse`         | missing | reconcile claim against the real diff                 |
+| `Stop` / `SessionEnd` | missing | release claims; write decisions; mark offline         |
 
-**Gap 1 — the invariant.** Both hooks fail open *silently*
+**Gap 1 — the invariant.** Both hooks fail open _silently_
 (`main().catch(() => process.exit(ALLOW))`). A Tower outage is therefore indistinguishable from
 a clean check. Make it fail open but **loud**: allow the edit, print that coordination was not
 enforced.
@@ -295,10 +308,10 @@ nothing.
 
 The session's waste happened **entirely before any file existed**. Both agents ran web
 searches, read the codebase and drafted ~1,500 words. By the time either touched a claimable
-path, the tokens were already spent — and because the filenames differed, *no file-level check
-would ever have fired*.
+path, the tokens were already spent — and because the filenames differed, _no file-level check
+would ever have fired_.
 
-**Shape:** a `propose_intent` call when an agent decides *what* to work on ("I intend to write a
+**Shape:** a `propose_intent` call when an agent decides _what_ to work on ("I intend to write a
 post about prompt injection"), matched semantically against active and recently completed
 claims, before research begins.
 
@@ -332,38 +345,38 @@ The repo already has `vitest` and tests colocated beside sources
 (`packages/server/src/engine/collision.test.ts`, `service.test.ts`, `mcp.test.ts`,
 `packages/cli/src/commands.test.ts`). Add to those.
 
-**T1 — fork and upstream share one coordination space** *(REQ-C)*
+**T1 — fork and upstream share one coordination space** _(REQ-C)_
 Two claims on the same file, one registered as `github.com/owner/repo`, one as
 `other-owner/repo`, both with the same `repoId` root SHA → `check_collision` returns a **hard**
 conflict. Currently returns `[]`.
 
-**T2 — cross-branch overlap is detected** *(TWR-04)*
+**T2 — cross-branch overlap is detected** _(TWR-04)_
 Claim `src/app/page.tsx` on `main` and on `feature/x` → returns a conflict (`soft` is
 acceptable). Currently returns `[]`.
 
-**T3 — repo string variants collapse** *(TWR-02)*
+**T3 — repo string variants collapse** _(TWR-02)_
 `https://github.com/o/r.git`, `git@github.com:o/r`, `github.com/O/R` all resolve to one
 partition and conflict with each other.
 
-**T4 — hard conflict is refused** *(TWR-05)*
+**T4 — hard conflict is refused** _(TWR-05)_
 `claim_intent` on a file held by another agent → rejected, claim **not** registered. With
 `force: true` → registered, and the forcing is recorded.
 
-**T5 — first-accept-wins** *(untested surface)*
+**T5 — first-accept-wins** _(untested surface)_
 Two concurrent `accept_task` calls for one task → exactly one `ok: true`; the loser gets
-`already_accepted`, not a bare `false` *(TWR-10)*.
+`already_accepted`, not a bare `false` _(TWR-10)_.
 
-**T6 — the hook actually blocks** *(REQ-D)*
+**T6 — the hook actually blocks** _(REQ-D)_
 Agent A holds a claim on `page.tsx`; agent B triggers `PreToolUse` for the same path → exit 2,
 reason on stderr. Then with Tower unreachable → exit 0 **with a visible warning**, never silent
-*(gap 1)*.
+_(gap 1)_.
 
-**T7 — semantic duplicate is caught** *(DEV-01)*
+**T7 — semantic duplicate is caught** _(DEV-01)_
 `propose_intent("write a blog post about prompt injection")` while another agent holds a claim
 whose purpose is "AI agent security / prompt injection" → soft conflict, **despite the file
 paths differing**. This is the exact case that cost a full duplicate this session.
 
-**T8 — presence reflects reality** *(REQ-A)*
+**T8 — presence reflects reality** _(REQ-A)_
 An agent that made a tool call 90 seconds ago still shows as connected; one silent past TTL
 shows offline. Currently the first disappears after 30 seconds.
 
@@ -375,7 +388,7 @@ The bug that started all of this is invisible to unit tests:
 
 1. Point an agent at a hosted Tower with `TOWER_URL` set, using the **stdio** MCP server.
 2. Log a decision through the MCP tool.
-3. Confirm it appears on the **hosted board** and *not* in a local `.tower/tower.db`.
+3. Confirm it appears on the **hosted board** and _not_ in a local `.tower/tower.db`.
 
 Today it goes local, silently (TWR-01).
 

@@ -1,6 +1,6 @@
 {
   "name": "tower-mcp",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Multiplayer for AI coding agents — delegate tasks across machines, see every claim, task and reply on one shared board, and catch collisions before the first keystroke. Over MCP, model-agnostic (Claude Code, Cursor, Codex).",
   "type": "module",
   "license": "MIT",

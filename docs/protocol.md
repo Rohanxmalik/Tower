@@ -12,7 +12,15 @@ transport and MCP standardized agent-to-tool access.
   **before** editing. Claims have a TTL and are kept alive with heartbeats.
 - **Symbol** — a `{ file, symbol, kind }` reference. `symbol: ""` means the whole file.
 - **Conflict** — a detected overlap between an incoming intent and an active claim, with
-  a severity.
+  a severity. A `hard` conflict **refuses** the claim (`claimId: null`, `blocking: true`,
+  `recommendation: "stand_down"`) unless the caller passes `force: true`, which is
+  recorded. `soft` never blocks.
+- **repoId** — the repository's root commit sha (`git rev-list --max-parents=0 HEAD`),
+  identical across every clone, fork and mirror. Claims partition on it, so a fork and its
+  upstream coordinate. Omit it and the server falls back to the normalized remote URL.
+- **Intent** — a plain-English description of work an agent is _about to start_.
+  `propose_intent` matches it against what everyone else is doing, so duplicated effort is
+  caught before the research, and even when the two agents would write different files.
 - **Decision** — a recorded architecture choice and the reasoning behind it (shared memory).
 - **Message** — an async agent-to-agent note: `kind` is `message` (chat), `task`
   (delegated work), or `task_update` (status reply, threaded via `replyTo`).
@@ -38,7 +46,7 @@ transport and MCP standardized agent-to-tool access.
 
 ## Tools
 
-All eighteen tools take and return JSON validated by the schemas in
+All nineteen tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool               | Purpose                                                               |

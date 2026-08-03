@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.8.0 — early, building in public.** Everything below works end-to-end today,
+> Status: **v0.9.0 — early, building in public.** Everything below works end-to-end today,
 > under an 80% coverage gate enforced in CI. What's shipped and what's next:
 > [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
@@ -51,17 +51,23 @@ construction — coordination only matters if the _other_ vendor's agent is in t
 
 ## The six words you need
 
-| Word            | What it means here                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **MCP**         | the standard way agents call external tools. Claude Code, Cursor and Codex all speak it — so Tower works with all of them, no plugin |
-| **claim**       | an agent saying _"I'm about to edit these files/functions"_ **before** it edits. The core move                                       |
-| **symbol**      | a named function, class or method — so two agents editing _different_ functions in one file aren't treated as colliding              |
-| **hard / soft** | `hard` = same symbol, or someone claimed the whole file → stop. `soft` = same file, different symbols → proceed carefully            |
-| **board**       | a web page showing every agent's active claims, tasks and messages                                                                   |
-| **worker**      | `tower work` — a daemon on a machine that picks up delegated tasks and runs a coding agent headlessly                                |
+| Word            | What it means here                                                                                                                                             |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MCP**         | the standard way agents call external tools. Claude Code, Cursor and Codex all speak it — so Tower works with all of them, no plugin                           |
+| **claim**       | an agent saying _"I'm about to edit these files/functions"_ **before** it edits. The core move                                                                 |
+| **symbol**      | a named function, class or method — so two agents editing _different_ functions in one file aren't treated as colliding                                        |
+| **hard / soft** | `hard` = same symbol → the claim is **refused** (pass `force` to override). `soft` = same file different symbols, or another branch → you're told, you proceed |
+| **board**       | a web page showing every agent's active claims, tasks and messages                                                                                             |
+| **worker**      | `tower work` — a daemon on a machine that picks up delegated tasks and runs a coding agent headlessly                                                          |
 
 Claims expire on their own (15-minute TTL, refreshed by heartbeats), so a crashed agent
-never locks a file forever.
+never locks a file forever — and a **live** agent's claims are extended automatically, so
+they don't lapse mid-task.
+
+**One repo means one coordination space.** Tower keys claims on the repository's _root
+commit sha_, which every clone, fork and mirror shares. So a fork and its upstream
+coordinate with each other, and `git@github.com:acme/app.git` and
+`https://github.com/Acme/App` are the same place rather than two isolated groups.
 
 ## See it — 30 seconds
 
@@ -224,7 +230,29 @@ your phone:
 Same `TOWER_TOKEN` as everything else — anyone who can open your board can drive your
 worker, so share it like push access. Details → [docs/worker.md](./docs/worker.md).
 
-## The 18 tools
+## Catch duplicate work before it happens
+
+The expensive failure isn't usually a merge conflict — it's two agents doing the **same
+work**. They pick different filenames, git merges both cleanly, and you've paid for one
+deliverable twice. No file-level check can see that, and by the time either agent touches
+a file the tokens are already spent.
+
+So before researching anything, an agent says what it's about to do:
+
+```
+propose_intent  "write a blog post about prompt injection"
+
+⚠️  claude-mayank is already on this (2m ago):
+    "AI agent security / prompt injection"
+    → stand down, or pick something else
+```
+
+Matched on meaning, not paths — it fires even though one agent would have written
+`prompt-injection-agent-security.mdx` and the other
+`ai-agent-security-prompt-injection.mdx`. Entirely local: no model, no embeddings, no
+network call.
+
+## The 19 tools
 
 | Tool                                           | Purpose                                                                     |
 | ---------------------------------------------- | --------------------------------------------------------------------------- |
@@ -240,6 +268,7 @@ worker, so share it like push access. Details → [docs/worker.md](./docs/worker
 | `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR           |
 | `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone        |
 | `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks         |
+| `propose_intent`                               | **Before you research:** say what you plan to do; catches duplicate work    |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 

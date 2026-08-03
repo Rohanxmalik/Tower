@@ -3,6 +3,75 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.9.0 — 2026-08-04
+
+**Collision detection fires for the first time.** A live two-agent session against a
+hosted instance found that _every_ collision check returned `conflicts: []` — including
+two agents editing the same file at the same moment. The matching engine was correct all
+along; the lookup key meant it never ran. This release is that fix, plus the things
+testing found around it.
+
+- **One repo means one coordination space.** Claims are partitioned on a key resolved
+  server-side, not on whatever string the caller happened to send. `repoId` — the
+  repository's **root commit sha** — is identical across every clone, fork and mirror, so
+  **a fork and its upstream now coordinate**; previously they were modelled as unrelated
+  projects, which is precisely the case where coordination matters most (participants
+  share no working tree). Callers that send no `repoId` fall back to the normalized URL,
+  so `git@…` vs `https://…` vs different casing no longer splits one team into isolated
+  groups that never see each other. Existing databases are backfilled on open.
+- **Agents on different branches can finally see each other.** Branch was part of the
+  lookup key, so detection was disabled by default in the common case — agents normally
+  work on separate feature branches, and two of them rewriting one function still produce
+  a single merge. Cross-branch overlaps now report as **`soft`** rather than as silence.
+- **A hard conflict is actually refused.** `claim_intent` used to return conflicts and
+  register the claim anyway, which made severity decorative: an agent that ignored the
+  response behaved exactly like one that never checked. It now returns
+  `blocking: true`, `recommendation: "stand_down"` and **writes nothing**. Pass
+  `force: true` to override; the override is recorded so the board can show who forced
+  past what. **Breaking:** `claimId` is now nullable.
+- **`propose_intent` — catch duplicated work before the tokens are spent.** The session's
+  real loss was not a merge conflict: two agents independently researched and wrote the
+  same article under different filenames, git merged them cleanly, and the result was two
+  full research-and-write cycles for one deliverable. The new 19th tool takes a plain
+  English description of what you're about to do and matches it against what everyone
+  else is doing — so it catches a duplicate **even when the file paths differ**, and it
+  fires before the research rather than after. Matching is lexical and dependency-free:
+  no model, no embeddings, and no network call, because Tower makes no network calls you
+  didn't configure.
+- **The board stops claiming nobody is there.** Presence used a single 30-second window
+  refreshed only by an explicit `heartbeat_worker` that interactive sessions never call,
+  so the board read _0 agents online_ during active multi-agent work. There are now two
+  windows — "working" and "still here" — three states (`working` / `idle` / `offline`),
+  and the roster is **joined to each agent's live claims**, so you can see _what_ everyone
+  is doing. The self-contradicting `connected — 0 worker(s) online` header is split into a
+  link-state indicator and an agent roster.
+- **Claims track their owner's liveness.** A heartbeat extends the claims that agent
+  holds, so a live agent on a slow task no longer has its claim expire underneath it, and
+  the new `SessionEnd` hook releases claims when an editor closes instead of leaving
+  phantom blocks until the TTL lapses.
+- **stdio `serve` no longer writes locally in silence.** It called `buildService()`
+  unconditionally and never consulted `TOWER_URL`, so a team could believe it was
+  coordinating on a shared server while every write went to a SQLite file on one laptop —
+  with no visible symptom. It now explains the problem, asks when there's a TTY, and
+  refuses when there isn't (an MCP client spawns it with no TTY, so there's nobody to
+  ask). `--http` is unaffected; it _is_ the shared server.
+- **`accept_task` says why it failed** — `not_found` / `already_accepted` /
+  `awaiting_approval` / `rejected`. Losing a race is the _normal_ outcome of a broadcast
+  and must not look like an error. It also accepts a unique id prefix, since the CLI and
+  board both print ids truncated.
+- **Hooks: three new, and silence now means something.** `SessionStart` registers the
+  session, `PostToolUse` keeps presence and claims alive, `SessionEnd` releases them. The
+  two existing hooks still fail open — a Tower outage must never brick editing — but they
+  now **say so**, because a silent pass was indistinguishable from a check that never ran.
+  **`tower init --hooks`** writes all five into `.claude/settings.json`, merging with what
+  you already have; the hooks shipped in the repo before but nothing installed them, and
+  an unwired hook enforces nothing.
+- **The test suite no longer talks to production.** `remoteConfig()` reads `process.env`,
+  so on any machine with `TOWER_URL` exported — the normal state for anyone running a
+  worker — unit tests silently hit a live server and failed against real claims. The
+  suite is now hermetic.
+- 325 tests (up from 262), 80% coverage gate green.
+
 ## 0.8.0 — 2026-07-27
 
 - **Your agent gets tapped on the shoulder.** New 18th MCP tool **`pending`** — a

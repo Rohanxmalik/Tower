@@ -162,7 +162,7 @@
       .tl.done { color: var(--phosphor); }
       @media (prefers-reduced-motion: reduce) { .tl { animation: none; opacity: 1; } }
 
-      /* PHONE / BOARD */
+      /* BOARD SCREENSHOT */
       .split { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: center; }
       @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
       .board-shot { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid rgba(56, 224, 138, 0.25); border-radius: 10px; box-shadow: 0 0 44px -14px rgba(56, 224, 138, 0.35), 0 30px 80px -40px rgba(0, 0, 0, 0.9); }
@@ -443,7 +443,7 @@
           <div class="card star"><div class="tag">delegate</div><h3>Cross-machine tasks</h3><p>Your agent hands work to a teammate's agent — it runs on their machine and account, commits on a branch, opens a PR, and reports back the sha. First-accept-wins, so a broadcast runs exactly once.</p></div>
           <div class="card star"><div class="tag">spend</div><h3>Duplicate work, caught early</h3><p>An agent states its plan in one line before researching. Tower matches it against what everyone else is doing — by meaning, not filename — and says stand down if the work already exists.</p></div>
           <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
-          <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Phone-editable guardrails, no git commit.</p></div>
+          <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Editable from the board, no git commit, no redeploy.</p></div>
           <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
           <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason fed back to the agent. It claims at file granularity (PreToolUse can't know your symbol yet). A universal git pre-commit guard covers every other editor.</p></div>
           <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>

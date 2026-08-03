@@ -131,17 +131,30 @@
       .status.running { color: var(--cyan); border-color: rgba(76, 201, 240, 0.5); }
       .status.hold { color: var(--alert); border-color: rgba(255, 77, 77, 0.5); }
       .strip.conflict { border-color: rgba(255, 77, 77, 0.55); }
-      .reply-line { font-family: var(--mono); font-size: 0.76rem; color: var(--phosphor); padding: 0 0.2rem 0.6rem; opacity: 0; }
-      .alert-line { font-family: var(--mono); font-size: 0.78rem; color: var(--alert); padding: 0.2rem 0.2rem 0; opacity: 0; }
       /* hero animation beats */
-      .hero-anim .strip-task { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 0.5s forwards; }
-      .hero-anim .status-flip .running { animation: hide 0.01s linear 2.1s forwards; }
-      .hero-anim .status-flip .done { opacity: 0; animation: fadein 0.4s ease-out 2.2s forwards; }
-      .hero-anim .reply-line { animation: fadein 0.45s ease-out 2.4s forwards; }
-      .hero-anim .strip-conflict { opacity: 0; transform: translateY(-6px); animation: drop 0.5s ease-out 3.1s forwards, flash 1.1s ease-out 3.5s; }
-      .hero-anim .alert-line { animation: fadein 0.4s ease-out 3.7s forwards; }
-      .status-flip { position: relative; display: inline-grid; }
-      .status-flip .done { position: absolute; inset: 0; }
+      /* Hero: real captured output, revealed line by line. */
+      .ln {
+        font-family: var(--mono); font-size: 0.8rem; line-height: 1.75;
+        color: var(--ink); opacity: 0; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+      }
+      .ln .pr { color: var(--phosphor); }
+      .ln .str { color: var(--cyan); }
+      .ln.dim { color: var(--muted); }
+      .ln.ok { color: var(--phosphor); }
+      .ln.warn { color: var(--amber); }
+      .ln.bad { color: var(--alert); }
+      .ln-gap { height: 0.9rem; }
+      .hero-anim .l1 { animation: fadein 0.3s ease-out 0.3s forwards; }
+      .hero-anim .l2 { animation: fadein 0.3s ease-out 0.9s forwards; }
+      .hero-anim .l3 { animation: fadein 0.3s ease-out 1.15s forwards; }
+      .hero-anim .l4 { animation: fadein 0.3s ease-out 1.4s forwards; }
+      .hero-anim .l5 { animation: fadein 0.35s ease-out 1.8s forwards; }
+      .hero-anim .l6 { animation: fadein 0.3s ease-out 2.9s forwards; }
+      .hero-anim .l7 { animation: fadein 0.3s ease-out 3.4s forwards, flash 1.1s ease-out 3.4s; }
+      .hero-anim .l8 { animation: fadein 0.3s ease-out 3.7s forwards; }
+      .hero-anim .l9 { animation: fadein 0.3s ease-out 3.95s forwards; }
+      .hero-anim .l10 { animation: fadein 0.35s ease-out 4.35s forwards; }
 
       /* PROBLEM */
       .kicker { font-size: clamp(1.4rem, 2.6vw, 2rem); font-family: var(--display); font-weight: 600; color: #fff; max-width: 26ch; }
@@ -248,10 +261,7 @@
       }
       @media (prefers-reduced-motion: reduce) {
         .radar, .live .dot { animation: none; }
-        .hero-anim .strip-task, .hero-anim .strip-conflict,
-        .hero-anim .reply-line, .hero-anim .alert-line,
-        .hero-anim .status-flip .running, .hero-anim .status-flip .done { animation: none; opacity: 1; transform: none; }
-        .status-flip .running { display: none; }
+        .hero-anim .ln { animation: none; opacity: 1; }
         html { scroll-behavior: auto; }
       }
       :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
@@ -302,26 +312,25 @@
         <div class="console hero-anim" aria-hidden="true">
           <div class="radar"></div>
           <div class="console-head">
-            <span>TWR · acme/app · 2 agents · 1 worker online</span>
+            <span>tower · real output</span>
             <span class="live"><span class="dot"></span>live</span>
           </div>
-          <!-- delegated task: runs, then done + PR -->
-          <div class="strip task strip-task">
-            <div class="bar"></div>
-            <div><div class="call">📱 you → codex-bob</div><div class="tgt">add rate limiting to /login</div></div>
-            <div class="status-flip">
-              <span class="status running">RUNNING</span>
-              <span class="status done">DONE ✓</span>
-            </div>
-          </div>
-          <div class="reply-line">↳ codex-bob: rate limit 30/min · PR #42 · ab12f3</div>
-          <!-- collision held before a token is spent -->
-          <div class="strip conflict strip-conflict">
-            <div class="bar"></div>
-            <div><div class="call">claude-a</div><div class="tgt">src/auth.ts · AuthService.verify</div></div>
-            <div class="status hold">HOLD</div>
-          </div>
-          <div class="alert-line">⛔ CONFLICT — AuthService.verify held by cursor-bob (ETA ~6m). Reroute or wait.</div>
+
+          <!-- 1. the duplicate caught BEFORE any research happens -->
+          <div class="ln l1"><span class="pr">$</span> propose_intent <span class="str">"write a blog post about prompt injection"</span></div>
+          <div class="ln l2 warn">⚠  claude-mayank is already on this — 2m ago</div>
+          <div class="ln l3 dim">   "AI agent security / prompt injection"</div>
+          <div class="ln l4 dim">   they'd have written a different filename. caught anyway.</div>
+          <div class="ln l5 ok">→ stand down. 0 tokens spent.</div>
+
+          <div class="ln-gap"></div>
+
+          <!-- 2. a fork and its upstream, correctly treated as one project -->
+          <div class="ln l6"><span class="pr">$</span> claim_intent <span class="str">src/auth.ts#verify</span> <span class="dim">— on a fork</span></div>
+          <div class="ln l7 bad">⛔ COLLISION — held by alice-upstream</div>
+          <div class="ln l8 dim">   github.com/acme/app  ·  github.com/someone/app-fork</div>
+          <div class="ln l9 dim">   different names. same root commit. one repo.</div>
+          <div class="ln l10 bad">→ claim REFUSED. nothing written.</div>
         </div>
       </div>
     </header>

@@ -252,25 +252,36 @@ export async function cmdClaim(
   const remote = remoteConfig();
   if (remote) {
     return withRemote(remote, async (call) => {
-      const { claimId, conflicts } = (await call("claim_intent", intent)) as ClaimIntentOutput;
-      writeClaimId(cwd, claimId);
+      const { claimId, conflicts, blocking } = (await call(
+        "claim_intent",
+        intent,
+      )) as ClaimIntentOutput;
+      if (claimId) writeClaimId(cwd, claimId);
       const lookup = conflicts.length
         ? await remoteClaimLookup(call, args.repo, args.branch)
         : () => undefined;
       out(renderConflicts(conflicts, lookup));
       out("");
-      out(`(claim ${claimId.slice(0, 8)} registered for ${args.agentId} on ${remote.url})`);
-      return conflicts.some((c) => c.severity === "hard");
+      out(
+        claimId
+          ? `(claim ${claimId.slice(0, 8)} registered for ${args.agentId} on ${remote.url})`
+          : `(claim REFUSED — another agent holds this. Re-run with --force to override.)`,
+      );
+      return blocking || conflicts.some((c) => c.severity === "hard");
     });
   }
 
   const service = buildService(cwd, build);
-  const { claimId, conflicts } = service.claimIntent(intent);
-  writeClaimId(cwd, claimId);
+  const { claimId, conflicts, blocking } = service.claimIntent(intent);
+  if (claimId) writeClaimId(cwd, claimId);
   out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
   out("");
-  out(`(claim ${claimId.slice(0, 8)} registered for ${args.agentId})`);
-  const hard = conflicts.some((c) => c.severity === "hard");
+  out(
+    claimId
+      ? `(claim ${claimId.slice(0, 8)} registered for ${args.agentId})`
+      : `(claim REFUSED — another agent holds this. Re-run with --force to override.)`,
+  );
+  const hard = blocking || conflicts.some((c) => c.severity === "hard");
   service.store.close();
   return hard;
 }
@@ -316,9 +327,12 @@ export async function cmdGuard(
         if (!args.force) return true;
         forced(hardCount);
       }
-      const { claimId } = (await call("claim_intent", intent)) as ClaimIntentOutput;
-      writeClaimId(cwd, claimId);
-      if (hardCount === 0) cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
+      const { claimId } = (await call("claim_intent", {
+        ...intent,
+        ...(hardCount > 0 ? { force: true } : {}),
+      })) as ClaimIntentOutput;
+      if (claimId) writeClaimId(cwd, claimId);
+      if (hardCount === 0 && claimId) cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
       return false;
     });
   }
@@ -334,9 +348,12 @@ export async function cmdGuard(
     }
     forced(hardCount);
   }
-  const { claimId } = service.claimIntent(intent);
-  writeClaimId(cwd, claimId);
-  if (hardCount === 0) cleared(claimId, ` for ${args.agentId}`);
+  const { claimId } = service.claimIntent({
+    ...intent,
+    ...(hardCount > 0 ? { force: true } : {}),
+  });
+  if (claimId) writeClaimId(cwd, claimId);
+  if (hardCount === 0 && claimId) cleared(claimId, ` for ${args.agentId}`);
   service.store.close();
   return false;
 }

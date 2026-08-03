@@ -157,13 +157,24 @@ describe("pairwiseCollisions (board)", () => {
     expect(pairs[0]!.aAgentId).not.toBe(pairs[0]!.bAgentId);
   });
 
-  it("ignores claims in different repos or branches and same-agent pairs", async () => {
+  it("ignores other repos and same-agent pairs", async () => {
     const { pairwiseCollisions } = await import("./collision.js");
     const a = activeClaim({ id: "A", agentId: "alice" });
     const otherRepo = activeClaim({ id: "B", agentId: "bob", repo: "acme/other" });
-    const otherBranch = activeClaim({ id: "C", agentId: "bob", branch: "dev" });
     const sameAgent = activeClaim({ id: "D", agentId: "alice" });
-    expect(pairwiseCollisions([a, otherRepo, otherBranch, sameAgent])).toHaveLength(0);
+    expect(pairwiseCollisions([a, otherRepo, sameAgent])).toHaveLength(0);
+  });
+
+  it("DOES report a cross-branch pair, as soft", async () => {
+    // Changed in 0.9.0. Branch used to be part of the key, which disabled the board's
+    // collision view in the common case — agents usually work on separate branches, and
+    // two of them rewriting one function still converge into a single merge.
+    const { pairwiseCollisions } = await import("./collision.js");
+    const a = activeClaim({ id: "A", agentId: "alice" });
+    const otherBranch = activeClaim({ id: "C", agentId: "bob", branch: "dev" });
+    const pairs = pairwiseCollisions([a, otherBranch]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.severity).toBe("soft");
   });
 
   it("reports each conflicting pair once", async () => {

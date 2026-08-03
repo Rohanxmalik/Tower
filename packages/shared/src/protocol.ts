@@ -33,6 +33,10 @@ export const Claim = z.object({
   id: z.string(),
   agentId: z.string().min(1),
   repo: z.string().min(1),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** The partition key claims are actually compared on: `repoId` or the normalized repo. */
+  repoKey: z.string().optional(),
   branch: z.string().min(1),
   files: z.array(z.string()),
   symbols: z.array(SymbolRef),
@@ -103,17 +107,32 @@ export type Message = z.infer<typeof Message>;
 export const ClaimIntentInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
+  /** Root commit sha (`git rev-list --max-parents=0 HEAD`). Send it and forks of the
+   * same project coordinate with each other; omit it and the normalized repo URL is
+   * used instead, which still collapses spelling differences but not forks. */
+  repoId: z.string().optional(),
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
   purpose: z.string().default(""),
   etaMinutes: z.number().int().positive().optional(),
+  /** Claim anyway despite a hard conflict. Recorded, so the board shows who forced what. */
+  force: z.boolean().optional(),
 });
 export type ClaimIntentInput = z.infer<typeof ClaimIntentInput>;
 
+/** What an agent should do next — the server's directive, not just its data. */
+export const Recommendation = z.enum(["proceed", "stand_down"]);
+export type Recommendation = z.infer<typeof Recommendation>;
+
 export const ClaimIntentOutput = z.object({
-  claimId: z.string(),
+  /** `null` when the claim was refused — a hard conflict without `force`. */
+  claimId: z.string().nullable(),
   conflicts: z.array(Conflict),
+  /** True when the claim was refused. Stop and ask the human; re-send with `force: true`
+   * only if they say so. */
+  blocking: z.boolean().default(false),
+  recommendation: Recommendation.default("proceed"),
   /** Unread inbox count for the claiming agent — "you've got mail" on every claim. */
   unreadMessages: z.number().int().nonnegative().optional(),
 });
@@ -121,6 +140,7 @@ export type ClaimIntentOutput = z.infer<typeof ClaimIntentOutput>;
 
 export const CheckCollisionInput = z.object({
   repo: z.string().min(1),
+  repoId: z.string().optional(),
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
@@ -151,6 +171,7 @@ export type OkOutput = z.infer<typeof OkOutput>;
 
 export const ListClaimsInput = z.object({
   repo: z.string().optional(),
+  repoId: z.string().optional(),
   branch: z.string().optional(),
   status: ClaimStatus.optional(),
 });

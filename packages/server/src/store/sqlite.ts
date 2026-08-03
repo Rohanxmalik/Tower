@@ -20,6 +20,7 @@ import type {
   TaskStatus,
   Worker,
 } from "@tower/shared";
+import { normalizeRepoUrl, resolveRepoKey } from "@tower/shared";
 
 /** Default time-to-live for a claim before it auto-expires (ms). Refreshed by heartbeat. */
 export const DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -33,10 +34,14 @@ const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const DDL = `
 CREATE TABLE IF NOT EXISTS claims (
   id TEXT PRIMARY KEY, agentId TEXT NOT NULL, repo TEXT NOT NULL, branch TEXT NOT NULL,
+  repoId TEXT, repoKey TEXT,
   files TEXT NOT NULL, symbols TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL,
-  etaMinutes INTEGER, createdAt INTEGER NOT NULL, expiresAt INTEGER NOT NULL, commitSha TEXT
+  etaMinutes INTEGER, createdAt INTEGER NOT NULL, expiresAt INTEGER NOT NULL, commitSha TEXT,
+  forced INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_claims_scope ON claims (repo, branch, status);
+-- Claims are looked up by repoKey + status; branch is deliberately NOT in the key, so
+-- agents on different branches still see each other (they still produce one merge).
+CREATE INDEX IF NOT EXISTS idx_claims_scope ON claims (repoKey, status);
 CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL,
   tags TEXT NOT NULL, relatedFiles TEXT NOT NULL, createdAt INTEGER NOT NULL
@@ -83,17 +88,23 @@ export interface StoreOptions {
 export interface NewClaim {
   agentId: string;
   repo: string;
+  /** Root commit sha, when the caller could derive one. */
+  repoId?: string;
   branch: string;
   files: string[];
   symbols: SymbolRef[];
   purpose: string;
   etaMinutes?: number;
+  /** Registered despite a hard conflict, via `force`. */
+  forced?: boolean;
 }
 
 interface ClaimRow {
   id: string;
   agentId: string;
   repo: string;
+  repoId: string | null;
+  repoKey: string | null;
   branch: string;
   files: string;
   symbols: string;
@@ -103,6 +114,7 @@ interface ClaimRow {
   createdAt: number;
   expiresAt: number;
   commitSha: string | null;
+  forced: number | null;
 }
 
 // NOTE: the legacy `messages.readAt` column still exists in the schema for
@@ -185,6 +197,8 @@ function rowToClaim(r: ClaimRow): Claim {
     id: r.id,
     agentId: r.agentId,
     repo: r.repo,
+    ...(r.repoId != null ? { repoId: r.repoId } : {}),
+    ...(r.repoKey != null ? { repoKey: r.repoKey } : {}),
     branch: r.branch,
     files: JSON.parse(r.files) as string[],
     symbols: JSON.parse(r.symbols) as SymbolRef[],
@@ -243,6 +257,25 @@ export class TowerStore {
     addColumn("tasks", "size", "size TEXT"); // 0.6.x → 0.7.0
     addColumn("workers", "status", "status TEXT NOT NULL DEFAULT 'ok'"); // 0.6.x → 0.7.0
     addColumn("tasks", "filesChanged", "filesChanged INTEGER"); // 0.7.1 → 0.8.0
+    // 0.8.0 → 0.9.0 — repository identity. repoKey is the partition claims are compared
+    // on; repoId is the fork-proof root commit when the caller supplied one.
+    addColumn("claims", "repoId", "repoId TEXT");
+    addColumn("claims", "repoKey", "repoKey TEXT");
+    addColumn("claims", "forced", "forced INTEGER");
+    this.backfillRepoKeys();
+  }
+
+  /**
+   * Give pre-0.9 claims a repoKey so they partition alongside new ones instead of
+   * being invisible. Uses the same normalizer every other path now uses.
+   */
+  private backfillRepoKeys(): void {
+    const rows = this.db
+      .prepare(`SELECT id, repo FROM claims WHERE repoKey IS NULL`)
+      .all() as unknown as { id: string; repo: string }[];
+    if (rows.length === 0) return;
+    const update = this.db.prepare(`UPDATE claims SET repoKey = ? WHERE id = ?`);
+    for (const row of rows) update.run(normalizeRepoUrl(row.repo), row.id);
   }
 
   // -- claims ---------------------------------------------------------------
@@ -253,6 +286,8 @@ export class TowerStore {
       id: randomUUID(),
       agentId: input.agentId,
       repo: input.repo,
+      ...(input.repoId ? { repoId: input.repoId } : {}),
+      repoKey: resolveRepoKey(input.repoId, input.repo),
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
@@ -264,13 +299,15 @@ export class TowerStore {
     };
     this.db
       .prepare(
-        `INSERT INTO claims (id,agentId,repo,branch,files,symbols,purpose,status,etaMinutes,createdAt,expiresAt,commitSha)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO claims (id,agentId,repo,repoId,repoKey,branch,files,symbols,purpose,status,etaMinutes,createdAt,expiresAt,commitSha,forced)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         claim.id,
         claim.agentId,
         claim.repo,
+        claim.repoId ?? null,
+        claim.repoKey ?? null,
         claim.branch,
         JSON.stringify(claim.files),
         JSON.stringify(claim.symbols),
@@ -280,6 +317,7 @@ export class TowerStore {
         claim.createdAt,
         claim.expiresAt,
         null,
+        input.forced ? 1 : null,
       );
     return claim;
   }
@@ -335,11 +373,19 @@ export class TowerStore {
   }
 
   /** Active, non-expired claims in a repo/branch scope (sweeps first). */
-  activeClaims(repo: string, branch: string): Claim[] {
+  /**
+   * Every active claim in the repository, **across all branches**.
+   *
+   * Branch is deliberately not part of the key: agents normally work on separate feature
+   * branches, so filtering by it disabled detection in exactly the case Tower exists for.
+   * Two agents rewriting one function on two branches still produce one merge conflict.
+   * The engine downgrades cross-branch overlaps to `soft` rather than hiding them.
+   */
+  activeClaims(repoKey: string): Claim[] {
     this.sweepExpired();
     const rows = this.db
-      .prepare(`SELECT * FROM claims WHERE repo = ? AND branch = ? AND status = 'active'`)
-      .all(repo, branch) as unknown as ClaimRow[];
+      .prepare(`SELECT * FROM claims WHERE repoKey = ? AND status = 'active'`)
+      .all(repoKey) as unknown as ClaimRow[];
     return rows.map(rowToClaim);
   }
 

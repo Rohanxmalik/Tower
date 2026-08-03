@@ -33,7 +33,9 @@ export function seedDemo(svc: TowerService): DemoSeed {
     purpose: "hardening token checks",
     etaMinutes: 20,
   });
-  // bob claims the SAME symbol → the hard collision the board flashes red.
+  // bob reaches for the SAME symbol. Since 0.9.0 that is *refused* — so the demo
+  // forces past it on purpose, which is what puts two colliding claims on the board
+  // and shows the override being recorded.
   const bob = svc.claimIntent({
     agentId: "bob",
     repo: DEMO_REPO,
@@ -42,6 +44,7 @@ export function seedDemo(svc: TowerService): DemoSeed {
     symbols: [symbol],
     purpose: "adding refresh tokens",
     etaMinutes: 15,
+    force: true,
   });
 
   // One delegation round-tripped (reply + commit chip)…
@@ -78,8 +81,8 @@ export function seedDemo(svc: TowerService): DemoSeed {
   svc.heartbeatWorker({ agentId: "bob", repo: DEMO_REPO, runner: "claude", status: "ok" });
 
   return {
-    aliceClaimId: alice.claimId,
-    bobClaimId: bob.claimId,
+    aliceClaimId: alice.claimId ?? "",
+    bobClaimId: bob.claimId ?? "",
     conflictCount: bob.conflicts.length,
     doneTaskId: done.id,
     openTaskId: open.id,

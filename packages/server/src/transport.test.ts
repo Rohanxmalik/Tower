@@ -203,7 +203,7 @@ describe("board", () => {
   it("returns claims and pairwise conflicts on /api/board", async () => {
     const service = new TowerService();
     httpServer = await startHttp(service, { port: 0 });
-    const claim = (agentId: string) =>
+    const claim = (agentId: string, force = false) =>
       service.claimIntent({
         agentId,
         repo: "acme/app",
@@ -211,9 +211,12 @@ describe("board", () => {
         files: [],
         symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify" }],
         purpose: "work",
+        ...(force ? { force: true } : {}),
       });
     claim("alice");
-    claim("bob");
+    // Since 0.9.0 the second claim on a held symbol is refused, so force it — two live
+    // claims is what puts a conflict on the board.
+    claim("bob", true);
     const res = await fetch(url(httpServer, "/api/board"));
     const body = (await res.json()) as {
       claims: { agentId: string }[];

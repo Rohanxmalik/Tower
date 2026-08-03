@@ -19,9 +19,7 @@ describe("normalizeRepoUrl", () => {
 
   it("works for non-GitHub hosts", () => {
     expect(normalizeRepoUrl("git@gitlab.com:Group/Sub.git")).toBe("gitlab.com/group/sub");
-    expect(normalizeRepoUrl("https://bitbucket.org/Team/Repo.git")).toBe(
-      "bitbucket.org/team/repo",
-    );
+    expect(normalizeRepoUrl("https://bitbucket.org/Team/Repo.git")).toBe("bitbucket.org/team/repo");
   });
 
   it("leaves an already-normalized id untouched", () => {

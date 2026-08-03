@@ -1,10 +1,21 @@
 import type { Claim, Conflict, Severity, SymbolRef } from "@tower/shared";
+import { resolveRepoKey } from "@tower/shared";
 
 export interface CollisionInput {
   files: string[];
   symbols: SymbolRef[];
   /** The agent making the incoming claim; its own active claims are ignored. */
   agentId?: string;
+  /** Branch of the incoming intent. Overlaps on a *different* branch are real — they
+   * still converge into one merge — but they are not immediate, so they cap at `soft`.
+   * Omit to treat every candidate as same-branch. */
+  branch?: string;
+}
+
+/** The partition a claim belongs to. Prefers the stored key, then the fork-proof
+ * `repoId`, then the normalized URL — so rows written before 0.9.0 still compare. */
+export function claimRepoKey(claim: Pick<Claim, "repo" | "repoId" | "repoKey">): string {
+  return claim.repoKey ?? resolveRepoKey(claim.repoId, claim.repo);
 }
 
 export interface CollisionOptions {
@@ -36,6 +47,12 @@ function pairSeverity(a: SymbolRef, b: SymbolRef): Severity | null {
 
 function maxSeverity(a: Severity, b: Severity): Severity {
   return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
+}
+
+/** Never report worse than `soft` for work happening on another branch. */
+function capForBranch(severity: Severity, sameBranch: boolean): Severity {
+  if (sameBranch) return severity;
+  return SEVERITY_RANK[severity] > SEVERITY_RANK.soft ? "soft" : severity;
 }
 
 function reasonFor(severity: Severity, agentId: string, overlap: SymbolRef[]): string {
@@ -81,11 +98,16 @@ export function detectCollisions(
 
     if (!severity) continue;
 
+    const sameBranch = incoming.branch === undefined || incoming.branch === claim.branch;
+    severity = capForBranch(severity, sameBranch);
+
     conflicts.push({
       claimId: claim.id,
       agentId: claim.agentId,
       severity,
-      reason: reasonFor(severity, claim.agentId, overlap),
+      reason:
+        reasonFor(severity, claim.agentId, overlap) +
+        (sameBranch ? "" : ` (on branch ${claim.branch})`),
       overlap: dedupeSymbols(overlap),
       ...(claim.etaMinutes != null ? { etaMinutes: claim.etaMinutes } : {}),
     });
@@ -108,8 +130,8 @@ export interface PairConflict {
 
 /**
  * All collisions among a set of active claims, one entry per conflicting pair.
- * Claims only collide within the same repo+branch, and never with the same agent.
- * Powers the live board.
+ * Claims collide within one repository **partition** regardless of branch (cross-branch
+ * pairs report as `soft`), and never with the same agent. Powers the live board.
  */
 export function pairwiseCollisions(claims: Claim[]): PairConflict[] {
   const pairs: PairConflict[] = [];
@@ -117,9 +139,9 @@ export function pairwiseCollisions(claims: Claim[]): PairConflict[] {
     for (let j = i + 1; j < claims.length; j++) {
       const a = claims[i]!;
       const b = claims[j]!;
-      if (a.repo !== b.repo || a.branch !== b.branch) continue;
+      if (claimRepoKey(a) !== claimRepoKey(b)) continue;
       const [conflict] = detectCollisions(
-        { agentId: a.agentId, files: a.files, symbols: a.symbols },
+        { agentId: a.agentId, files: a.files, symbols: a.symbols, branch: a.branch },
         [b],
       );
       if (!conflict) continue;

@@ -48,11 +48,27 @@ describe("TowerStore — claims", () => {
     expect(got.files).toEqual(["src/auth.ts"]);
   });
 
-  it("lists active claims in scope", () => {
+  it("lists active claims in the repo partition, across every branch", () => {
     store.createClaim(baseClaim);
     store.createClaim({ ...baseClaim, agentId: "cursor-2" });
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(2);
-    expect(store.activeClaims("acme/app", "other")).toHaveLength(0);
+    // A claim on another branch is still in scope — branch is deliberately not part of
+    // the key since 0.9.0, so agents on feature branches can still see each other.
+    store.createClaim({ ...baseClaim, agentId: "cursor-3", branch: "feature/x" });
+    expect(store.activeClaims("acme/app")).toHaveLength(3);
+    expect(store.activeClaims("acme/other")).toHaveLength(0);
+  });
+
+  it("collapses repo spellings into one partition", () => {
+    store.createClaim({ ...baseClaim, repo: "git@github.com:Acme/App.git" });
+    store.createClaim({ ...baseClaim, agentId: "b", repo: "https://github.com/acme/app" });
+    expect(store.activeClaims("github.com/acme/app")).toHaveLength(2);
+  });
+
+  it("keys on repoId when given one, so forks share a partition", () => {
+    const root = "c".repeat(40);
+    store.createClaim({ ...baseClaim, repo: "github.com/up/x", repoId: root });
+    store.createClaim({ ...baseClaim, agentId: "b", repo: "github.com/fork/x", repoId: root });
+    expect(store.activeClaims(root)).toHaveLength(2);
   });
 
   it("completes a claim and records commit sha", () => {
@@ -61,7 +77,7 @@ describe("TowerStore — claims", () => {
     const got = store.getClaim(c.id)!;
     expect(got.status).toBe("completed");
     expect(got.commitSha).toBe("abc123");
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(0);
+    expect(store.activeClaims("acme/app")).toHaveLength(0);
   });
 
   it("does not complete an already-completed claim", () => {
@@ -78,7 +94,7 @@ describe("TowerStore — claims", () => {
 
   it("supports many concurrent active claims", () => {
     for (let i = 0; i < 25; i++) store.createClaim({ ...baseClaim, agentId: `a${i}` });
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(25);
+    expect(store.activeClaims("acme/app")).toHaveLength(25);
   });
 });
 
@@ -87,9 +103,9 @@ describe("TowerStore — TTL & heartbeat", () => {
     const store = makeStore(10_000);
     const c = store.createClaim(baseClaim);
     clock = 5_000;
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(1);
+    expect(store.activeClaims("acme/app")).toHaveLength(1);
     clock = 20_000; // past expiresAt (11_000)
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(0);
+    expect(store.activeClaims("acme/app")).toHaveLength(0);
     expect(store.getClaim(c.id)!.status).toBe("expired");
   });
 
@@ -101,7 +117,7 @@ describe("TowerStore — TTL & heartbeat", () => {
     expect(hb.ok).toBe(true);
     expect(hb.expiresAt).toBe(19_000);
     clock = 15_000; // would have expired without heartbeat
-    expect(store.activeClaims("acme/app", "main")).toHaveLength(1);
+    expect(store.activeClaims("acme/app")).toHaveLength(1);
   });
 
   it("heartbeat on a non-active claim returns not-ok", () => {

@@ -33,6 +33,7 @@ import type {
   HeartbeatWorkerInput,
 } from "@tower/shared";
 import type { Claim, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
+import { resolveRepoKey } from "@tower/shared";
 
 /** A worker is "online" if it heartbeated within this window. */
 export const WORKER_ONLINE_MS = 30_000;
@@ -81,34 +82,71 @@ export class TowerService {
     this.policy = policy;
   }
 
+  /**
+   * Register an edit intent — and **refuse it** on a hard conflict unless forced.
+   *
+   * Before 0.9.0 this returned conflicts and registered the claim anyway, which made
+   * severity decorative: an agent that ignored the response behaved exactly like one
+   * that never checked. Now a hard conflict is a real stop, and forcing past it is
+   * recorded so the board can show who did.
+   */
   claimIntent(input: ClaimIntentInput): ClaimIntentOutput {
-    const active = this.store.activeClaims(input.repo, input.branch);
+    const repoKey = resolveRepoKey(input.repoId, input.repo);
+    const active = this.store.activeClaims(repoKey);
     const conflicts = detectCollisions(
-      { agentId: input.agentId, files: input.files, symbols: input.symbols },
+      {
+        agentId: input.agentId,
+        files: input.files,
+        symbols: input.symbols,
+        branch: input.branch,
+      },
       active,
     );
+
+    // "You've got mail" rides along on every claim, so agents notice their inbox
+    // without polling (MCP has no push channel).
+    const unread = this.store.unreadCount(input.agentId);
+    const mail = unread > 0 ? { unreadMessages: unread } : {};
+
+    const hard = conflicts.find((c) => c.severity === "hard");
+    if (hard && !input.force) {
+      return {
+        claimId: null,
+        conflicts,
+        blocking: true,
+        recommendation: "stand_down",
+        ...mail,
+      };
+    }
+
     const claim = this.store.createClaim({
       agentId: input.agentId,
       repo: input.repo,
+      ...(input.repoId ? { repoId: input.repoId } : {}),
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
       purpose: input.purpose,
       ...(input.etaMinutes != null ? { etaMinutes: input.etaMinutes } : {}),
+      ...(hard && input.force ? { forced: true } : {}),
     });
-    // "You've got mail" rides along on every claim, so agents notice their inbox
-    // without polling (MCP has no push channel).
-    const unread = this.store.unreadCount(input.agentId);
-    return { claimId: claim.id, conflicts, ...(unread > 0 ? { unreadMessages: unread } : {}) };
+    return {
+      claimId: claim.id,
+      conflicts,
+      blocking: false,
+      recommendation: "proceed",
+      ...mail,
+    };
   }
 
   checkCollision(input: CheckCollisionInput): CheckCollisionOutput {
-    const active = this.store.activeClaims(input.repo, input.branch);
+    const active = this.store.activeClaims(resolveRepoKey(input.repoId, input.repo));
     const conflicts = detectCollisions(
       {
         ...(input.agentId ? { agentId: input.agentId } : {}),
         files: input.files,
         symbols: input.symbols,
+        branch: input.branch,
       },
       active,
     );

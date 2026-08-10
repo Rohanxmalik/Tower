@@ -15,7 +15,7 @@ the same code — collisions are caught **before the first keystroke**, not at m
 
 ## See it — 30 seconds
 
-Needs **Node 22.5+** (it uses the built-in `node:sqlite`, so there's nothing to compile).
+Needs **Node 22.13+** (it uses the built-in `node:sqlite`, so there's nothing to compile).
 Nothing to install, nothing written to disk:
 
 ```bash
@@ -70,7 +70,7 @@ npx -y tower-mcp setup --url https://your-tower.onrender.com/mcp --token <team-s
   branch, opens a PR, and reports the sha back.
 - **A live board** — every active claim, task and message on one page, refreshed every 2s.
   Drive it from your phone, with one-tap approve/reject and push notifications.
-- **19 MCP tools**, zero native dependencies, Node 22.5+, MIT.
+- **19 MCP tools**, zero native dependencies, Node 22.13+, MIT.
 
 ## Trust and data
 

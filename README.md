@@ -1,7 +1,7 @@
 # Tower 🗼
 
 [![CI](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/Rohanxmalik/Tower/actions/workflows/ci.yml)
-![Node ≥22.5](https://img.shields.io/badge/node-%E2%89%A522.5-3fb950)
+![Node ≥22.13](https://img.shields.io/badge/node-%E2%89%A522.13-3fb950)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **Multiplayer for your team's AI coding agents.**
@@ -71,7 +71,7 @@ coordinate with each other, and `git@github.com:acme/app.git` and
 
 ## See it — 30 seconds
 
-Needs **Node 22.5+** (it uses the built-in `node:sqlite`, so there's nothing to compile).
+Needs **Node 22.13+** (it uses the built-in `node:sqlite`, so there's nothing to compile).
 Nothing to install, nothing written to disk:
 
 ```bash

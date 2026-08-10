@@ -2,22 +2,46 @@ import { describe, it, expect } from "vitest";
 import { hushSqliteWarning, requireModernNode } from "./hush.js";
 
 describe("requireModernNode", () => {
-  it("accepts 22.5 and newer", () => {
-    for (const v of ["22.5.0", "22.11.0", "23.0.0", "24.13.1"]) {
+  it("accepts the versions where node:sqlite is unflagged", () => {
+    for (const v of ["22.13.0", "22.20.1", "23.4.0", "24.13.1", "25.0.0"]) {
       expect(requireModernNode(v).ok).toBe(true);
     }
   });
 
-  it("rejects Node older than 22.5 with an actionable message, not a stack trace", () => {
-    // node:sqlite landed in 22.5 — 22.0–22.4 fail the same way as Node 20.
+  it("rejects the flagged window — the gap that shipped a raw stack trace to a real user", () => {
+    // node:sqlite existed from 22.5 but stayed behind --experimental-sqlite
+    // until 23.4 (backported to 22.13). A `>= 22.5` check passed these and then
+    // died with ERR_UNKNOWN_BUILTIN_MODULE. 23.3.0 is the version that hit it.
+    for (const v of ["22.5.0", "22.11.0", "22.12.0", "23.0.0", "23.3.0"]) {
+      expect(requireModernNode(v).ok).toBe(false);
+    }
+  });
+
+  it("rejects Node older than 22.5 too", () => {
     for (const v of ["20.11.0", "22.0.0", "22.4.1"]) {
-      const result = requireModernNode(v);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.message).toContain("22.5");
-        expect(result.message).toContain(v);
-        expect(result.message).toContain("nodejs.org");
-      }
+      expect(requireModernNode(v).ok).toBe(false);
+    }
+  });
+
+  it("names the version, the fix, and the flag escape hatch", () => {
+    const result = requireModernNode("23.3.0");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("23.3.0");
+      expect(result.message).toContain("22.13");
+      expect(result.message).toContain("nodejs.org");
+      expect(result.message).toContain("--experimental-sqlite");
+    }
+  });
+
+  it("accepts a flagged Node when the user opted in via NODE_OPTIONS", () => {
+    const before = process.env.NODE_OPTIONS;
+    process.env.NODE_OPTIONS = "--experimental-sqlite";
+    try {
+      expect(requireModernNode("23.3.0").ok).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.NODE_OPTIONS;
+      else process.env.NODE_OPTIONS = before;
     }
   });
 });

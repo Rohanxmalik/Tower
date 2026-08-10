@@ -3,6 +3,35 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.9.1 — 2026-08-05
+
+**The Node version check was wrong, and it cost the first outside user their first command.**
+
+`node:sqlite` landed in Node 22.5, but stayed behind `--experimental-sqlite` until
+**23.4** (backported unflagged to **22.13**). The guard only checked `>= 22.5`, so two
+whole windows — **22.5–22.12** and **23.0–23.3** — passed the check and then died on
+`require("node:sqlite")` with a raw `ERR_UNKNOWN_BUILTIN_MODULE` stack trace instead of
+an answer. Reported from a live setup on Node 23.3.0.
+
+### Fixed
+
+- `requireModernNode` now gates on the versions where `node:sqlite` is actually
+  unflagged: **22.13+, 23.4+, or 24+**. The error names your version, the upgrade, and
+  the flag.
+- A flagged Node is now accepted when you have opted in yourself, via either
+  `--experimental-sqlite` in `execArgv` or `NODE_OPTIONS`. Running
+  `NODE_OPTIONS=--experimental-sqlite tower <command>` on 23.3 is a supported path, not a
+  workaround that trips the guard.
+- `engines.node` is now `>=22.13 <23 || >=23.4`, so npm warns on the flagged window
+  rather than claiming those versions work.
+- Corrected the "Node 22.5+" claim in the README badge, quickstart, CONTRIBUTING,
+  CLAUDE.md and the launch/demo docs.
+
+### Note
+
+This makes the failure legible; it cannot make `node:sqlite` exist. On 22.5–22.12 or
+23.0–23.3 you still need `NODE_OPTIONS=--experimental-sqlite`, or an upgrade to Node 24.
+
 ## 0.9.0 — 2026-08-04
 
 **Collision detection fires for the first time.** A live two-agent session against a

@@ -1,6 +1,6 @@
 # Quickstart
 
-Tower needs **Node 22.5+** (it uses the built-in `node:sqlite` — no native modules to
+Tower needs **Node 22.13+** (it uses the built-in `node:sqlite` — no native modules to
 compile).
 
 **Shorthand:** everywhere below, `tower` means `npx -y tower-mcp`. npx installs nothing

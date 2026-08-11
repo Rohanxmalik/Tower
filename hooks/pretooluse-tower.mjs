@@ -25,6 +25,60 @@ function readStdin() {
   }
 }
 
+/** The text an edit replaces — the anchor we locate in the file. MultiEdit has many. */
+function editAnchors(tool, toolInput) {
+  if (tool === "MultiEdit") {
+    return (toolInput.edits ?? [])
+      .map((e) => e?.old_string)
+      .filter((s) => typeof s === "string" && s);
+  }
+  const old = toolInput.old_string;
+  return typeof old === "string" && old ? [old] : [];
+}
+
+/**
+ * Which symbols this edit touches, as `"path#name"` strings for `cmdGuard`.
+ *
+ * Passing `[]` was the bug: `resolveSymbols` then extracts EVERY symbol in the file, so
+ * the claim covered the whole file and two agents in different functions blocked each
+ * other. A single `"path#"` entry (empty name) is the explicit whole-file claim.
+ *
+ * A Write replaces the whole file, so it stays a file-level claim. An Edit is located by
+ * finding its `old_string` and asking which declaration encloses that offset. Anything
+ * unresolvable — a new file, an edit to imports, an unsupported language — falls back to
+ * the file, because over-claiming is safe and under-claiming is not.
+ */
+async function symbolsForEdit(cwd, filePath, rel, tool, toolInput) {
+  const fileLevel = [`${rel}#`]; // explicit whole-file claim
+  const anchors = editAnchors(tool, toolInput);
+  if (anchors.length === 0) return fileLevel; // Write, or an edit with nothing to anchor on
+  let code;
+  try {
+    code = readFileSync(filePath, "utf8");
+  } catch {
+    return fileLevel; // new file
+  }
+  try {
+    const { SymbolExtractor, symbolAt } = await import(
+      new URL("../packages/server/dist/index.js", import.meta.url)
+    );
+    const ranges = await new SymbolExtractor().extractRanges(rel, code);
+    if (ranges.length === 0) return fileLevel; // no grammar for this language
+    const hits = [];
+    for (const anchor of anchors) {
+      const at = code.indexOf(anchor);
+      if (at < 0) return fileLevel; // stale anchor — don't guess
+      const sym = symbolAt(ranges, at);
+      if (!sym) return fileLevel; // between declarations
+      const entry = `${rel}#${sym.symbol}`;
+      if (!hits.includes(entry)) hits.push(entry);
+    }
+    return hits.length ? hits : fileLevel;
+  } catch {
+    return fileLevel; // never let symbol resolution break enforcement
+  }
+}
+
 async function main() {
   const input = readStdin();
   const tool = input.tool_name ?? "";
@@ -42,6 +96,13 @@ async function main() {
   // which put the two in different partitions.
   const { repo, repoId, branch } = repoContext(cwd);
 
+  // Name the symbols this edit actually lands in. Claiming the whole file refuses
+  // correct work — two agents in different functions of one file blocked each other —
+  // and a tool that blocks good edits gets uninstalled faster than one that misses a
+  // conflict. Falls back to the file when the target can't be located, which is the
+  // honest answer for a Write, a new file, or an edit between declarations.
+  const symbols = await symbolsForEdit(cwd, filePath, rel, tool, input.tool_input ?? {});
+
   const { cmdGuard } = await import(new URL("../packages/cli/dist/commands.js", import.meta.url));
   const lines = [];
   const blocked = await cmdGuard(
@@ -52,7 +113,7 @@ async function main() {
       ...(repoId ? { repoId } : {}),
       branch,
       files: [rel],
-      symbols: [],
+      symbols,
       purpose: `${tool} ${rel}`,
     },
     (l) => lines.push(l),

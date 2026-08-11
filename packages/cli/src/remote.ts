@@ -26,6 +26,31 @@ export type RemoteCall = (tool: string, args: Record<string, unknown>) => Promis
  * Connect to the hosted Tower over MCP-HTTP, run `fn` with a tool-caller, and always close
  * the connection. Tool errors (validation, auth) are surfaced as thrown Errors.
  */
+/**
+ * A long-lived connection to a hosted Tower, for the stdio proxy — which must stay up
+ * for the whole session rather than connecting per command like `withRemote` does.
+ * The caller owns `close()`.
+ */
+export async function openRemote(
+  cfg: RemoteConfig,
+): Promise<{ call: RemoteCall; close: () => Promise<void> }> {
+  const transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
+    requestInit: cfg.token ? { headers: { authorization: `Bearer ${cfg.token}` } } : {},
+  });
+  const client = new Client({ name: "tower-proxy", version: TOWER_VERSION });
+  await client.connect(transport);
+  const call: RemoteCall = async (tool, args) => {
+    const res = (await client.callTool({ name: tool, arguments: args })) as {
+      isError?: boolean;
+      structuredContent?: unknown;
+      content?: { text?: string }[];
+    };
+    if (res.isError) throw new Error(res.content?.[0]?.text ?? `remote tool "${tool}" failed`);
+    return res.structuredContent;
+  };
+  return { call, close: () => client.close() };
+}
+
 export async function withRemote<T>(
   cfg: RemoteConfig,
   fn: (call: RemoteCall) => Promise<T>,

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { normalizeRepoUrl, resolveRepoKey, isRepoId, pickRootCommit } from "./repo.js";
+import {
+  normalizeRepoUrl,
+  resolveRepoKey,
+  isRepoId,
+  pickRootCommit,
+  looksLikeForkSplit,
+} from "./repo.js";
 
 describe("normalizeRepoUrl", () => {
   it("collapses every spelling of one remote to a single id", () => {
@@ -88,5 +94,56 @@ describe("pickRootCommit", () => {
     // A shallow clone or a non-repo gives no usable sha; callers fall back to the URL.
     expect(pickRootCommit("")).toBeUndefined();
     expect(pickRootCommit("fatal: not a git repository")).toBeUndefined();
+  });
+});
+
+describe("projectId — the escape hatch that beats everything (0.10.0)", () => {
+  it("wins over repoId and repo, so clones with no shared git history still converge", () => {
+    const a = resolveRepoKey("aaa".repeat(13) + "a", "github.com/alice/app", "nimbus");
+    const b = resolveRepoKey("bbb".repeat(13) + "b", "github.com/bob/other", "nimbus");
+    expect(a).toBe(b);
+  });
+
+  it("is case-insensitive and ignores surrounding space", () => {
+    expect(resolveRepoKey(undefined, "r", " Nimbus ")).toBe(
+      resolveRepoKey(undefined, "r", "nimbus"),
+    );
+  });
+
+  it("falls through to repoId when blank", () => {
+    const sha = "c".repeat(40);
+    expect(resolveRepoKey(sha, "github.com/a/b", "   ")).toBe(sha);
+  });
+});
+
+describe("looksLikeForkSplit — warn, never partition", () => {
+  it("flags a fork and its upstream: same name, different owner", () => {
+    expect(
+      looksLikeForkSplit(
+        "github.com/rohanxmalik/nimbus-demo",
+        "github.com/sakshamdubey19/nimbus-demo",
+      ),
+    ).toBe(true);
+  });
+
+  it("flags it across url spellings", () => {
+    expect(
+      looksLikeForkSplit(
+        "https://github.com/rohanxmalik/nimbus-demo.git",
+        "git@github.com:saksham/nimbus-demo",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flag the same repo spelled two ways", () => {
+    expect(looksLikeForkSplit("https://github.com/a/app.git", "git@github.com:a/app")).toBe(false);
+  });
+
+  it("does not flag two different projects", () => {
+    expect(looksLikeForkSplit("github.com/a/app", "github.com/b/other")).toBe(false);
+  });
+
+  it("stays quiet when a string has no owner to compare", () => {
+    expect(looksLikeForkSplit("app", "github.com/b/app")).toBe(false);
   });
 });

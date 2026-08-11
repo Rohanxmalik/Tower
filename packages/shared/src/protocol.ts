@@ -9,7 +9,7 @@ import { z } from "zod";
 /** One version string for the whole release: the MCP server, the remote client and
  * `/health` all report this, and the worker warns when major.minor drifts from the
  * server it talks to. Bump together with packages/cli/package.json. */
-export const TOWER_VERSION = "0.9.0";
+export const TOWER_VERSION = "0.10.0";
 
 // ---------------------------------------------------------------------------
 // Core domain types
@@ -111,6 +111,8 @@ export const ClaimIntentInput = z.object({
    * same project coordinate with each other; omit it and the normalized repo URL is
    * used instead, which still collapses spelling differences but not forks. */
   repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
@@ -135,6 +137,10 @@ export const ClaimIntentOutput = z.object({
   recommendation: Recommendation.default("proceed"),
   /** Unread inbox count for the claiming agent — "you've got mail" on every claim. */
   unreadMessages: z.number().int().nonnegative().optional(),
+  /** Set when another active agent is on a repo with the same name under a different
+   * owner — i.e. a fork and its upstream, coordinating in separate spaces. Advisory:
+   * the claim still succeeds. Silence was the original failure, so this never is. */
+  projectWarning: z.string().optional(),
 });
 export type ClaimIntentOutput = z.infer<typeof ClaimIntentOutput>;
 
@@ -159,6 +165,8 @@ export const ProposeIntentInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
   repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   /** Plain English: "write a blog post about prompt injection". */
   purpose: z.string().min(1),
 });
@@ -175,6 +183,8 @@ export type ProposeIntentOutput = z.infer<typeof ProposeIntentOutput>;
 export const CheckCollisionInput = z.object({
   repo: z.string().min(1),
   repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
@@ -204,6 +214,8 @@ export const OkOutput = z.object({ ok: z.boolean() });
 export type OkOutput = z.infer<typeof OkOutput>;
 
 export const ListClaimsInput = z.object({
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   repo: z.string().optional(),
   repoId: z.string().optional(),
   branch: z.string().optional(),
@@ -216,6 +228,12 @@ export type ListClaimsOutput = z.infer<typeof ListClaimsOutput>;
 
 export const LogDecisionInput = z.object({
   title: z.string().min(1),
+  /** Scope the decision to a project. Omitted = the old global behaviour. */
+  repo: z.string().optional(),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   body: z.string().default(""),
   author: z.string().min(1),
   tags: z.array(z.string()).default([]),
@@ -228,6 +246,12 @@ export type LogDecisionOutput = z.infer<typeof LogDecisionOutput>;
 
 export const GetDecisionsInput = z.object({
   query: z.string().optional(),
+  /** Scope the search to a project. Omitted = every decision, as before. */
+  repo: z.string().optional(),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   tags: z.array(z.string()).optional(),
   relatedFiles: z.array(z.string()).optional(),
 });
@@ -239,6 +263,10 @@ export type GetDecisionsOutput = z.infer<typeof GetDecisionsOutput>;
 export const NextTaskInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   candidates: z.array(Task).default([]),
 });
 export type NextTaskInput = z.infer<typeof NextTaskInput>;
@@ -349,6 +377,10 @@ export type CompleteTaskInput = z.infer<typeof CompleteTaskInput>;
 
 export const ListTasksInput = z.object({
   repo: z.string().optional(),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   status: TaskStatus.optional(),
   /** Tasks addressed to this agent (including "*" broadcasts). */
   forAgentId: z.string().optional(),
@@ -396,6 +428,10 @@ export type Worker = z.infer<typeof Worker>;
 export const HeartbeatWorkerInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().min(1),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   runner: z.string().default(""),
   status: WorkerStatus.default("ok"),
 });
@@ -413,6 +449,10 @@ export const SendMessageInput = z.object({
   fromAgentId: z.string().min(1),
   toAgentId: z.string().min(1),
   repo: z.string().min(1),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   body: z.string().min(1),
   kind: MessageKind.default("message"),
   replyTo: z.string().optional(),
@@ -427,6 +467,10 @@ export type SendMessageOutput = z.infer<typeof SendMessageOutput>;
 export const FetchMessagesInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().optional(),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
   /** Default true: only unread; fetching marks them read. */
   unreadOnly: z.boolean().default(true),
 });
@@ -440,6 +484,10 @@ export type FetchMessagesOutput = z.infer<typeof FetchMessagesOutput>;
 export const PendingInput = z.object({
   agentId: z.string().min(1),
   repo: z.string().optional(),
+  /** Root commit sha — identical across clones and forks. See `resolveRepoKey`. */
+  repoId: z.string().optional(),
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId: z.string().optional(),
 });
 export type PendingInput = z.infer<typeof PendingInput>;
 

@@ -2,7 +2,13 @@ import { writeFileSync, existsSync, readFileSync, mkdirSync, chmodSync } from "n
 import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import type { Server } from "node:http";
-import { startStdio, startHttp, SymbolExtractor } from "@tower/server";
+import {
+  startStdio,
+  connectStdio,
+  startHttp,
+  buildProxyMcpServer,
+  SymbolExtractor,
+} from "@tower/server";
 import type {
   SymbolRef,
   Claim,
@@ -18,7 +24,7 @@ import type {
 } from "@tower/shared";
 import { normalizeRepoUrl, pickRootCommit } from "@tower/shared";
 import { renderConflicts, renderClaimsTable, formatAgo } from "./render.js";
-import { remoteConfig, withRemote, type RemoteCall } from "./remote.js";
+import { remoteConfig, withRemote, openRemote, type RemoteCall } from "./remote.js";
 import {
   buildService,
   towerDir,
@@ -29,6 +35,7 @@ import {
   PRE_COMMIT_HOOK,
   POST_COMMIT_HOOK_SCRIPT,
   type BuildOptions,
+  loadProjectId,
 } from "./lib.js";
 
 export type Writer = (line: string) => void;
@@ -201,10 +208,14 @@ agent may have delegated you a task; act on it and reply with a \`task_update\`.
 /** The tower entry for .mcp.json: hosted HTTP when a url is given, else local via npx. */
 function towerServerEntry(opts: SetupOpts): Record<string, unknown> {
   if (opts.url) {
+    // Run the client locally rather than pointing the agent straight at the URL. The
+    // local process computes this repo's identity and stamps it on every call, so a
+    // fork and its upstream share one coordination space instead of splitting in
+    // silence. The token goes in env, not in an Authorization header written to disk.
     return {
-      type: "http",
-      url: opts.url,
-      ...(opts.token ? { headers: { Authorization: `Bearer ${opts.token}` } } : {}),
+      command: "npx",
+      args: ["-y", "tower-mcp", "serve", "--remote", opts.url],
+      ...(opts.token ? { env: { TOWER_TOKEN: opts.token } } : {}),
     };
   }
   return { command: "npx", args: ["-y", "tower-mcp", "serve"] };
@@ -433,6 +444,8 @@ export async function cmdGuard(
 export interface NextTaskArgs {
   agentId: string;
   repo: string;
+  repoId?: string;
+  projectId?: string;
 }
 
 /**
@@ -440,13 +453,35 @@ export interface NextTaskArgs {
  * (dependencies idle, under the per-module agent limit), given everyone's active claims.
  * Candidates come from `.tower/policy.yaml` modules.
  */
+/**
+ * The identity every server call must carry so a fork, a mirror and the upstream all
+ * land in one coordination space. Resolution order matches `resolveRepoKey`:
+ * an explicit flag, then `.tower/policy.yaml`'s projectId, then the git root commit.
+ *
+ * Every command that reaches the server sends this — a command that forgets it is
+ * invisible to the ones that don't, which is the exact bug this release fixes.
+ */
+export function repoIdentity(
+  cwd: string,
+  args: { repoId?: string; projectId?: string } = {},
+): { repoId?: string; projectId?: string } {
+  const projectId = args.projectId ?? loadProjectId(cwd);
+  const repoId = args.repoId ?? gitRepoId(cwd);
+  return { ...(repoId ? { repoId } : {}), ...(projectId ? { projectId } : {}) };
+}
+
 export async function cmdNextTask(
   cwd: string,
   args: NextTaskArgs,
   out: Writer = stdout,
   build?: BuildOptions,
 ): Promise<void> {
-  const input = { agentId: args.agentId, repo: args.repo, candidates: [] };
+  const input = {
+    agentId: args.agentId,
+    repo: args.repo,
+    ...repoIdentity(cwd, args),
+    candidates: [],
+  };
   const remote = remoteConfig();
   const result = remote
     ? ((await withRemote(remote, (call) => call("next_task", input))) as NextTaskOutput)
@@ -512,6 +547,8 @@ export interface ServeArgs {
   port?: number;
   token?: string;
   host?: string;
+  /** Proxy mode: forward every tool to this hosted Tower, stamping identity on the way. */
+  remote?: string;
 }
 
 /**
@@ -577,6 +614,62 @@ export interface ServeDeps {
  * Start the coordination server (stdio by default, or HTTP). Returns the HTTP
  * Server when in `--http` mode (so callers/tests can close it); undefined for stdio.
  */
+/**
+ * A remote connection that dials on first use and re-dials after a drop.
+ *
+ * The proxy is on the critical path of every session, so it must never take the MCP
+ * server down with it: a laptop that slept, a host that idled, or a redeploy would
+ * otherwise leave every tool throwing for the rest of the day. One retry on a fresh
+ * connection covers the common cases (cold start, dropped socket); a genuine outage
+ * surfaces as a clear tool error rather than a silent no-op.
+ */
+export function lazyRemote(
+  cfg: { url: string; token?: string },
+  log: Writer = () => {},
+): { call: RemoteCall; close: () => Promise<void> } {
+  let conn: Promise<{ call: RemoteCall; close: () => Promise<void> }> | null = null;
+
+  const connect = (): Promise<{ call: RemoteCall; close: () => Promise<void> }> => {
+    conn ??= openRemote(cfg).catch((err: unknown) => {
+      conn = null; // never cache a failure — the next call should dial again
+      throw err;
+    });
+    return conn;
+  };
+
+  const call: RemoteCall = async (tool, args) => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await (await connect()).call(tool, args);
+      } catch (err) {
+        lastError = err;
+        conn = null; // drop the socket and dial fresh on the retry
+        if (attempt === 0) log(`Tower: reconnecting to ${cfg.url}…`);
+      }
+    }
+    const reason = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new Error(
+      `Tower is unreachable at ${cfg.url} (${reason}). Coordination is NOT enforced for ` +
+        `this call — treat it as unchecked and retry once the server is back.`,
+    );
+  };
+
+  return {
+    call,
+    close: async () => {
+      const open = conn;
+      conn = null;
+      if (!open) return;
+      try {
+        await (await open).close();
+      } catch {
+        // already gone
+      }
+    },
+  };
+}
+
 export async function cmdServe(
   cwd: string,
   args: ServeArgs,
@@ -584,6 +677,38 @@ export async function cmdServe(
   deps: ServeDeps = {},
 ): Promise<Server | undefined> {
   const env = deps.env ?? process.env;
+
+  // Proxy mode: run the MCP client here on the developer's machine so the project
+  // identity (repoId / projectId) can be computed from cwd and stamped onto every
+  // call. Pointing .mcp.json straight at the hosted URL skips this machine entirely,
+  // which is how a fork and its upstream silently coordinated in separate spaces.
+  const proxyUrl = args.remote ?? (args.http ? undefined : env.TOWER_PROXY_URL);
+  if (proxyUrl) {
+    const identity = repoIdentity(cwd);
+    const token = args.token ?? env.TOWER_TOKEN;
+    log(`Tower proxy → ${proxyUrl}`);
+    log(
+      identity.projectId
+        ? `  project: ${identity.projectId} (from .tower/policy.yaml)`
+        : identity.repoId
+          ? `  repoId:  ${identity.repoId.slice(0, 12)}… (git root commit — forks match)`
+          : `  ⚠ no repoId and no projectId — not a git repo. Teammates on a fork will NOT` +
+            ` see your claims. Set "projectId: <name>" in .tower/policy.yaml.`,
+    );
+    // Connect lazily, and serve stdio first. Dialling the server up front means a cold
+    // host (Render's free tier sleeps and takes ~50s to wake), a stale token or a flaky
+    // network kills the process before it ever speaks MCP — the editor then shows a dead
+    // server with no Tower tools at all, which is worse than the bug this replaced. The
+    // tools are always present; a call that cannot reach the server fails loudly, once.
+    const { call, close } = lazyRemote(token ? { url: proxyUrl, token } : { url: proxyUrl }, log);
+    try {
+      await connectStdio(buildProxyMcpServer(call, identity));
+    } finally {
+      await close();
+    }
+    return undefined;
+  }
+
   const remoteUrl = localServeConflict(args, env);
   if (remoteUrl) {
     log(localModeWarning(remoteUrl));

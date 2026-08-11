@@ -196,13 +196,16 @@ export const BOARD_HTML = `<!doctype html>
       <input id="filter" type="search" placeholder="filter tasks — text, agent, or status" autocomplete="off" />
       <div class="card"><div id="tasks"><span class="empty">No tasks yet. Delegate one above, or run <b>tower send --task</b>.</span></div></div>
 
-      <h2>Editing right now</h2>
+      <h2>Active claims — who is editing what</h2>
       <div class="card"><div id="edits"><span class="empty">No active edits — all agents idle.</span></div></div>
     </div>
 
     <div>
-      <h2>Who's connected</h2>
+      <h2>Live agents</h2>
       <div class="card"><div id="roster"><span class="empty">No agents seen yet.</span></div></div>
+
+      <h2>Active work — delegated tasks in flight</h2>
+      <div class="card"><div id="work"><span class="empty">Nothing in flight.</span></div></div>
 
       <h2>Team rules — every delegated task carries these</h2>
       <div class="card">
@@ -527,69 +530,120 @@ export const BOARD_HTML = `<!doctype html>
       });
     }
 
-    // EDITING NOW
-    var conflictAgents = {};
-    data.conflicts.forEach(function (c) { conflictAgents[c.aAgentId] = c; conflictAgents[c.bAgentId] = c; });
-    var editsEl = document.getElementById("edits");
-    editsEl.replaceChildren();
-    if (!data.claims.length) {
-      editsEl.appendChild(el("span", "empty", "No active edits — all agents idle."));
-    } else {
-      data.claims.forEach(function (cl) {
-        var e = el("div", "edit");
-        e.appendChild(el("b", "", cl.agentId));
-        e.appendChild(el("span", "", " is editing "));
-        var target = "";
-        (cl.symbols || []).forEach(function (s) { if (s.symbol && !target) target = s.symbol; });
-        if (!target) target = (cl.files || [])[0] || cl.repo;
-        e.appendChild(el("span", "file", target));
-        if (cl.purpose) e.appendChild(el("span", "muted", " — " + cl.purpose));
-        if (conflictAgents[cl.agentId]) e.appendChild(el("span", "clash", "  ⛔ conflict"));
-        editsEl.appendChild(e);
+    // ── THREE LIVE TABLES ─────────────────────────────────────────────────
+    // The board used to answer "who pinged recently". A team lead needs three
+    // different questions answered: who is online, who is editing what, and what
+    // work is in flight. All three come from data the snapshot already carries.
+    function table(host, headers, rows, emptyText) {
+      var el2 = document.getElementById(host);
+      el2.replaceChildren();
+      if (!rows.length) { el2.appendChild(el("span", "empty", emptyText)); return; }
+      var t = document.createElement("table");
+      t.className = "grid";
+      var thead = document.createElement("thead");
+      var hr = document.createElement("tr");
+      headers.forEach(function (h) { var th = document.createElement("th"); th.textContent = h; hr.appendChild(th); });
+      thead.appendChild(hr); t.appendChild(thead);
+      var tb = document.createElement("tbody");
+      rows.forEach(function (cells) {
+        var tr = document.createElement("tr");
+        cells.forEach(function (c) {
+          var td = document.createElement("td");
+          if (c && typeof c === "object" && c.node) td.appendChild(c.node);
+          else td.textContent = c == null ? "" : String(c);
+          if (c && typeof c === "object" && c.cls) td.className = c.cls;
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
       });
+      t.appendChild(tb); el2.appendChild(t);
     }
 
-    // ROSTER — who's connected
-    var seen = {};
+    function dot(kind) { return { node: el("span", "pdot " + kind) }; }
+
+    // 1 — LIVE AGENTS
+    var workers = (data.workers || []).slice().sort(function (a, b) { return b.lastSeen - a.lastSeen; });
+    table("roster",
+      ["Agent", "Status", "Runner", "Last seen"],
+      workers.map(function (w) {
+        var low = w.status === "low";
+        var kind = w.presence === "working" ? (low ? "low" : "on") : w.presence === "idle" ? "idle" : "off";
+        var label = low ? "low capacity" : w.presence === "working" ? "working" : w.presence === "idle" ? "idle" : "offline";
+        return [
+          { node: (function () { var d = el("span"); d.appendChild(el("span", "pdot " + kind)); d.appendChild(el("span", "name", w.agentId)); return d; })() },
+          label,
+          w.runner || "—",
+          fmtAge(data.now - w.lastSeen) + " ago",
+        ];
+      }),
+      "No agents seen yet.");
+
+    // 2 — ACTIVE CLAIMS
+    var conflictAgents = {};
+    data.conflicts.forEach(function (c) { conflictAgents[c.aAgentId] = c; conflictAgents[c.bAgentId] = c; });
+    table("edits",
+      ["Agent", "File", "Symbol", "Purpose", "ETA"],
+      (data.claims || []).map(function (cl) {
+        var sym = "";
+        (cl.symbols || []).forEach(function (s2) { if (s2.symbol && !sym) sym = s2.symbol; });
+        var file = (cl.files || [])[0] || cl.repo;
+        var agent = el("span");
+        agent.appendChild(el("span", "name", cl.agentId));
+        if (conflictAgents[cl.agentId]) agent.appendChild(el("span", "clash", " ⛔"));
+        return [
+          { node: agent },
+          { cls: "file", node: el("span", "file", file) },
+          sym || "—",
+          cl.purpose || "—",
+          cl.etaMinutes ? cl.etaMinutes + "m" : "—",
+        ];
+      }),
+      "No active edits — all agents idle.");
+
+    // 3 — ACTIVE WORK
+    var inflight = (data.tasks || []).filter(function (t) { return t.status === "open" || t.status === "accepted"; });
+    table("work",
+      ["Task", "From", "To", "Status", "Size"],
+      inflight.map(function (t) {
+        return [
+          { cls: "file", node: el("span", "file", String(t.id).slice(0, 8)) },
+          t.fromAgentId === "board" ? "You" : t.fromAgentId,
+          t.assigneeAgentId || t.toAgentId,
+          t.status,
+          (t.size || "—"),
+        ];
+      }),
+      "Nothing in flight.");
+
+    // Presence maps still consumed by the map view, the activity log and the send box's
+    // recipient list. The three tables above render from the snapshot directly; these
+    // keep the rest of the page working off the same data.
+    var online = {}, runnerOf = {}, statusOf = {}, seen = {};
     function note(id, doing) {
       if (!id || id === "*" || id === "board") return;
-      if (!seen[id] || (doing && !seen[id].doing)) seen[id] = { id: id, doing: doing || (seen[id] && seen[id].doing) || "" };
+      if (!seen[id] || (doing && !seen[id].doing)) {
+        seen[id] = { id: id, doing: doing || (seen[id] && seen[id].doing) || "" };
+      }
     }
-    data.claims.forEach(function (cl) {
-      var target = "";
-      (cl.symbols || []).forEach(function (s) { if (s.symbol && !target) target = s.symbol; });
-      note(cl.agentId, "editing " + (target || (cl.files || [])[0] || cl.repo));
-    });
-    data.tasks.forEach(function (t) { note(t.fromAgentId, ""); note(t.assigneeAgentId, ""); if (t.toAgentId !== "*") note(t.toAgentId, ""); });
-    data.messages.forEach(function (m) { note(m.fromAgentId, ""); if (m.toAgentId !== "*") note(m.toAgentId, ""); });
-    // PRESENCE — which agents have a live worker (heartbeated recently).
-    var online = {}, runnerOf = {}, statusOf = {};
     (data.workers || []).forEach(function (w) {
-      online[w.agentId] = true; runnerOf[w.agentId] = w.runner || ""; statusOf[w.agentId] = w.status || "ok";
-      // Prefer what they're actually holding — the roster's job is to stop duplicate work.
-      var held = (w.claims || [])[0];
-      var doing = w.status === "low"
-        ? "low capacity — cooling down"
-        : held && held.purpose
-          ? held.purpose
-          : held
-            ? "editing " + (held.files || []).join(", ")
-            : w.presence === "working"
-              ? "working" + (w.runner ? " · " + w.runner : "")
-              : "idle · last seen " + fmtAge(data.now - w.lastSeen) + " ago";
-      note(w.agentId, (seen[w.agentId] && seen[w.agentId].doing) || doing);
+      online[w.agentId] = w.presence === "working" || w.presence === "idle";
+      runnerOf[w.agentId] = w.runner || "";
+      statusOf[w.agentId] = w.status || "ok";
+      note(w.agentId, w.status === "low" ? "low capacity" : w.presence === "working" ? "working" : "");
     });
-    var rosterEl = document.getElementById("roster");
-    rosterEl.replaceChildren();
+    (data.claims || []).forEach(function (cl) {
+      var sym2 = "";
+      (cl.symbols || []).forEach(function (s3) { if (s3.symbol && !sym2) sym2 = s3.symbol; });
+      note(cl.agentId, cl.purpose || ("editing " + (sym2 || (cl.files || [])[0] || cl.repo)));
+    });
+    (data.tasks || []).forEach(function (t) {
+      note(t.fromAgentId, ""); note(t.assigneeAgentId, "");
+      if (t.toAgentId !== "*") note(t.toAgentId, "");
+    });
+    (data.messages || []).forEach(function (m) {
+      note(m.fromAgentId, ""); if (m.toAgentId !== "*") note(m.toAgentId, "");
+    });
     var ids = Object.keys(seen);
-    if (!ids.length) rosterEl.appendChild(el("span", "empty", "No agents seen yet."));
-    ids.forEach(function (id) {
-      var a = el("div", "agent");
-      a.appendChild(el("span", "pdot " + (online[id] ? (statusOf[id] === "low" ? "low" : "on") : "off")));
-      a.appendChild(el("span", "name", id));
-      a.appendChild(el("span", "doing" + (seen[id].doing ? " busy" : ""), seen[id].doing || (online[id] ? "online" : "seen earlier")));
-      rosterEl.appendChild(a);
-    });
 
     // ACTIVITY LOG — plain-English, newest first
     var events = [];

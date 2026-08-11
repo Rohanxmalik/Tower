@@ -35,7 +35,7 @@ import type {
   HeartbeatWorkerInput,
 } from "@tower/shared";
 import type { Claim, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
-import { resolveRepoKey } from "@tower/shared";
+import { resolveRepoKey, looksLikeForkSplit } from "@tower/shared";
 
 /**
  * "Actively doing something." Short on purpose — it answers a different question from
@@ -108,7 +108,7 @@ export class TowerService {
    * recorded so the board can show who did.
    */
   claimIntent(input: ClaimIntentInput): ClaimIntentOutput {
-    const repoKey = resolveRepoKey(input.repoId, input.repo);
+    const repoKey = resolveRepoKey(input.repoId, input.repo, input.projectId);
     const active = this.store.activeClaims(repoKey);
     const conflicts = detectCollisions(
       {
@@ -124,6 +124,7 @@ export class TowerService {
     // without polling (MCP has no push channel).
     const unread = this.store.unreadCount(input.agentId);
     const mail = unread > 0 ? { unreadMessages: unread } : {};
+    const split = this.forkSplitWarning(repoKey, input.repo);
 
     const hard = conflicts.find((c) => c.severity === "hard");
     if (hard && !input.force) {
@@ -133,6 +134,7 @@ export class TowerService {
         blocking: true,
         recommendation: "stand_down",
         ...mail,
+        ...split,
       };
     }
 
@@ -140,6 +142,9 @@ export class TowerService {
       agentId: input.agentId,
       repo: input.repo,
       ...(input.repoId ? { repoId: input.repoId } : {}),
+      // Must travel with the write, not just the lookup: a claim stored under a key the
+      // reader never computes is invisible, which is the whole class of bug this fixes.
+      ...(input.projectId ? { projectId: input.projectId } : {}),
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
@@ -153,6 +158,30 @@ export class TowerService {
       blocking: false,
       recommendation: "proceed",
       ...mail,
+      ...split,
+    };
+  }
+
+  /**
+   * Warn when another *active* agent is on a repo with the same name under a different
+   * owner — a fork and its upstream, coordinating in separate spaces.
+   *
+   * Deliberately advisory, and deliberately not a partition rule: two unrelated teams
+   * can both own a repo called `api`, so merging on name would be the same silent
+   * failure pointed the other way. This only ever adds a sentence to the response.
+   */
+  private forkSplitWarning(repoKey: string, repo: string): { projectWarning?: string } {
+    const others = this.store
+      .listClaims({ status: "active" })
+      .filter((c) => (c.repoKey ?? "") !== repoKey && looksLikeForkSplit(c.repo, repo));
+    const other = others[0];
+    if (!other) return {};
+    return {
+      projectWarning:
+        `Possible fork split: ${other.agentId} is active on "${other.repo}" while you are on ` +
+        `"${repo}". Same project under a different owner coordinates separately, so neither of ` +
+        `you will see the other's claims. Fix it by setting "projectId: <name>" in ` +
+        `.tower/policy.yaml on both machines, or by pointing both at the same remote.`,
     };
   }
 
@@ -163,14 +192,39 @@ export class TowerService {
    * ever fires. One call per task, at the moment the agent decides what to do.
    */
   proposeIntent(input: ProposeIntentInput): ProposeIntentOutput {
-    const repoKey = resolveRepoKey(input.repoId, input.repo);
+    const repoKey = resolveRepoKey(input.repoId, input.repo, input.projectId);
     const cutoff = Date.now() - RECENT_INTENT_MS;
     const candidates = this.store
       .listClaims({ repo: input.repo })
       .filter((c) => (c.repoKey ?? repoKey) === repoKey)
       .filter((c) => c.status === "active" || c.createdAt >= cutoff);
 
-    const matches = matchIntent(input.purpose, candidates, { agentId: input.agentId });
+    // Delegated work counts as work. A task already open or accepted is somebody's
+    // stated plan just as much as a claim is — matching only against other *intents*
+    // let propose_intent return "proceed" while the same job sat in the task queue.
+    const taskClaims = this.store
+      .listTasks({
+        repo: input.repo,
+        ...(input.repoId ? { repoId: input.repoId } : {}),
+        ...(input.projectId ? { projectId: input.projectId } : {}),
+      })
+      .filter((t) => t.status === "open" || t.status === "accepted")
+      .map((t): Claim => ({
+        id: t.id,
+        agentId: t.assigneeAgentId ?? t.toAgentId,
+        repo: t.repo,
+        branch: "",
+        files: [],
+        symbols: [],
+        purpose: t.body,
+        status: "active",
+        createdAt: t.createdAt,
+        expiresAt: t.updatedAt,
+      }));
+
+    const matches = matchIntent(input.purpose, [...candidates, ...taskClaims], {
+      agentId: input.agentId,
+    });
     return {
       matches,
       duplicate: matches.length > 0,
@@ -179,7 +233,9 @@ export class TowerService {
   }
 
   checkCollision(input: CheckCollisionInput): CheckCollisionOutput {
-    const active = this.store.activeClaims(resolveRepoKey(input.repoId, input.repo));
+    const active = this.store.activeClaims(
+      resolveRepoKey(input.repoId, input.repo, input.projectId),
+    );
     const conflicts = detectCollisions(
       {
         ...(input.agentId ? { agentId: input.agentId } : {}),
@@ -365,8 +421,15 @@ export class TowerService {
   }
 
   nextTask(input: NextTaskInput): NextTaskOutput {
-    // Sequencer reasons over all active claims regardless of branch.
-    const active = this.store.listClaims({ repo: input.repo, status: "active" });
+    // Sequencer reasons over all active claims regardless of branch. Identity has to
+    // travel with the lookup: a claim registered with a repoId is invisible to a query
+    // that only knows the repo string.
+    const active = this.store.listClaims({
+      repo: input.repo,
+      ...(input.repoId ? { repoId: input.repoId } : {}),
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      status: "active",
+    });
     return nextTask(this.policy, input.candidates, active, input.agentId);
   }
 }

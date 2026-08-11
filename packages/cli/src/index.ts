@@ -36,7 +36,10 @@ Commands:
                              --hooks also wires all five Claude Code hooks into
                              .claude/settings.json (an unwired hook enforces nothing).
   setup [--url <https://...>] [--token t] [--hooks]   One-command onboarding: .mcp.json + rules + git hooks
-  serve [--http] [--port n] [--token t]   Start the coordination server
+  serve [--http] [--port n] [--token t] [--remote <url>]
+                             Start the coordination server. --remote runs it as a local
+                             proxy to a hosted Tower, stamping this repo's identity onto
+                             every call so forks and the upstream coordinate together.
   status                     Show active claims
   watch                      Live-poll active claims
   complete --claim <id> [--sha <sha>]     Complete a claim (used by the git hook)
@@ -189,6 +192,7 @@ export async function run(argv: string[]): Promise<number> {
           port: { type: "string" },
           token: { type: "string" },
           host: { type: "string" },
+          remote: { type: "string" },
         },
         allowPositionals: false,
       });
@@ -197,6 +201,7 @@ export async function run(argv: string[]): Promise<number> {
         ...(toNum(values.port) != null ? { port: toNum(values.port)! } : {}),
         ...(values.token ? { token: values.token } : {}),
         ...(values.host ? { host: values.host } : {}),
+        ...(values.remote ? { remote: values.remote } : {}),
       });
       return 0;
     }

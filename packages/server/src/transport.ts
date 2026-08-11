@@ -1,4 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { timingSafeEqual } from "node:crypto";
@@ -110,7 +111,11 @@ class WriteLimiter {
 
 /** Connect a Tower MCP server to stdio (local single-machine use). */
 export async function startStdio(service: TowerService): Promise<void> {
-  const server = buildMcpServer(service);
+  await connectStdio(buildMcpServer(service));
+}
+
+/** Connect an already-built MCP server to stdio — used by the remote proxy. */
+export async function connectStdio(server: McpServer): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

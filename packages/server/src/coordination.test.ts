@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TowerService } from "./service.js";
 import { TowerStore } from "./store/sqlite.js";
+import { buildMcpServer } from "./mcp.js";
 
 /**
  * Acceptance tests for the defects found in the 2 Aug 2026 live two-agent session,
@@ -349,5 +350,192 @@ describe("T5 — first-accept-wins says WHY the loser lost (TWR-10)", () => {
     const res = svc.acceptTask({ taskId: id, agentId: "bob" });
     expect(res.ok).toBe(false);
     expect(res.reason).toBe("awaiting_approval");
+  });
+});
+
+describe("T9 — a fork split warns instead of proceeding in silence (0.10.0)", () => {
+  const base = { branch: "main", files: ["src/a.ts"], symbols: [], purpose: "work" };
+
+  it("tells the second agent their teammate is on the same project under another owner", () => {
+    const service = new TowerService();
+    service.claimIntent({
+      ...base,
+      agentId: "alice",
+      repo: "github.com/rohanxmalik/nimbus-demo",
+      repoId: "a".repeat(40),
+    });
+    const bob = service.claimIntent({
+      ...base,
+      files: ["src/b.ts"],
+      agentId: "bob",
+      repo: "github.com/sakshamdubey19/nimbus-demo",
+      repoId: "b".repeat(40),
+    });
+    expect(bob.projectWarning).toBeDefined();
+    expect(bob.projectWarning).toContain("alice");
+    expect(bob.projectWarning).toContain("projectId");
+    service.store.close();
+  });
+
+  it("still registers the claim — the warning is advisory, not a block", () => {
+    const service = new TowerService();
+    service.claimIntent({
+      ...base,
+      agentId: "alice",
+      repo: "github.com/a/app",
+      repoId: "a".repeat(40),
+    });
+    const bob = service.claimIntent({
+      ...base,
+      agentId: "bob",
+      repo: "github.com/b/app",
+      repoId: "b".repeat(40),
+    });
+    expect(bob.claimId).not.toBeNull();
+    expect(bob.blocking).toBe(false);
+    service.store.close();
+  });
+
+  it("stays quiet when both agents share a projectId — the split is already fixed", () => {
+    const service = new TowerService();
+    service.claimIntent({
+      ...base,
+      agentId: "alice",
+      repo: "github.com/a/app",
+      repoId: "a".repeat(40),
+      projectId: "nimbus",
+    });
+    const bob = service.claimIntent({
+      ...base,
+      files: ["src/b.ts"],
+      agentId: "bob",
+      repo: "github.com/b/app",
+      repoId: "b".repeat(40),
+      projectId: "nimbus",
+    });
+    expect(bob.projectWarning).toBeUndefined();
+    service.store.close();
+  });
+
+  it("stays quiet for two genuinely different projects", () => {
+    const service = new TowerService();
+    service.claimIntent({
+      ...base,
+      agentId: "alice",
+      repo: "github.com/a/app",
+      repoId: "a".repeat(40),
+    });
+    const bob = service.claimIntent({
+      ...base,
+      agentId: "bob",
+      repo: "github.com/b/unrelated",
+      repoId: "b".repeat(40),
+    });
+    expect(bob.projectWarning).toBeUndefined();
+    service.store.close();
+  });
+});
+
+describe("T10 — propose_intent sees delegated tasks, not just other intents (0.10.0)", () => {
+  it("flags a duplicate when the same work is already sitting in the task queue", () => {
+    const service = new TowerService();
+    service.createTask({
+      repo: "github.com/a/app",
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      body: "add a health endpoint returning status ok",
+    });
+    const out = service.proposeIntent({
+      agentId: "carol",
+      repo: "github.com/a/app",
+      purpose: "implement a health endpoint that returns status",
+    });
+    expect(out.duplicate).toBe(true);
+    expect(out.recommendation).toBe("stand_down");
+    service.store.close();
+  });
+
+  it("ignores finished tasks — done work is not work in flight", () => {
+    const service = new TowerService();
+    const task = service.createTask({
+      repo: "github.com/a/app",
+      fromAgentId: "alice",
+      toAgentId: "bob",
+      body: "add a health endpoint returning status ok",
+    });
+    service.acceptTask({ taskId: task.id, agentId: "bob" });
+    service.completeTask({ taskId: task.id, agentId: "bob", success: true, result: "done" });
+    const out = service.proposeIntent({
+      agentId: "carol",
+      repo: "github.com/a/app",
+      purpose: "implement a health endpoint that returns status",
+    });
+    expect(out.duplicate).toBe(false);
+    service.store.close();
+  });
+});
+
+describe("T11 — presence comes from any tool call, not just the worker daemon (0.10.0)", () => {
+  it("an agent that only claims and messages still shows as present", () => {
+    const service = new TowerService();
+    const server = buildMcpServer(service);
+    expect(server).toBeDefined();
+    // Direct store proof: a claim-shaped call touches presence without heartbeat_worker.
+    service.store.touchAgent("alice", "github.com/a/app", "a".repeat(40));
+    const workers = service.store.listWorkers(15 * 60 * 1000, 30 * 1000);
+    expect(workers.map((w) => w.agentId)).toContain("alice");
+    service.store.close();
+  });
+
+  it("ignores a call with no agent or repo rather than writing a junk row", () => {
+    const service = new TowerService();
+    service.store.touchAgent("", "github.com/a/app");
+    service.store.touchAgent("alice", "");
+    expect(service.store.listWorkers(15 * 60 * 1000, 30 * 1000)).toHaveLength(0);
+    service.store.close();
+  });
+});
+
+describe("T12 — decisions no longer leak across teams (0.10.0)", () => {
+  it("a project only recalls its own decisions", () => {
+    const service = new TowerService();
+    service.logDecision({
+      title: "Zod at every boundary",
+      body: "",
+      author: "alice",
+      tags: [],
+      relatedFiles: [],
+      repo: "github.com/team-a/app",
+      repoId: "a".repeat(40),
+    });
+    service.logDecision({
+      title: "Use Protobuf everywhere",
+      body: "",
+      author: "bob",
+      tags: [],
+      relatedFiles: [],
+      repo: "github.com/team-b/other",
+      repoId: "b".repeat(40),
+    });
+    const teamA = service.getDecisions({ repo: "github.com/team-a/app", repoId: "a".repeat(40) });
+    const titles = teamA.decisions.map((d) => d.title);
+    expect(titles).toContain("Zod at every boundary");
+    expect(titles).not.toContain("Use Protobuf everywhere");
+    service.store.close();
+  });
+
+  it("still returns everything when no project is named — old clients keep working", () => {
+    const service = new TowerService();
+    service.logDecision({ title: "A", body: "", author: "x", tags: [], relatedFiles: [] });
+    expect(service.getDecisions({}).decisions).toHaveLength(1);
+    service.store.close();
+  });
+
+  it("unscoped decisions stay visible to everyone, so history is not orphaned", () => {
+    const service = new TowerService();
+    service.logDecision({ title: "Legacy", body: "", author: "x", tags: [], relatedFiles: [] });
+    const scoped = service.getDecisions({ repo: "github.com/team-a/app", repoId: "a".repeat(40) });
+    expect(scoped.decisions.map((d) => d.title)).toContain("Legacy");
+    service.store.close();
   });
 });

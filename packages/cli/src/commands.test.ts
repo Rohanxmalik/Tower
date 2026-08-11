@@ -401,22 +401,33 @@ describe("cmdSetup (one-command onboarding)", () => {
     expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe("a\n.tower\nb\n");
   });
 
-  it("writes team mode (type http + Authorization header) when --url and --token are given", () => {
+  // 0.10.0: team mode runs the client locally instead of pointing the agent at the URL.
+  // A direct `type: "http"` entry means nothing on this machine ever computes repoId, so
+  // a fork and its upstream partition apart in silence — the bug a real two-agent session
+  // hit. The local process is where identity comes from.
+  it("writes team mode as a local proxy, not a direct http entry", () => {
     cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
     const config = readJson(join(dir, ".mcp.json"));
     expect(config.mcpServers.tower).toEqual({
-      type: "http",
-      url: "https://tower.example.com/mcp",
-      headers: { Authorization: "Bearer s3cret" },
+      command: "npx",
+      args: ["-y", "tower-mcp", "serve", "--remote", "https://tower.example.com/mcp"],
+      env: { TOWER_TOKEN: "s3cret" },
     });
   });
 
-  it("omits headers in team mode when no token is given", () => {
+  it("keeps the token out of an Authorization header written to disk", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
+    const raw = readFileSync(join(dir, ".mcp.json"), "utf8");
+    expect(raw).not.toContain("Authorization");
+    expect(raw).not.toContain("Bearer");
+  });
+
+  it("omits the env block in team mode when no token is given", () => {
     cmdSetup(dir, { url: "https://tower.example.com/mcp" }, () => {});
     const config = readJson(join(dir, ".mcp.json"));
     expect(config.mcpServers.tower).toEqual({
-      type: "http",
-      url: "https://tower.example.com/mcp",
+      command: "npx",
+      args: ["-y", "tower-mcp", "serve", "--remote", "https://tower.example.com/mcp"],
     });
   });
 
@@ -575,5 +586,74 @@ describe("T6 — tower init --hooks wires enforcement (REQ-D gap 3)", () => {
     cmdInit(dir, out, { hooks: true });
     expect(readFileSync(join(dir, ".claude", "settings.json"), "utf8")).toBe("{ not json");
     expect(lines.join("\n")).toContain("invalid JSON");
+  });
+});
+
+describe("lazyRemote — the proxy must never take the MCP server down with it", () => {
+  it("does not dial until the first call, so a cold server still serves tools", async () => {
+    const { lazyRemote } = await import("./commands.js");
+    // Constructing against a host that cannot resolve must not throw. Render's free tier
+    // sleeps and takes ~50s to wake; dialling up front killed the process before it ever
+    // spoke MCP, leaving the editor with a dead server and no Tower tools at all.
+    const r = lazyRemote({ url: "https://unreachable.invalid/mcp" });
+    expect(typeof r.call).toBe("function");
+    await r.close();
+  });
+
+  it("surfaces an unreachable server as a loud error naming the url", async () => {
+    const { lazyRemote } = await import("./commands.js");
+    const r = lazyRemote({ url: "http://127.0.0.1:1/mcp" }, () => {});
+    await expect(r.call("list_claims", {})).rejects.toThrow(/unreachable/i);
+    await r.close();
+  });
+
+  it("says coordination was not enforced, rather than failing silently", async () => {
+    const { lazyRemote } = await import("./commands.js");
+    const r = lazyRemote({ url: "http://127.0.0.1:1/mcp" }, () => {});
+    await expect(r.call("claim_intent", {})).rejects.toThrow(/NOT enforced/);
+    await r.close();
+  });
+
+  it("closing before any call is a no-op, not a crash", async () => {
+    const { lazyRemote } = await import("./commands.js");
+    await expect(lazyRemote({ url: "http://127.0.0.1:1/mcp" }).close()).resolves.toBeUndefined();
+  });
+});
+
+describe("symbol-level blocking — two agents in one file, different functions (0.10.0)", () => {
+  const CODE = "function alpha() {\n  return 1;\n}\n\nfunction beta() {\n  return 2;\n}\n";
+  const FILE = "svc.js";
+  const base = { repo: "acme/app", branch: "main", files: [FILE], purpose: "edit" };
+
+  async function symbolFor(anchor: string): Promise<string> {
+    const { SymbolExtractor, symbolAt } = await import("@tower/server");
+    const ranges = await new SymbolExtractor().extractRanges(FILE, CODE);
+    return `${FILE}#${symbolAt(ranges, CODE.indexOf(anchor))!.symbol}`;
+  }
+
+  beforeEach(() => writeFileSync(join(dir, FILE), CODE));
+
+  it("lets a second agent edit a DIFFERENT function in the same file", async () => {
+    const alpha = await symbolFor("return 1;");
+    const beta = await symbolFor("return 2;");
+    expect(await cmdGuard(dir, { ...base, agentId: "alice", symbols: [alpha] }, () => {})).toBe(
+      false,
+    );
+    // The whole point: file-granular blocking refused this correct edit.
+    expect(await cmdGuard(dir, { ...base, agentId: "bob", symbols: [beta] }, () => {})).toBe(false);
+  });
+
+  it("still blocks a second agent on the SAME function", async () => {
+    const alpha = await symbolFor("return 1;");
+    await cmdGuard(dir, { ...base, agentId: "alice", symbols: [alpha] }, () => {});
+    expect(await cmdGuard(dir, { ...base, agentId: "carol", symbols: [alpha] }, () => {})).toBe(
+      true,
+    );
+  });
+
+  it("a whole-file claim still blocks everyone — the safe fallback", async () => {
+    await cmdGuard(dir, { ...base, agentId: "alice", symbols: [`${FILE}#`] }, () => {});
+    const beta = await symbolFor("return 2;");
+    expect(await cmdGuard(dir, { ...base, agentId: "bob", symbols: [beta] }, () => {})).toBe(true);
   });
 });

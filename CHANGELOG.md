@@ -3,6 +3,92 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.10.0 — 2026-08-11
+
+**A fork and its upstream coordinated in separate spaces, in silence.** Two agents on one
+project — one on `rohanxmalik/nimbus-demo`, one on their own fork — both claimed the same
+work, both got `recommendation: "proceed"`, and no conflict was ever reported. Nothing
+errored. Found in a live two-machine session.
+
+0.9.0 shipped `repoId` to fix exactly this. It did not work, for two reasons.
+
+### Fixed — identity now reaches the server
+
+- **Nothing on the MCP path ever _sent_ `repoId`.** No tool description mentioned it, and
+  with `.mcp.json` pointing a `type: "http"` entry straight at the hosted URL, there is no
+  process on the developer's machine to compute it. `tower setup --url` now writes a
+  **local proxy** instead — `tower serve --remote <url>` — which resolves this repo's
+  identity once from `cwd` and stamps it onto every call before forwarding. The agent
+  never learns the concept exists.
+- **Only 4 of 19 tools accepted `repoId`.** `send_message`, `fetch_messages`, `pending`,
+  `list_tasks`, `next_task` and `heartbeat_worker` did not, so messaging and delegation
+  split even when claims matched. All repo-scoped tools now carry identity.
+- **`messages`, `tasks` and `workers` were keyed on the raw repo string** — there was no
+  `repoKey` on those tables at all. Every repo-scoped table now carries and queries the
+  same key, with a migration that backfills existing rows.
+- **`projectId`** — set `projectId: <name>` in `.tower/policy.yaml` (or `TOWER_PROJECT_ID`)
+  and every clone converges regardless of git history, remote URL, or whether it is a git
+  repo at all. Resolution order is `projectId` → `repoId` → normalized remote.
+- `claim_intent` stored claims without the `projectId` it had just used for the lookup, so
+  a claim could be written under a key no reader would compute. Caught by a new test.
+
+### Fixed — it never fails silently again
+
+- `claim_intent` returns **`projectWarning`** when another active agent is on a repo with
+  the same name under a different owner. Advisory only — the claim still succeeds, and
+  matching on name is deliberately never used to partition, because two teams can both own
+  a repo called `api`. The original failure was the silence, not the mismatch.
+
+### Fixed — presence and duplicate detection
+
+- **Presence came only from `heartbeat_worker`**, which the `tower work` daemon calls and
+  an ordinary agent session never does. An agent claiming and messaging all day read as
+  "seen earlier" forever. Any authenticated tool call now refreshes presence.
+- **`propose_intent` ignored delegated work.** It matched other stated intents but not
+  open or accepted tasks, so it returned `proceed` while the same job sat in the queue. It
+  now matches against both.
+
+### Fixed — the blocker is finally symbol-level
+
+- **`hooks/pretooluse-tower.mjs` passed `symbols: []`.** Symbol-level detection is the
+  headline claim, and the one layer that actually _blocks_ an edit ignored it — so two
+  agents in different functions of one file blocked each other. The hook now locates the
+  edit's `old_string` in the file, asks tree-sitter which declaration encloses that
+  offset, and claims **that symbol**. New `SymbolExtractor.extractRanges()` and
+  `symbolAt()` back it. Falls back to a file-level claim for a `Write`, a new file, an
+  unsupported language, or an edit between declarations — over-claiming is safe,
+  under-claiming is not.
+
+### Fixed — decisions no longer leak between teams
+
+- `log_decision` / `get_decisions` were global. On a shared server one team's
+  architecture notes surfaced in another team's recall — the same silent cross-partition
+  leak as the fork bug, one table over. Decisions now carry a project key and are scoped
+  when the caller names one. Rows written before scoping stay visible to everyone, which
+  is what they already were.
+
+### Fixed — the proxy can no longer take the editor down
+
+- `cmdServe` dialled the hosted server **before** serving stdio. A cold host (Render's
+  free tier sleeps and takes ~50s to wake), a stale token or a dropped network killed the
+  process before it spoke MCP, leaving the editor with a dead server and **no Tower tools
+  at all** — worse than the bug it replaced. The connection is now lazy, retries once on
+  a fresh socket, and survives sleep and redeploys. An unreachable server surfaces as a
+  loud per-call error saying coordination was not enforced, never as silence.
+
+### Board
+
+Split "who's connected" into three live tables, all from data the snapshot already
+carried: **Live agents** (status / runner / last seen), **Active claims** (agent / file /
+symbol / purpose / ETA) and **Active work** (task / from / to / status / size).
+
+### Upgrading
+
+Re-run `tower setup --url <your-server> --token <token> --hooks` on **every machine** so
+`.mcp.json` switches to the proxy form. A direct `type: "http"` entry still works but
+cannot supply identity, which is the bug. Teams whose clones share no git history should
+also commit `projectId` to `.tower/policy.yaml`.
+
 ## 0.9.1 — 2026-08-05
 
 **The Node version check was wrong, and it cost the first outside user their first command.**

@@ -73,7 +73,96 @@ function summarize(tool: string, result: unknown): string {
   return JSON.stringify(result);
 }
 
-/** Build an MCP server exposing Tower's 18 tools, delegating to the given service. */
+/** Which identity fields a tool's schema will accept, computed from the zod shape. */
+function identityFields(name: keyof typeof TOOL_SCHEMAS): string[] {
+  const schema = TOOL_SCHEMAS[name].input as unknown as {
+    shape?: Record<string, unknown>;
+    _def?: { shape?: () => Record<string, unknown> };
+  };
+  const shape = schema.shape ?? schema._def?.shape?.() ?? {};
+  return ["repoId", "projectId"].filter((f) => f in shape);
+}
+
+/**
+ * Add the machine's project identity to a call, without overriding anything the caller
+ * set deliberately. Only fields the tool actually accepts are added, so a tool that
+ * takes no repo is left alone.
+ */
+export function withIdentity(
+  name: keyof typeof TOOL_SCHEMAS,
+  args: unknown,
+  identity: { repoId?: string; projectId?: string },
+): unknown {
+  if (typeof args !== "object" || args === null) return args;
+  const record = args as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  for (const field of identityFields(name)) {
+    const supplied = record[field];
+    const value = identity[field as "repoId" | "projectId"];
+    if (value && (supplied === undefined || supplied === "")) patch[field] = value;
+  }
+  return Object.keys(patch).length ? { ...record, ...patch } : args;
+}
+
+export type RemoteCall = (tool: string, args: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * An MCP server that forwards every tool to a hosted Tower, stamping this machine's
+ * project identity onto each call first.
+ *
+ * This is the fix for the failure mode that split a real two-agent session: when
+ * `.mcp.json` points a browser-style HTTP entry straight at the server, nothing on the
+ * machine ever computes `repoId`, so a fork and its upstream partition apart in silence.
+ * Running the client locally gives identity somewhere to come from, and the agent never
+ * has to know the concept exists.
+ */
+export function buildProxyMcpServer(
+  call: RemoteCall,
+  identity: { repoId?: string; projectId?: string },
+): McpServer {
+  const server = new McpServer(SERVER_INFO);
+  for (const name of Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[]) {
+    const { input, output } = TOOL_SCHEMAS[name];
+    server.registerTool(
+      name,
+      { description: TOOL_DESCRIPTIONS[name], inputSchema: input, outputSchema: output },
+      async (args: unknown): Promise<CallToolResult> => {
+        const result = await call(
+          name,
+          withIdentity(name, args, identity) as Record<string, unknown>,
+        );
+        return {
+          structuredContent: result as Record<string, unknown>,
+          content: [{ type: "text", text: summarize(name, result) }],
+        };
+      },
+    );
+  }
+  return server;
+}
+
+/**
+ * Any authenticated tool call is proof the agent is alive, so it refreshes presence.
+ *
+ * Before this, only the `tower work` daemon's `heartbeat_worker` did — meaning an agent
+ * claiming and messaging all day read as "seen earlier" forever on the board, which is
+ * exactly the signal a team lead needs and the one that was missing.
+ */
+function touchPresence(service: TowerService, args: unknown): void {
+  if (typeof args !== "object" || args === null) return;
+  const a = args as Record<string, unknown>;
+  const agentId = typeof a.agentId === "string" ? a.agentId : (a.fromAgentId as string | undefined);
+  const repo = typeof a.repo === "string" ? a.repo : undefined;
+  if (typeof agentId !== "string" || !repo) return;
+  service.store.touchAgent(
+    agentId,
+    repo,
+    typeof a.repoId === "string" ? a.repoId : undefined,
+    typeof a.projectId === "string" ? a.projectId : undefined,
+  );
+}
+
+/** Build an MCP server exposing Tower's 19 tools, delegating to the given service. */
 export function buildMcpServer(service: TowerService): McpServer {
   const server = new McpServer(SERVER_INFO);
 
@@ -111,6 +200,7 @@ export function buildMcpServer(service: TowerService): McpServer {
         outputSchema: output,
       },
       (args: unknown): CallToolResult => {
+        touchPresence(service, args);
         const result = handlers[name](args);
         return {
           structuredContent: result as Record<string, unknown>,

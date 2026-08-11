@@ -21,6 +21,30 @@ export function loadPolicy(cwd: string): Policy {
   return parsePolicy(readFileSync(p, "utf8"));
 }
 
+/**
+ * A team-wide project id from `.tower/policy.yaml`, e.g. `projectId: nimbus`.
+ *
+ * This is the escape hatch that beats git entirely: commit it to the repo and every
+ * clone — fork, mirror, vendored copy, or a directory that isn't a git repo at all —
+ * lands in the same coordination space. `TOWER_PROJECT_ID` overrides it for one-offs.
+ *
+ * Parsed with a line regex rather than a YAML dependency, matching how `parsePolicy`
+ * already reads this file.
+ */
+export function loadProjectId(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const fromEnv = (env.TOWER_PROJECT_ID ?? "").trim();
+  if (fromEnv !== "") return fromEnv;
+  const p = policyPath(cwd);
+  if (!existsSync(p)) return undefined;
+  // `projectId: nimbus`, optionally quoted, ignoring commented-out lines.
+  const match = /^[ \t]*projectId[ \t]*:[ \t]*["']?([^"'\r\n#]+)/m.exec(readFileSync(p, "utf8"));
+  const value = match?.[1]?.trim();
+  return value ? value : undefined;
+}
+
 export interface BuildOptions {
   /** Use an in-memory DB (tests). Otherwise a file-backed DB shared across CLI invocations. */
   memory?: boolean;

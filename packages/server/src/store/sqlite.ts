@@ -86,6 +86,15 @@ export interface StoreOptions {
   ttlMs?: number;
 }
 
+/** Identity every repo-scoped write carries, resolved through `resolveRepoKey`. */
+export interface RepoScope {
+  repo: string;
+  /** Root commit sha — identical across clones and forks. */
+  repoId?: string;
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId?: string;
+}
+
 export interface NewClaim {
   agentId: string;
   repo: string;
@@ -96,6 +105,8 @@ export interface NewClaim {
   symbols: SymbolRef[];
   purpose: string;
   etaMinutes?: number;
+  /** Hand-set team override from `.tower/policy.yaml`; beats `repoId`. */
+  projectId?: string;
   /** Registered despite a hard conflict, via `force`. */
   forced?: boolean;
 }
@@ -263,20 +274,37 @@ export class TowerStore {
     addColumn("claims", "repoId", "repoId TEXT");
     addColumn("claims", "repoKey", "repoKey TEXT");
     addColumn("claims", "forced", "forced INTEGER");
+    // 0.9.0 partitioned claims but left messages, tasks, workers and decisions keyed
+    // on the raw repo string — so a fork split coordination in half even when claims
+    // matched. Every repo-scoped table now carries the same key. (0.10.0)
+    for (const table of ["messages", "tasks", "workers", "decisions"]) {
+      addColumn(table, "repoKey", "repoKey TEXT");
+    }
+    addColumn("decisions", "repo", "repo TEXT");
     this.backfillRepoKeys();
   }
 
   /**
-   * Give pre-0.9 claims a repoKey so they partition alongside new ones instead of
-   * being invisible. Uses the same normalizer every other path now uses.
+   * Give rows written before their table had a repoKey one now, so history partitions
+   * alongside new writes instead of becoming invisible. Uses the same normalizer every
+   * other path uses. Decisions predate repo scoping entirely and may have no repo at
+   * all — those stay global, which is what they were.
    */
   private backfillRepoKeys(): void {
-    const rows = this.db
-      .prepare(`SELECT id, repo FROM claims WHERE repoKey IS NULL`)
-      .all() as unknown as { id: string; repo: string }[];
-    if (rows.length === 0) return;
-    const update = this.db.prepare(`UPDATE claims SET repoKey = ? WHERE id = ?`);
-    for (const row of rows) update.run(normalizeRepoUrl(row.repo), row.id);
+    for (const table of ["claims", "messages", "tasks", "workers", "decisions"]) {
+      const hasRepo = (
+        this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[]
+      ).some((c) => c.name === "repo");
+      if (!hasRepo) continue;
+      const rows = this.db
+        .prepare(
+          `SELECT rowid AS rid, repo FROM ${table} WHERE repoKey IS NULL AND repo IS NOT NULL`,
+        )
+        .all() as unknown as { rid: number; repo: string }[];
+      if (rows.length === 0) continue;
+      const update = this.db.prepare(`UPDATE ${table} SET repoKey = ? WHERE rowid = ?`);
+      for (const row of rows) update.run(normalizeRepoUrl(row.repo), row.rid);
+    }
   }
 
   // -- claims ---------------------------------------------------------------
@@ -288,7 +316,7 @@ export class TowerStore {
       agentId: input.agentId,
       repo: input.repo,
       ...(input.repoId ? { repoId: input.repoId } : {}),
-      repoKey: resolveRepoKey(input.repoId, input.repo),
+      repoKey: resolveRepoKey(input.repoId, input.repo, input.projectId),
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
@@ -395,8 +423,8 @@ export class TowerStore {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
     if (filter.repo) {
-      clauses.push("repo = ?");
-      params.push(filter.repo);
+      clauses.push("repoKey = ?");
+      params.push(resolveRepoKey(filter.repoId, filter.repo, filter.projectId));
     }
     if (filter.branch) {
       clauses.push("branch = ?");
@@ -443,6 +471,8 @@ export class TowerStore {
     fromAgentId: string;
     toAgentId: string;
     repo: string;
+    repoId?: string;
+    projectId?: string;
     kind: MessageKind;
     body: string;
     replyTo?: string;
@@ -459,12 +489,13 @@ export class TowerStore {
     };
     this.db
       .prepare(
-        `INSERT INTO messages (id,repo,fromAgentId,toAgentId,kind,body,replyTo,createdAt)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO messages (id,repo,repoKey,fromAgentId,toAgentId,kind,body,replyTo,createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         msg.id,
         msg.repo,
+        resolveRepoKey(input.repoId, input.repo, input.projectId),
         msg.fromAgentId,
         msg.toAgentId,
         msg.kind,
@@ -498,7 +529,13 @@ export class TowerStore {
    * for this agent only, via a message_reads receipt — so a broadcast ("*") remains
    * unread for every other teammate until they fetch it too.
    */
-  fetchMessages(filter: { agentId: string; repo?: string; unreadOnly?: boolean }): Message[] {
+  fetchMessages(filter: {
+    agentId: string;
+    repo?: string;
+    repoId?: string;
+    projectId?: string;
+    unreadOnly?: boolean;
+  }): Message[] {
     const unreadOnly = filter.unreadOnly ?? true;
     const clauses = [`fromAgentId != ?`, `(toAgentId = ? OR toAgentId = '*')`];
     const params: (string | number)[] = [filter.agentId, filter.agentId];
@@ -509,8 +546,8 @@ export class TowerStore {
       params.push(filter.agentId);
     }
     if (filter.repo) {
-      clauses.push("repo = ?");
-      params.push(filter.repo);
+      clauses.push("repoKey = ?");
+      params.push(resolveRepoKey(filter.repoId, filter.repo, filter.projectId));
     }
     const rows = this.db
       .prepare(`SELECT * FROM messages WHERE ${clauses.join(" AND ")} ORDER BY createdAt ASC`)
@@ -527,12 +564,14 @@ export class TowerStore {
   }
 
   /** Recent messages across all agents, newest first — the board's comms feed. */
-  listMessages(filter: { repo?: string; limit?: number } = {}): Message[] {
+  listMessages(
+    filter: { repo?: string; repoId?: string; projectId?: string; limit?: number } = {},
+  ): Message[] {
     const limit = filter.limit ?? 50;
     const rows = (filter.repo
       ? this.db
-          .prepare(`SELECT * FROM messages WHERE repo = ? ORDER BY createdAt DESC LIMIT ?`)
-          .all(filter.repo, limit)
+          .prepare(`SELECT * FROM messages WHERE repoKey = ? ORDER BY createdAt DESC LIMIT ?`)
+          .all(resolveRepoKey(filter.repoId, filter.repo, filter.projectId), limit)
       : this.db
           .prepare(`SELECT * FROM messages ORDER BY createdAt DESC LIMIT ?`)
           .all(limit)) as unknown as MessageRow[];
@@ -544,6 +583,8 @@ export class TowerStore {
   createTask(input: {
     id: string;
     repo: string;
+    repoId?: string;
+    projectId?: string;
     fromAgentId: string;
     toAgentId: string;
     body: string;
@@ -552,12 +593,13 @@ export class TowerStore {
     const now = this.now();
     this.db
       .prepare(
-        `INSERT INTO tasks (id,repo,fromAgentId,toAgentId,body,status,assigneeAgentId,approval,size,commitSha,prUrl,result,createdAt,updatedAt)
-         VALUES (?,?,?,?,?,'open',NULL,NULL,?,NULL,NULL,NULL,?,?)`,
+        `INSERT INTO tasks (id,repo,repoKey,fromAgentId,toAgentId,body,status,assigneeAgentId,approval,size,commitSha,prUrl,result,createdAt,updatedAt)
+         VALUES (?,?,?,?,?,?,'open',NULL,NULL,?,NULL,NULL,NULL,?,?)`,
       )
       .run(
         input.id,
         input.repo,
+        resolveRepoKey(input.repoId, input.repo, input.projectId),
         input.fromAgentId,
         input.toAgentId,
         input.body,
@@ -684,6 +726,8 @@ export class TowerStore {
   listTasks(
     filter: {
       repo?: string;
+      repoId?: string;
+      projectId?: string;
       status?: TaskStatus;
       /** Tasks addressed to this agent, including "*" broadcasts. */
       forAgentId?: string;
@@ -695,8 +739,8 @@ export class TowerStore {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
     if (filter.repo) {
-      clauses.push("repo = ?");
-      params.push(filter.repo);
+      clauses.push("repoKey = ?");
+      params.push(resolveRepoKey(filter.repoId, filter.repo, filter.projectId));
     }
     if (filter.status) {
       clauses.push("status = ?");
@@ -722,19 +766,47 @@ export class TowerStore {
   // -- worker presence ------------------------------------------------------
 
   /** Record that a worker is alive (upsert on agentId+repo), with self-reported capacity. */
+  /**
+   * Record that an agent was active, without it having to run a worker daemon.
+   *
+   * Presence used to come only from `heartbeat_worker`, which the `tower work` daemon
+   * calls and an ordinary agent session never does — so someone claiming and messaging
+   * all day showed as "seen earlier" forever, indistinguishable from someone who left.
+   * Any authenticated tool call is proof of life.
+   */
+  touchAgent(agentId: string, repo: string, repoId?: string, projectId?: string): void {
+    if (!agentId || !repo) return;
+    this.db
+      .prepare(
+        `INSERT INTO workers (agentId,repo,repoKey,runner,status,lastSeen) VALUES (?,?,?,'',?,?)
+         ON CONFLICT(agentId,repo) DO UPDATE SET lastSeen=excluded.lastSeen,
+           repoKey=excluded.repoKey`,
+      )
+      .run(agentId, repo, resolveRepoKey(repoId, repo, projectId), "ok", this.now());
+  }
+
   heartbeatWorker(input: {
     agentId: string;
     repo: string;
+    repoId?: string;
+    projectId?: string;
     runner: string;
     status?: Worker["status"];
   }): void {
     this.db
       .prepare(
-        `INSERT INTO workers (agentId,repo,runner,status,lastSeen) VALUES (?,?,?,?,?)
+        `INSERT INTO workers (agentId,repo,repoKey,runner,status,lastSeen) VALUES (?,?,?,?,?,?)
          ON CONFLICT(agentId,repo) DO UPDATE SET runner=excluded.runner,
            status=excluded.status, lastSeen=excluded.lastSeen`,
       )
-      .run(input.agentId, input.repo, input.runner, input.status ?? "ok", this.now());
+      .run(
+        input.agentId,
+        input.repo,
+        resolveRepoKey(input.repoId, input.repo, input.projectId),
+        input.runner,
+        input.status ?? "ok",
+        this.now(),
+      );
   }
 
   /** Workers seen within `windowMs` (online), newest first. */
@@ -838,6 +910,9 @@ export class TowerStore {
     author: string;
     tags: string[];
     relatedFiles: string[];
+    repo?: string;
+    repoId?: string;
+    projectId?: string;
   }): Decision {
     const decision: Decision = {
       id: randomUUID(),
@@ -850,7 +925,8 @@ export class TowerStore {
     };
     this.db
       .prepare(
-        `INSERT INTO decisions (id,title,body,author,tags,relatedFiles,createdAt) VALUES (?,?,?,?,?,?,?)`,
+        `INSERT INTO decisions (id,title,body,author,tags,relatedFiles,createdAt,repo,repoKey)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         decision.id,
@@ -860,14 +936,27 @@ export class TowerStore {
         JSON.stringify(decision.tags),
         JSON.stringify(decision.relatedFiles),
         decision.createdAt,
+        input.repo ?? null,
+        input.repo ? resolveRepoKey(input.repoId, input.repo, input.projectId) : null,
       );
     return decision;
   }
 
   getDecisions(filter: GetDecisionsInput = {}): Decision[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM decisions ORDER BY createdAt DESC`)
-      .all() as unknown as DecisionRow[];
+    // Scope to the caller's project when they name one. Decisions used to be global on a
+    // shared server, so one team's architecture notes surfaced in another team's recall —
+    // the same silent cross-partition leak 0.10.0 fixed for claims, one table over.
+    // Rows written before scoping existed have no repoKey and stay visible to everyone,
+    // which is what they already were.
+    const rows = (filter.repo
+      ? this.db
+          .prepare(
+            `SELECT * FROM decisions WHERE repoKey = ? OR repoKey IS NULL ORDER BY createdAt DESC`,
+          )
+          .all(resolveRepoKey(filter.repoId, filter.repo, filter.projectId))
+      : this.db
+          .prepare(`SELECT * FROM decisions ORDER BY createdAt DESC`)
+          .all()) as unknown as DecisionRow[];
     let decisions = rows.map(rowToDecision);
     if (filter.query) {
       const q = filter.query.toLowerCase();

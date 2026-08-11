@@ -50,10 +50,44 @@ export function normalizeRepoUrl(url: string): string {
  * This is the single chokepoint: if a code path touches claims, messages, tasks or
  * decisions, it resolves its key here rather than comparing raw strings.
  */
-export function resolveRepoKey(repoId: string | undefined, repo: string): string {
+export function resolveRepoKey(
+  repoId: string | undefined,
+  repo: string,
+  projectId?: string,
+): string {
+  // A hand-set projectId beats everything: it is the escape hatch for teams whose
+  // clones share no git history at all (vendored copies, non-git directories).
+  const project = (projectId ?? "").trim();
+  if (project !== "") return `project:${project.toLowerCase()}`;
   const id = (repoId ?? "").trim();
   if (id !== "") return id.toLowerCase();
   return normalizeRepoUrl(repo);
+}
+
+/**
+ * The `owner/name` of a remote, or undefined when the string isn't shaped like one.
+ * Used only to *warn* about a possible fork split — never to partition, because two
+ * unrelated teams can both own a repo called `api`.
+ */
+export function repoSlug(repo: string): { owner: string; name: string } | undefined {
+  const normalized = normalizeRepoUrl(repo);
+  const parts = normalized.split("/").filter(Boolean);
+  const name = parts[parts.length - 1];
+  const owner = parts[parts.length - 2];
+  if (!name || !owner) return undefined;
+  return { owner, name };
+}
+
+/**
+ * True when two repo strings name the same project under different owners — the
+ * fork-vs-upstream case that silently split a real two-agent session. Same owner
+ * *and* name is not a split; it is the same repo spelled two ways.
+ */
+export function looksLikeForkSplit(a: string, b: string): boolean {
+  const left = repoSlug(a);
+  const right = repoSlug(b);
+  if (!left || !right) return false;
+  return left.name === right.name && left.owner !== right.owner;
 }
 
 /** A 40-char hex SHA-1, or the 64-char SHA-256 git is moving to. */

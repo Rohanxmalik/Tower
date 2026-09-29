@@ -1,0 +1,36 @@
+{
+  "name": "tower-anywhere",
+  "version": "0.1.0",
+  "description": "Claim-before-you-edit for teams whose work isn't code. Any named artifact — a campaign brief, a content calendar, a runbook — coordinated through a Tower server over MCP.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "coordination",
+    "marketing"
+  ],
+  "bin": {
+    "tower-anywhere": "dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.9"
+  }
+}

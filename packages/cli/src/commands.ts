@@ -155,7 +155,25 @@ export const CLAUDE_HOOKS = {
  * enforces nothing — which made "three enforcement layers" true of the code and false of
  * every actual install.
  */
+/** One of the five scripts. Present only in a clone of Tower — the npm package ships
+ * `dist/` alone, and the hook entries reference `hooks/*.mjs` by relative path. */
+const HOOK_SCRIPT = join("hooks", "pretooluse-tower.mjs");
+
 export function installClaudeHooks(cwd: string, out: Writer = stdout): void {
+  // Writing these from the npm package leaves five hooks pointing at files that do not
+  // exist. Nothing errors, so the user is told "installed" and believes a conflicting
+  // edit will be blocked. For an enforcement feature that is the worst possible outcome,
+  // so refuse rather than write config that cannot work.
+  if (!existsSync(join(cwd, HOOK_SCRIPT))) {
+    out(`⚠️  Skipped the Claude Code hooks — ${HOOK_SCRIPT} is not in this directory.`);
+    out(`   The five hook scripts live in a clone of Tower, not in the npm package.`);
+    out(`   Installed from here they would point at nothing, and the hook that blocks a`);
+    out(`   conflicting edit would never fire. To use them:`);
+    out(`     git clone https://github.com/Rohanxmalik/Tower && cd Tower`);
+    out(`     npm install && npm run build && npx tower-mcp init --hooks`);
+    out(`   The git pre-commit guard needs no clone: tower-mcp setup --hooks`);
+    return;
+  }
   const dir = join(cwd, ".claude");
   const path = join(dir, "settings.json");
   let settings: { hooks?: Record<string, unknown> } = {};

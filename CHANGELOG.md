@@ -32,6 +32,24 @@ and committing their config published a live team token.
   tests had encoded the wrong floor too, including a "healthy machine" fixture pinned to
   v22.5.0.
 
+- **`init --hooks` installed five hooks that could never fire.** The hook scripts live in
+  `hooks/` in a clone; the npm package ships `dist/` only. Run from npm, the command wrote
+  five entries pointing at files that were not there, printed
+  `✔ .claude/settings.json — installed …`, and told the user to run `npm run build` in a
+  project where that script does not exist. Nothing errored, so the `PreToolUse` hook that
+  is supposed to block a conflicting edit simply never ran — and the user had every reason
+  to think they were covered. It now refuses when the scripts are absent and gives the
+  clone-first steps. The git guards, which shell out to `npx -y tower-mcp`, are unaffected
+  and still work straight from the package.
+
+- **The PR collision action had never read a single input.** GitHub exposes an input as
+  `INPUT_<NAME>`, uppercased with _spaces_ mapped to underscores — hyphens are kept. The
+  action mapped hyphens too, so it read `INPUT_GITHUB_TOKEN` while the runner had set
+  `INPUT_GITHUB-TOKEN`; `github-token`, `tower-url` and `tower-token` were all undefined.
+  It failed on the token before reaching any collision logic, caught its own throw, printed
+  `::warning::` and exited 0 — a green check on an action that did nothing. Surfaced by
+  opening the repository's first-ever pull request.
+
 ## 0.10.0 — 2026-08-11
 
 **A fork and its upstream coordinated in separate spaces, in silence.** Two agents on one

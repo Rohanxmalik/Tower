@@ -586,7 +586,36 @@ describe("TWR-01 — stdio serve never writes locally in silence", () => {
 });
 
 describe("T6 — tower init --hooks wires enforcement (REQ-D gap 3)", () => {
+  /** A clone of Tower has the hook scripts; the npm package does not. */
+  const withHookScripts = () => {
+    mkdirSync(join(dir, "hooks"), { recursive: true });
+    writeFileSync(join(dir, "hooks", "pretooluse-tower.mjs"), "// stub");
+  };
+
+  // Run from the npm package there is no hooks/ directory, so every entry written
+  // points at a file that does not exist. Nothing errors and the user is told
+  // "installed" — including for the hook whose entire job is to block a conflicting
+  // edit. Believing you are guarded is worse than knowing you are not.
+  it("writes nothing when the hook scripts are not here, and says why", () => {
+    const { out, lines } = collect();
+    cmdInit(dir, out, { hooks: true });
+    expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
+    const text = lines.join("\n");
+    expect(text).toContain("clone");
+    expect(text).not.toContain("✔ .claude/settings.json");
+  });
+
+  // The old message told everyone to "run `npm run build` once" — in their own project,
+  // where that script does not exist and npm errors with "Missing script: build".
+  it("never says npm run build without saying which directory to run it in", () => {
+    const { out, lines } = collect();
+    cmdInit(dir, out, { hooks: true });
+    const text = lines.join("\n");
+    if (text.includes("npm run build")) expect(text).toContain("git clone");
+  });
+
   it("writes all five hooks into .claude/settings.json", () => {
+    withHookScripts();
     cmdInit(dir, () => {}, { hooks: true });
     const cfg = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8")) as {
       hooks: Record<string, unknown>;
@@ -607,6 +636,7 @@ describe("T6 — tower init --hooks wires enforcement (REQ-D gap 3)", () => {
 
   it("never clobbers a hook the user already wired up", () => {
     mkdirSync(join(dir, ".claude"), { recursive: true });
+    withHookScripts();
     const mine = { hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "mine.mjs" }] }] } };
     writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify(mine));
 
@@ -622,6 +652,7 @@ describe("T6 — tower init --hooks wires enforcement (REQ-D gap 3)", () => {
     mkdirSync(join(dir, ".claude"), { recursive: true });
     writeFileSync(join(dir, ".claude", "settings.json"), "{ not json");
     const { out, lines } = collect();
+    withHookScripts();
     cmdInit(dir, out, { hooks: true });
     expect(readFileSync(join(dir, ".claude", "settings.json"), "utf8")).toBe("{ not json");
     expect(lines.join("\n")).toContain("invalid JSON");

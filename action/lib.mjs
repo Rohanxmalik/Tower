@@ -6,6 +6,17 @@
  * @param {string | undefined} patch
  * @returns {{ start: number; end: number }[]}
  */
+/**
+ * Read an Action input. GitHub exposes inputs as `INPUT_<NAME>`, uppercased with
+ * *spaces* replaced by underscores — hyphens are kept. Mapping `-` to `_` as well
+ * looks harmless and silently breaks every hyphenated input, which is how
+ * `github-token`, `tower-url` and `tower-token` all read as undefined.
+ */
+export function readInput(name, env = process.env) {
+  const v = env[`INPUT_${name.replaceAll(" ", "_").toUpperCase()}`];
+  return v?.trim() || undefined;
+}
+
 export function parsePatchRanges(patch) {
   if (!patch) return [];
   const ranges = [];

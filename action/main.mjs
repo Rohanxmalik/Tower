@@ -2,15 +2,10 @@
 // On every PR event it compares this PR's touched files/lines against every other open
 // PR (and, optionally, live agent claims on a hosted Tower) and upserts one comment.
 import { readFileSync } from "node:fs";
-import { parsePatchRanges, collidePRs, renderReport, MARKER } from "./lib.mjs";
+import { parsePatchRanges, collidePRs, renderReport, MARKER, readInput as input } from "./lib.mjs";
 
 const API = process.env.GITHUB_API_URL || "https://api.github.com";
 const MAX_OTHER_PRS = 30; // API-call budget: enough for small/medium teams
-
-function input(name) {
-  const v = process.env[`INPUT_${name.toUpperCase().replaceAll("-", "_")}`];
-  return v?.trim() || undefined;
-}
 
 async function gh(token, path, init = {}) {
   const res = await fetch(`${API}${path}`, {

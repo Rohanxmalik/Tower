@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePatchRanges, collidePRs, renderReport } from "./lib.mjs";
+import { parsePatchRanges, collidePRs, renderReport, readInput } from "./lib.mjs";
 
 describe("parsePatchRanges", () => {
   it("extracts new-file line ranges from hunk headers", () => {
@@ -68,5 +68,32 @@ describe("renderReport", () => {
   it("renders an all-clear when nothing collides", () => {
     const md = renderReport({ prCollisions: [], liveClaims: [] });
     expect(md).toContain("No collisions");
+  });
+});
+
+describe("readInput", () => {
+  // The action ran green on every PR while doing nothing: GitHub sets
+  // INPUT_GITHUB-TOKEN, the reader looked up INPUT_GITHUB_TOKEN, got undefined, and
+  // main.mjs caught its own "token is required" throw as a ::warning:: and exited 0.
+  it("keeps hyphens, because GitHub does", () => {
+    expect(readInput("github-token", { "INPUT_GITHUB-TOKEN": "ghs_x" })).toBe("ghs_x");
+    expect(readInput("tower-url", { "INPUT_TOWER-URL": "https://t.example" })).toBe(
+      "https://t.example",
+    );
+  });
+
+  it("does not read the underscore spelling GitHub never sets", () => {
+    expect(readInput("github-token", { INPUT_GITHUB_TOKEN: "ghs_x" })).toBeUndefined();
+  });
+
+  it("replaces spaces with underscores, which GitHub does do", () => {
+    expect(readInput("my input", { INPUT_MY_INPUT: "v" })).toBe("v");
+  });
+
+  it("treats blank and whitespace-only as absent, and trims the rest", () => {
+    expect(readInput("a", { INPUT_A: "   " })).toBeUndefined();
+    expect(readInput("a", { INPUT_A: "" })).toBeUndefined();
+    expect(readInput("a", {})).toBeUndefined();
+    expect(readInput("a", { INPUT_A: "  v  " })).toBe("v");
   });
 });

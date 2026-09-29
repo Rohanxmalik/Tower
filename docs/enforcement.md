@@ -37,16 +37,19 @@ For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 
 ## Layer 2: the Claude Code PreToolUse hook
 
-> **Install every hook with one command:**
+> **These five hooks need a clone of Tower, not the npm package.** The scripts live in
+> `hooks/` and import the built CLI by relative path; the published `tower-mcp` package
+> ships `dist/` only. Run `init --hooks` from npm alone and you get five entries pointing
+> at files that are not there — no error, just five hooks that never fire.
 >
 > ```bash
-> npx -y tower-mcp init --hooks
+> git clone https://github.com/Rohanxmalik/Tower && cd Tower
+> npm install && npm run build
+> npx tower-mcp init --hooks        # from the clone
 > ```
 >
 > That writes all five hooks into `.claude/settings.json`, merging with anything you
-> already have and never replacing a hook you wired up yourself. The hook scripts live in
-> `hooks/` in a clone of Tower — they import the built CLI by relative path, so run
-> `npm run build` once.
+> already have and never replacing a hook you wired up yourself.
 >
 > **Since 0.9.0 the hooks fail open _loudly_.** They still never block editing when Tower
 > is unreachable — but they say so on stderr, because a silent pass was indistinguishable

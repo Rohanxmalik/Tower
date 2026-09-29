@@ -43,6 +43,15 @@ Using Claude Code? `npx -y tower-mcp init --hooks` wires five hooks into
 honest about who is here and what they hold. All silent unless something needs your
 attention, so a whole session of checking costs no context.
 
+⚠️ **The Claude Code hooks need a clone of Tower today.** This npm package ships the CLI
+only, so the five hook entries point at `hooks/*.mjs` files it does not contain — written
+from npm alone they resolve to nothing and every hook silently does nothing. Until the
+scripts ship here, clone
+[Rohanxmalik/Tower](https://github.com/Rohanxmalik/Tower), run `npm install && npm run
+build` there, and run `init --hooks` from that clone. The git pre-commit and post-commit
+guards have no such requirement — they shell out to `npx -y tower-mcp` and work straight
+from this package.
+
 Joining a team server instead:
 
 ```bash

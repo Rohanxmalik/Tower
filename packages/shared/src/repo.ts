@@ -6,7 +6,7 @@
  *
  * 1. The same repo spelled differently (`git@…` vs `https://…`, trailing `.git`,
  *    different casing) split one team into isolated groups.
- * 2. A **fork** (`mayank-9031/genos-ai`) and its upstream (`Rohanxmalik/genos-ai`)
+ * 2. A **fork** (`bob/acme-api`) and its upstream (`Rohanxmalik/acme-api`)
  *    were treated as unrelated projects, even though they share a codebase and
  *    target the same branch by pull request. No amount of string normalization
  *    fixes that — the names have nothing in common.

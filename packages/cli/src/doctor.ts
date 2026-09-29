@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { TOWER_VERSION } from "@tower/shared";
 import type { Writer } from "./commands.js";
+import { requireModernNode } from "./hush.js";
 
 /**
  * `tower doctor` — setup diagnostics. Answers "why doesn't delegation work on this
@@ -67,17 +68,20 @@ export async function runChecks(
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
 
-  // Node ≥ 22.5 — that's the release the built-in node:sqlite landed in.
-  const [, maj = "0", min = "0"] = /^v?(\d+)\.(\d+)/.exec(deps.nodeVersion) ?? [];
-  const major = Number(maj);
-  const modernNode = major > 22 || (major === 22 && Number(min) >= 5);
+  // One source of truth with the runtime guard. doctor used to carry its own `>= 22.5`
+  // copy, which passed 22.5-22.12 and 23.0-23.3 — the windows where node:sqlite is still
+  // behind a flag — and then the real command died. A diagnostic that green-lights a
+  // broken machine is worse than no diagnostic.
+  const node = requireModernNode(deps.nodeVersion.replace(/^v/, ""));
   results.push(
-    modernNode
-      ? { name: "node", level: "ok", detail: `${deps.nodeVersion} (needs ≥22.5)` }
+    node.ok
+      ? { name: "node", level: "ok", detail: `${deps.nodeVersion} (needs 22.13+, 23.4+ or 24+)` }
       : {
           name: "node",
           level: "fail",
-          detail: `${deps.nodeVersion} — Tower needs Node 22.5+ (built-in SQLite). https://nodejs.org`,
+          detail:
+            `${deps.nodeVersion} — Tower needs Node 22.13+, 23.4+ or 24+ (built-in SQLite). ` +
+            `https://nodejs.org`,
         },
   );
 

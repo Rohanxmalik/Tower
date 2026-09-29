@@ -84,7 +84,7 @@ describe("T7 — semantic duplicate is caught despite different file paths (DEV-
     });
 
     const matches = matchIntent("write a blog post about prompt injection", [held], {
-      agentId: "claude-mayank",
+      agentId: "claude-bob",
     });
 
     expect(matches).toHaveLength(1);

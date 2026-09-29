@@ -111,7 +111,7 @@ const SNAPSHOT = {
     {
       id: "c1",
       agentId: "alice",
-      repo: "github.com/a/nimbus-demo",
+      repo: "github.com/a/acme-web",
       branch: "main",
       files: ["app.js"],
       symbols: [{ file: "app.js", symbol: "validateEmail" }],
@@ -127,7 +127,7 @@ const SNAPSHOT = {
   tasks: [
     {
       id: "3a3d46c4-aaaa",
-      repo: "github.com/a/nimbus-demo",
+      repo: "github.com/a/acme-web",
       fromAgentId: "alice",
       toAgentId: "bob",
       assigneeAgentId: "bob",

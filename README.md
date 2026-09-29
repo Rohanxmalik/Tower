@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.9.0 — early, building in public.** Everything below works end-to-end today,
+> Status: **v0.10.1 — early, building in public.** Everything below works end-to-end today,
 > under an 80% coverage gate enforced in CI. What's shipped and what's next:
 > [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
@@ -242,7 +242,7 @@ So before researching anything, an agent says what it's about to do:
 ```
 propose_intent  "write a blog post about prompt injection"
 
-⚠️  claude-mayank is already on this (2m ago):
+⚠️  claude-bob is already on this (2m ago):
     "AI agent security / prompt injection"
     → stand down, or pick something else
 ```

@@ -39,8 +39,8 @@ describe("resolveRepoKey", () => {
   it("prefers repoId, so a fork and its upstream share one partition", () => {
     // T1's precondition — the two names have nothing in common, but the root
     // commit is identical because a fork inherits the whole history.
-    const upstream = resolveRepoKey(ROOT, "github.com/Rohanxmalik/genos-ai");
-    const fork = resolveRepoKey(ROOT, "github.com/mayank-9031/genos-ai");
+    const upstream = resolveRepoKey(ROOT, "github.com/Rohanxmalik/acme-api");
+    const fork = resolveRepoKey(ROOT, "github.com/bob/acme-api");
     expect(upstream).toBe(fork);
     expect(upstream).toBe(ROOT);
   });
@@ -118,19 +118,16 @@ describe("projectId — the escape hatch that beats everything (0.10.0)", () => 
 
 describe("looksLikeForkSplit — warn, never partition", () => {
   it("flags a fork and its upstream: same name, different owner", () => {
-    expect(
-      looksLikeForkSplit(
-        "github.com/rohanxmalik/nimbus-demo",
-        "github.com/sakshamdubey19/nimbus-demo",
-      ),
-    ).toBe(true);
+    expect(looksLikeForkSplit("github.com/rohanxmalik/acme-web", "github.com/dana/acme-web")).toBe(
+      true,
+    );
   });
 
   it("flags it across url spellings", () => {
     expect(
       looksLikeForkSplit(
-        "https://github.com/rohanxmalik/nimbus-demo.git",
-        "git@github.com:saksham/nimbus-demo",
+        "https://github.com/rohanxmalik/acme-web.git",
+        "git@github.com:dana/acme-web",
       ),
     ).toBe(true);
   });

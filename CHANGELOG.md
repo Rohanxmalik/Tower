@@ -24,10 +24,18 @@ and committing their config published a live team token.
   compute `repoId`, which is how a fork and its upstream split in silence. It now shows
   the `serve --remote` proxy form.
 
+- **`tower doctor` green-lit machines Tower cannot run on.** 0.9.1 fixed the Node floor in
+  `requireModernNode`, but `doctor` carried its own copy of the naive `>= 22.5` check - so
+  the command whose entire job is "is this machine ready?" passed 22.5-22.12 and 23.0-23.3,
+  the two windows where `node:sqlite` is still behind a flag, and the real command then
+  died on `ERR_UNKNOWN_BUILTIN_MODULE`. It now calls `requireModernNode` directly. Its
+  tests had encoded the wrong floor too, including a "healthy machine" fixture pinned to
+  v22.5.0.
+
 ## 0.10.0 — 2026-08-11
 
 **A fork and its upstream coordinated in separate spaces, in silence.** Two agents on one
-project — one on `rohanxmalik/nimbus-demo`, one on their own fork — both claimed the same
+project — one on `rohanxmalik/acme-web`, one on their own fork — both claimed the same
 work, both got `recommendation: "proceed"`, and no conflict was ever reported. Nothing
 errored. Found in a live two-machine session.
 

@@ -23,7 +23,7 @@ describe("T1 — a fork and its upstream share one coordination space (REQ-C / T
     // Exactly the observed failure: these two agents were mutually invisible.
     const upstream = svc.claimIntent({
       agentId: "claude-code-rohan",
-      repo: "github.com/Rohanxmalik/genos-ai",
+      repo: "github.com/Rohanxmalik/acme-api",
       repoId: ROOT,
       branch: "main",
       files: [],
@@ -33,8 +33,8 @@ describe("T1 — a fork and its upstream share one coordination space (REQ-C / T
     expect(upstream.claimId).not.toBeNull();
 
     const fork = svc.claimIntent({
-      agentId: "claude-mayank",
-      repo: "github.com/mayank-9031/genos-ai", // a fork — different owner entirely
+      agentId: "claude-bob",
+      repo: "github.com/bob/acme-api", // a fork — different owner entirely
       repoId: ROOT,
       branch: "main",
       files: [],
@@ -361,14 +361,14 @@ describe("T9 — a fork split warns instead of proceeding in silence (0.10.0)", 
     service.claimIntent({
       ...base,
       agentId: "alice",
-      repo: "github.com/rohanxmalik/nimbus-demo",
+      repo: "github.com/rohanxmalik/acme-web",
       repoId: "a".repeat(40),
     });
     const bob = service.claimIntent({
       ...base,
       files: ["src/b.ts"],
       agentId: "bob",
-      repo: "github.com/sakshamdubey19/nimbus-demo",
+      repo: "github.com/dana/acme-web",
       repoId: "b".repeat(40),
     });
     expect(bob.projectWarning).toBeDefined();

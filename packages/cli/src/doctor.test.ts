@@ -62,7 +62,7 @@ function deps(over: Partial<DoctorDeps> = {}): DoctorDeps {
   return {
     exec: okExec,
     fetchImpl: fakeFetch(TOWER_VERSION),
-    nodeVersion: "v22.5.0",
+    nodeVersion: "v22.13.0",
     env: {},
     ...over,
   };
@@ -85,14 +85,23 @@ describe("runChecks", () => {
     expect(byName(rs, "node")?.detail).toContain("22");
   });
 
-  it("fails on 22.0-22.4 — node:sqlite only landed in 22.5", async () => {
-    for (const v of ["v22.0.0", "v22.4.1"]) {
+  // 0.9.1 fixed this floor in requireModernNode but doctor kept its own copy of the
+  // naive >= 22.5 test, so the command whose entire job is "check this machine" passed
+  // the two windows where node:sqlite is still behind a flag, and the real command then
+  // died on ERR_UNKNOWN_BUILTIN_MODULE.
+  it("fails across every window where node:sqlite is still flagged", async () => {
+    for (const v of ["v22.0.0", "v22.4.1", "v22.5.0", "v22.12.0", "v23.0.0", "v23.3.0"]) {
       const rs = await runChecks({}, deps({ nodeVersion: v }));
       expect(byName(rs, "node")?.level, v).toBe("fail");
-      expect(byName(rs, "node")?.detail, v).toContain("22.5");
+      expect(byName(rs, "node")?.detail, v).toContain("22.13");
     }
-    const ok = await runChecks({}, deps({ nodeVersion: "v22.5.0" }));
-    expect(byName(ok, "node")?.level).toBe("ok");
+  });
+
+  it("passes only where node:sqlite is unflagged", async () => {
+    for (const v of ["v22.13.0", "v23.4.0", "v24.0.0"]) {
+      const rs = await runChecks({}, deps({ nodeVersion: v }));
+      expect(byName(rs, "node")?.level, v).toBe("ok");
+    }
   });
 
   it("fails when not inside a git repository", async () => {

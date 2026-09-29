@@ -4,6 +4,12 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 *.log
+*.stackdump
+*.dmp
+*.orig
+*.rej
+*.bak
+Thumbs.db
 
 # Tower local state
 .tower/tower.db

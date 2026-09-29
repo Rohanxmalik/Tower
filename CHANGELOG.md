@@ -3,6 +3,27 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.10.1 - 2026-09-30
+
+**`tower setup --url ... --token ...` wrote your team token into a file teams commit.**
+0.10.0 moved the token out of an `Authorization` header and into the `env` block of
+`.mcp.json`, and a test named "keeps the token out of an Authorization header written to
+disk" locked that in. Both were true. Neither mattered: `.mcp.json` is shared project
+config - Tower's own repo tracks it - so anyone following the documented setup command
+and committing their config published a live team token.
+
+### Fixed
+
+- **`setup --token` now adds `.mcp.json` to `.gitignore`** and says plainly that the file
+  holds a secret, including the `git rm --cached .mcp.json` needed when git already tracks
+  it. Without a token the file stays out of `.gitignore`, because then it is ordinary
+  shared config a team is right to commit.
+- **The local-mode warning no longer recommends the bug 0.10.0 fixed.** When `TOWER_URL`
+  was set, `serve` refused to start and told you to point your agent at a
+  `"type": "http"` entry - the exact shape that leaves no process on your machine to
+  compute `repoId`, which is how a fork and its upstream split in silence. It now shows
+  the `serve --remote` proxy form.
+
 ## 0.10.0 — 2026-08-11
 
 **A fork and its upstream coordinated in separate spaces, in silence.** Two agents on one

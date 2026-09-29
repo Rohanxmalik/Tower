@@ -422,6 +422,35 @@ describe("cmdSetup (one-command onboarding)", () => {
     expect(raw).not.toContain("Bearer");
   });
 
+  // The token is out of the header but still in the file, and .mcp.json is the config
+  // teams commit — Tower's own repo tracks it. Without this, following the documented
+  // setup command publishes your team token.
+  it("gitignores .mcp.json when it was given a token to write", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
+    const ignored = readFileSync(join(dir, ".gitignore"), "utf8");
+    expect(ignored).toContain(".mcp.json");
+  });
+
+  it("says out loud that .mcp.json now holds a secret, and how to untrack it", () => {
+    const { out, lines } = collect();
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, out);
+    const text = lines.join("\n");
+    expect(text).toContain("secret");
+    expect(text).toContain("git rm --cached .mcp.json");
+  });
+
+  it("leaves .mcp.json shareable when there is no token in it", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp" }, () => {});
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).not.toContain(".mcp.json");
+  });
+
+  it("does not add .mcp.json twice when setup runs again", () => {
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
+    cmdSetup(dir, { url: "https://tower.example.com/mcp", token: "s3cret" }, () => {});
+    const ignored = readFileSync(join(dir, ".gitignore"), "utf8");
+    expect(ignored.match(/^\.mcp\.json$/gm)?.length).toBe(1);
+  });
+
   it("omits the env block in team mode when no token is given", () => {
     cmdSetup(dir, { url: "https://tower.example.com/mcp" }, () => {});
     const config = readJson(join(dir, ".mcp.json"));
@@ -528,6 +557,16 @@ describe("TWR-01 — stdio serve never writes locally in silence", () => {
     expect(text).toContain(".tower/tower.db");
     expect(text).toContain(REMOTE);
     expect(text).toContain("tower-mcp setup --url");
+  });
+
+  // The warning used to recommend a direct type:"http" entry — the exact shape that
+  // leaves no process on this machine to compute repoId, which is how a fork and its
+  // upstream split in silence. Recommending the bug 0.10.0 fixed is worse than silence.
+  it("recommends the local proxy, never a direct http entry", () => {
+    const text = localModeWarning(REMOTE);
+    expect(text).toContain("--remote");
+    expect(text).not.toContain('"type": "http"');
+    expect(text).not.toContain("Authorization");
   });
 
   it("refuses when nobody can be asked", async () => {

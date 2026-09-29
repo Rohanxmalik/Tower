@@ -239,6 +239,14 @@ function setupMcpJson(cwd: string, opts: SetupOpts, out: Writer): void {
   };
   writeFileSync(path, JSON.stringify(merged, null, 2) + "\n");
   out(`✔ .mcp.json — tower server ${opts.url ? `→ ${opts.url}` : "(local, via npx)"}`);
+  if (opts.token) {
+    // .mcp.json is shared project config - teams commit it, and Tower's own repo
+    // tracks it. Keeping the token out of an Authorization header is not enough when
+    // the file itself ends up on a public remote.
+    out(`⚠️  .mcp.json now holds your team token. That file is a secret, not shareable`);
+    out(`   config - added to .gitignore. If git already tracks it, untrack it now:`);
+    out(`     git rm --cached .mcp.json`);
+  }
 }
 
 /** Append the claim-first rule to a rules file; idempotent via the claim_intent marker. */
@@ -277,16 +285,40 @@ function installHook(hooksDir: string, name: string, content: string, out: Write
  * db there, and without this the next `git status` shows an unexplained binary.
  * Idempotent: never adds the entry twice, never rewrites an unrelated line.
  */
-export function setupGitignore(cwd: string, out: Writer = stdout): void {
+function ensureGitignored(
+  cwd: string,
+  entry: string,
+  present: RegExp,
+  comment: string,
+  out: Writer,
+): void {
   const path = join(cwd, ".gitignore");
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-  if (/^\.tower\/?\s*$/m.test(existing)) return;
+  if (present.test(existing)) return;
   const prefix = existing === "" || existing.endsWith("\n") ? "" : "\n";
-  writeFileSync(
-    path,
-    `${existing}${prefix}\n# Tower's local state (claims, messages, tasks)\n.tower/\n`,
+  writeFileSync(path, `${existing}${prefix}\n${comment}\n${entry}\n`);
+  out(`✔ .gitignore — added ${entry}`);
+}
+
+export function setupGitignore(cwd: string, out: Writer = stdout, opts: SetupOpts = {}): void {
+  ensureGitignored(
+    cwd,
+    ".tower/",
+    /^\.tower\/?\s*$/m,
+    "# Tower's local state (claims, messages, tasks)",
+    out,
   );
-  out(`✔ .gitignore — added .tower/`);
+  // Only when a token was written: without one, .mcp.json is ordinary shared config
+  // and a team is right to commit it.
+  if (opts.token) {
+    ensureGitignored(
+      cwd,
+      ".mcp.json",
+      /^\.mcp\.json\s*$/m,
+      "# Holds your Tower team token — a secret, not shareable config",
+      out,
+    );
+  }
 }
 
 /** One-command onboarding: .mcp.json + agent rules (+ git hooks with --hooks). */
@@ -294,7 +326,7 @@ export function cmdSetup(cwd: string, opts: SetupOpts, out: Writer = stdout): vo
   setupMcpJson(cwd, opts, out);
   setupRulesFile(cwd, "CLAUDE.md", true, out);
   setupRulesFile(cwd, "AGENTS.md", false, out);
-  setupGitignore(cwd, out);
+  setupGitignore(cwd, out, opts);
   if (opts.hooks) {
     const hooksDir = join(cwd, ".git", "hooks");
     if (existsSync(hooksDir)) {
@@ -578,12 +610,16 @@ export function localModeWarning(url: string): string {
     "   Everything written through it would go to .tower/tower.db on this machine,",
     "   NOT to the shared Tower - silently. Your teammates would see nothing.",
     "",
-    "   Point your agent at the hosted server directly instead:",
+    "   Run the client here as a proxy instead, so this repo's identity is computed",
+    "   on this machine and stamped onto every call:",
     "",
-    '     "tower": { "type": "http", "url": "' + url + '",',
-    '                "headers": { "Authorization": "Bearer <TOWER_TOKEN>" } }',
+    '     "tower": { "command": "npx",',
+    '                "args": ["-y", "tower-mcp", "serve", "--remote", "' + url + '"] }',
     "",
     "   Or run: npx -y tower-mcp setup --url " + url + " --token <TOWER_TOKEN>",
+    "",
+    "   Do not point the agent straight at the URL. A direct entry skips this machine,",
+    "   so nothing computes repoId and a fork and its upstream coordinate apart.",
   ].join("\n");
 }
 

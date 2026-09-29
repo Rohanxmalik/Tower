@@ -21,6 +21,7 @@ team-claude.md
 # Internal strategy docs — keep out of the public repo
 FUTURE.md
 TECHNICAL-BRIEF.md
+docs/competitive-buzz.md
 
 # Playwright MCP scratch output
 .playwright-mcp/
@@ -32,6 +33,9 @@ videos/
 LAUNCH-POSTS.md
 GROWTH-PLAYBOOK.md
 LAUNCH-DAY.md
+LAUNCH.md
+TESTING-CONTEXT.md
+launch/
 investor docs/
 ISSUES/
 sheet3.png

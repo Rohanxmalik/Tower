@@ -12,7 +12,6 @@ import {
 import type {
   SymbolRef,
   Claim,
-  CheckCollisionOutput,
   ClaimIntentOutput,
   CompleteClaimOutput,
   Conflict,
@@ -77,7 +76,7 @@ export async function resolveSymbols(
   files: string[],
   symbolStrings: string[],
 ): Promise<SymbolRef[]> {
-  if (symbolStrings.length > 0) return parseSymbols(symbolStrings);
+  if (symbolStrings.length > 0) return fingerprinted(cwd, parseSymbols(symbolStrings));
   const out: SymbolRef[] = [];
   for (const file of files) {
     const abs = join(cwd, file);
@@ -107,6 +106,27 @@ export interface ClaimArgs {
   force?: boolean;
 }
 
+/**
+ * Attach each named symbol's declaration fingerprint as it stands on disk. Without it a
+ * claim from the CLI or a hook could never be compared: no hard `write_read` when a read
+ * moved, no heartbeat invalidation, no landed-signature notice on complete. A symbol that
+ * is not found, a whole-file entry, or a missing file is left exactly as named.
+ */
+async function fingerprinted(cwd: string, named: SymbolRef[]): Promise<SymbolRef[]> {
+  const byFile = new Map<string, SymbolRef[]>();
+  for (const file of new Set(named.filter((n) => n.symbol !== "").map((n) => n.file))) {
+    const abs = join(cwd, file);
+    if (!existsSync(abs)) continue;
+    byFile.set(file, await extractor.extract(file, readFileSync(abs, "utf8")));
+  }
+  return named.map((n) => {
+    const found = byFile.get(n.file)?.find((s) => s.symbol === n.symbol);
+    return found?.sig
+      ? { ...n, sig: found.sig, ...(found.sigText ? { sigText: found.sigText } : {}) }
+      : n;
+  });
+}
+
 function parseSymbols(entries: string[]): { file: string; symbol: string }[] {
   return entries.map((e) => {
     const hash = e.lastIndexOf("#");
@@ -128,6 +148,14 @@ export function cmdInit(cwd: string, out: Writer = stdout, opts: { hooks?: boole
   if (opts.hooks) installClaudeHooks(cwd, out);
   out("");
   out(MCP_SNIPPET);
+  // The same text `setup` writes, so the two onboarding paths can never teach different rules.
+  out(
+    towerRule()
+      .trim()
+      .split("\n")
+      .map((l) => (l ? `  ${l}` : l))
+      .join("\n"),
+  );
 }
 
 /** The Claude Code hook block Tower installs. Silent on the happy path, so a whole
@@ -189,25 +217,67 @@ export function installClaudeHooks(cwd: string, out: Writer = stdout): void {
     }
   }
 
-  // Never clobber a hook the user already wired up for one of these events.
-  const existing = settings.hooks ?? {};
-  const added: string[] = [];
-  const merged: Record<string, unknown> = { ...existing };
-  for (const [event, block] of Object.entries(CLAUDE_HOOKS)) {
-    if (existing[event]) continue;
-    merged[event] = block;
-    added.push(event);
-  }
-
-  if (added.length === 0) {
+  const { hooks, added, updated } = mergeTowerHooks(settings.hooks ?? {});
+  if (added.length === 0 && updated.length === 0) {
     out(`• .claude/settings.json already wires every Tower hook — skipped.`);
     return;
   }
 
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path, JSON.stringify({ ...settings, hooks: merged }, null, 2) + "\n");
-  out(`✔ .claude/settings.json — installed ${added.join(", ")}`);
+  writeFileSync(path, JSON.stringify({ ...settings, hooks }, null, 2) + "\n");
+  if (added.length) out(`✔ .claude/settings.json — installed ${added.join(", ")}`);
+  if (updated.length)
+    out(`✔ .claude/settings.json — updated ${updated.join(", ")} to this version`);
   out("  (run `npm run build` once so the hooks can load the CLI)");
+}
+
+type HookGroup = { matcher?: string; hooks?: { command?: string }[] };
+
+/**
+ * Merge Tower's hook groups into existing settings. The user's own hooks are never
+ * changed: a group holding only Tower's command is brought up to date (an older install
+ * kept a matcher without `Read` forever), Tower's command is moved out of a group it
+ * shares with the user's hooks rather than changing that group's matcher, and Tower's
+ * group is appended beside the user's when the event has only theirs.
+ */
+export function mergeTowerHooks(existing: Record<string, unknown>): {
+  hooks: Record<string, unknown>;
+  added: string[];
+  updated: string[];
+} {
+  const hooks: Record<string, unknown> = { ...existing };
+  const added: string[] = [];
+  const updated: string[] = [];
+  for (const [event, blocks] of Object.entries(CLAUDE_HOOKS)) {
+    const tower = blocks[0];
+    const command = tower.hooks[0].command;
+    const current = existing[event];
+    if (current === undefined) {
+      hooks[event] = blocks;
+      added.push(event);
+      continue;
+    }
+    if (!Array.isArray(current)) continue; // not a shape we understand — leave it alone
+    const groups = current as HookGroup[];
+    const isOurs = (g: HookGroup) => (g.hooks ?? []).some((h) => h.command === command);
+    const ownOnly = (g: HookGroup) => (g.hooks ?? []).every((h) => h.command === command);
+    const at = groups.findIndex(isOurs);
+    if (at < 0) {
+      hooks[event] = [...groups, tower];
+      added.push(event);
+    } else if (!ownOnly(groups[at]!)) {
+      const theirs = {
+        ...groups[at],
+        hooks: groups[at]!.hooks!.filter((h) => h.command !== command),
+      };
+      hooks[event] = [...groups.slice(0, at), theirs, ...groups.slice(at + 1), tower];
+      updated.push(event);
+    } else if (JSON.stringify(groups[at]) !== JSON.stringify(tower)) {
+      hooks[event] = groups.map((g, i) => (i === at ? tower : g));
+      updated.push(event);
+    }
+  }
+  return { hooks, added, updated };
 }
 
 export interface SetupOpts {
@@ -425,9 +495,14 @@ export async function cmdClaim(
 }
 
 /**
- * Enforcement primitive for the PreToolUse hook: check for collisions on the target
- * file(s). If a **hard** collision exists, print it and return `true` (caller blocks the
- * edit) WITHOUT registering a claim. Otherwise register the claim and return `false`.
+ * Enforcement primitive for the PreToolUse hook and the pre-commit guard. Returns `true`
+ * (caller blocks the edit) on a hard collision, registering nothing; otherwise claims.
+ *
+ * It goes straight through `claim_intent` — a refusal there registers nothing, so no
+ * separate pre-check is needed. The pre-check this replaced ran `check_collision`, which
+ * cannot register a waiter, returns no `alternatives`, ignores the agent's recorded
+ * reads and is never counted: a hook-blocked agent was promised a message it never got,
+ * and a claim refused over a moved read was dropped while the edit went ahead unclaimed.
  */
 export async function cmdGuard(
   cwd: string,
@@ -437,65 +512,61 @@ export async function cmdGuard(
 ): Promise<boolean> {
   const symbols = await resolveSymbols(cwd, args.files, args.symbols);
   const repoId = args.repoId ?? gitRepoId(cwd);
-  const scope = {
+  const intent = {
     agentId: args.agentId,
     repo: args.repo,
     ...(repoId ? { repoId } : {}),
     branch: args.branch,
     files: args.files,
     symbols,
-  };
-  const intent = {
-    ...scope,
     purpose: args.purpose,
     ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
+    ...(args.force ? { force: true } : {}),
   };
+  const where = (url?: string): string => ` for ${args.agentId}${url ? ` on ${url}` : ""}`;
 
-  const cleared = (claimId: string, where: string): void =>
-    out(`✅ CLEAR — no conflicting claims. Registered claim ${claimId.slice(0, 8)}${where}.`);
-
-  const forced = (n: number): void =>
-    out(`⚠️  FORCED past ${n} hard conflict(s) — claim registered; you own the merge risk.`);
+  /** Shared by both transports: print the verdict, return whether to block. */
+  const verdict = (
+    res: ClaimIntentOutput,
+    lookup: (claimId: string) => Claim | undefined,
+    url?: string,
+  ): boolean => {
+    const hard = res.conflicts.filter((c) => c.severity === "hard");
+    if (res.claimId) writeClaimId(cwd, res.claimId);
+    if (hard.length === 0 && res.claimId) {
+      out(
+        `✅ CLEAR — no conflicting claims. Registered claim ${res.claimId.slice(0, 8)}${where(url)}.`,
+      );
+      return false;
+    }
+    out(renderConflicts(res.conflicts, lookup));
+    if (res.claimId) {
+      out(
+        `⚠️  FORCED past ${hard.length} hard conflict(s) — claim registered; you own the merge risk.`,
+      );
+      return false;
+    }
+    if (res.alternatives) out(renderAlternatives(res.alternatives));
+    return true; // refused: block, and nothing was registered for the edit we're stopping
+  };
 
   const remote = remoteConfig();
   if (remote) {
     return withRemote(remote, async (call) => {
-      const { conflicts } = (await call("check_collision", scope)) as CheckCollisionOutput;
-      const hardCount = conflicts.filter((c) => c.severity === "hard").length;
-      if (hardCount > 0) {
-        out(renderConflicts(conflicts, await remoteClaimLookup(call, args.repo, args.branch)));
-        if (!args.force) return true;
-        forced(hardCount);
-      }
-      const { claimId } = (await call("claim_intent", {
-        ...intent,
-        ...(hardCount > 0 ? { force: true } : {}),
-      })) as ClaimIntentOutput;
-      if (claimId) writeClaimId(cwd, claimId);
-      if (hardCount === 0 && claimId) cleared(claimId, ` for ${args.agentId} on ${remote.url}`);
-      return false;
+      const res = (await call("claim_intent", intent)) as ClaimIntentOutput;
+      const lookup = res.conflicts.some((c) => c.severity === "hard")
+        ? await remoteClaimLookup(call, args.repo, args.branch)
+        : () => undefined;
+      return verdict(res, lookup, remote.url);
     });
   }
 
   const service = buildService(cwd, build);
-  const { conflicts } = service.checkCollision(scope);
-  const hardCount = conflicts.filter((c) => c.severity === "hard").length;
-  if (hardCount > 0) {
-    out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
-    if (!args.force) {
-      service.store.close();
-      return true; // block; do not register a claim for an edit we're stopping
-    }
-    forced(hardCount);
+  try {
+    return verdict(service.claimIntent(intent), (id) => service.store.getClaim(id));
+  } finally {
+    service.store.close();
   }
-  const { claimId } = service.claimIntent({
-    ...intent,
-    ...(hardCount > 0 ? { force: true } : {}),
-  });
-  if (claimId) writeClaimId(cwd, claimId);
-  if (hardCount === 0 && claimId) cleared(claimId, ` for ${args.agentId}`);
-  service.store.close();
-  return false;
 }
 
 export interface NextTaskArgs {

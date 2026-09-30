@@ -14,7 +14,8 @@
 // For a REMOTE team Tower, export TOWER_URL / TOWER_TOKEN in the environment Claude Code
 // runs in (same as the worker). With neither set it reads the local .tower store.
 //
-// Fails OPEN and SILENT: any error prints nothing and exits 0 — it never blocks a prompt.
+// Fails OPEN: it never blocks a prompt. An error exits 0 with one line on stderr, so "no
+// waiting work" and "never checked" stay distinguishable.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -33,14 +34,16 @@ try {
   const input = readStdin();
   const cwd = input.cwd || process.cwd();
 
-  // Prefer the built local CLI (this repo); otherwise fall back to the published package.
+  // The built CLI in this clone, like every other hook. There used to be an `npx -y
+  // tower-mcp` fallback: a registry lookup on every prompt, for a machine that no other
+  // hook could work on anyway, contradicting "no network calls you didn't configure".
   const here = dirname(fileURLToPath(import.meta.url));
   const localCli = join(here, "..", "packages", "cli", "dist", "index.js");
-  const [cmd, args] = existsSync(localCli)
-    ? [process.execPath, [localCli, "nudge"]]
-    : ["npx", ["-y", "tower-mcp", "nudge"]];
+  if (!existsSync(localCli)) {
+    throw new Error("the built CLI is missing — run `npm run build` in your Tower clone");
+  }
 
-  const out = execFileSync(cmd, args, {
+  const out = execFileSync(process.execPath, [localCli, "nudge"], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],

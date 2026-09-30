@@ -165,23 +165,30 @@ export class TowerService {
     const hard = conflicts.find((c) => c.severity === "hard");
     // Counted whether or not the claim is granted — a refused claim is a collision that
     // happened, and forcing past one is the single most interesting event on the board.
-    for (const c of conflicts) {
-      this.store.recordConflict({
-        repoKey,
-        kind: c.kind,
-        severity: c.severity,
-        forced: Boolean(hard && input.force),
-      });
-    }
+    const record = (): void => {
+      for (const c of conflicts) {
+        this.store.recordConflict({
+          repoKey,
+          kind: c.kind,
+          severity: c.severity,
+          forced: Boolean(hard && input.force),
+        });
+      }
+    };
 
     if (hard && !input.force) {
       const blocking = conflicts.filter((c) => c.severity === "hard");
       // Register for a release notice, so "wait" stops meaning "poll". One row per
       // blocking claim; the store sends the message itself on complete, release or
       // expiry — expiry never passes through here, so it could not be done from here.
+      let fresh = false;
       for (const claimId of new Set(blocking.map((c) => c.claimId))) {
-        this.store.addWaiter({ agentId: input.agentId, claimId, repo: input.repo, repoKey });
+        if (this.store.addWaiter({ agentId: input.agentId, claimId, repo: input.repo, repoKey }))
+          fresh = true;
       }
+      // A hook retries a blocked edit every time the agent reaches for it. That is one
+      // collision, not one per attempt — the waiter row already says this agent saw it.
+      if (fresh) record();
       return {
         claimId: null,
         conflicts,
@@ -199,6 +206,7 @@ export class TowerService {
       };
     }
 
+    record();
     const claim = this.store.createClaim({
       agentId: input.agentId,
       repo: input.repo,

@@ -81,13 +81,7 @@ export const MCP_SNIPPET = `Add Tower to your agent's MCP config, e.g. Claude Co
     }
   }
 
-Then add to your agent's rules (CLAUDE.md / .cursorrules):
-
-  Before editing any file, call the "claim_intent" MCP tool with the files and
-  symbols you will change. If a "hard" conflict is returned, stop and ask the user.
-  If the response reports unreadMessages > 0, call "fetch_messages" — a teammate's
-  agent may have sent you a message or delegated you a task; act on tasks and reply
-  with a "task_update" via "send_message" when done.
+Then add to your agent's rules (CLAUDE.md / .cursorrules) — \`tower setup\` does this for you:
 `;
 
 /** Verbatim copy of examples/git-hooks/pre-commit, embedded so "tower setup" can install it anywhere. */

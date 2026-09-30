@@ -6,12 +6,14 @@ import { join } from "node:path";
 import {
   cmdClaim,
   cmdComplete,
+  cmdInit,
   cmdRecordReads,
   cmdSetup,
   hookRecordReads,
   type ClaimArgs,
 } from "./commands.js";
 import { buildService } from "./lib.js";
+import { towerRule } from "./nobody-waits.js";
 
 /** 0.12.0 through the CLI and hooks — the path users actually run. */
 
@@ -208,6 +210,16 @@ describe("cmdComplete reads the final declarations from the working tree", () =>
     expect(await cmdComplete(dir, claimId!, undefined, out)).toBe(true);
     expect(text()).toContain("Completed claim");
     expect(text()).not.toMatch(/told/);
+  });
+});
+
+// `tower init` printed a hand-copied rule from before 0.12 — no `alternatives`, no
+// `declares` — so the two onboarding commands taught agents two different protocols.
+describe("cmdInit prints the rule setup writes", () => {
+  it("includes the 0.12 rule text, verbatim", () => {
+    const { out, text } = collect();
+    cmdInit(dir, out);
+    for (const line of towerRule().trim().split("\n")) expect(text()).toContain(line.trim());
   });
 });
 

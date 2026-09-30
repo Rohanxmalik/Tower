@@ -4,10 +4,11 @@
 // Runs after every Edit / Write / MultiEdit and refreshes this session's presence, so the
 // board shows "working" for as long as the agent is actually working. `PreToolUse` proves
 // intent; this proves activity — and it is the signal that keeps a long-running claim
-// from expiring underneath a live agent.
+// from expiring underneath a live agent. After a Read it records what the agent looked
+// at, and hands it a warning if someone else is changing that code right now.
 //
 // Wire it up in .claude/settings.json (or run `tower init --hooks`):
-//   "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [
+//   "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit|Read", "hooks": [
 //     { "type": "command", "command": "node hooks/posttooluse-tower.mjs" }] }] }
 //
 // Fails OPEN and quiet on the happy path: presence is best-effort telemetry about *your

@@ -38,7 +38,9 @@ describe("hook exit codes survive the process ending", () => {
   });
 });
 
-describe.skipIf(!built)("the hooks, spawned against the built CLI", () => {
+// Each case starts a fresh node process that compiles tree-sitter WASM; under a loaded
+// parallel run that alone can pass the 5s default.
+describe.skipIf(!built)("the hooks, spawned against the built CLI", { timeout: 30_000 }, () => {
   let dir: string;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "tower-hooks-"));

@@ -523,12 +523,14 @@ export class TowerStore {
   // -- waiters (refused agents, told when the blocker ends) -------------------
 
   /** Register an agent refused by `claimId`. Idempotent per (agent, claim). */
-  addWaiter(input: { agentId: string; claimId: string; repo: string; repoKey?: string }): void {
-    this.db
+  /** Returns false when this agent was already waiting on this claim — a retry. */
+  addWaiter(input: { agentId: string; claimId: string; repo: string; repoKey?: string }): boolean {
+    const { changes } = this.db
       .prepare(
         `INSERT OR IGNORE INTO waiters (agentId, claimId, repo, repoKey, createdAt) VALUES (?,?,?,?,?)`,
       )
       .run(input.agentId, input.claimId, input.repo, input.repoKey ?? null, this.now());
+    return Number(changes) > 0;
   }
 
   /** Agents still waiting on a claim — inspection and tests. */

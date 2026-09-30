@@ -32,7 +32,7 @@ Environment:
 Examples:
   tower-anywhere claim "Q3 Launch Brief" --purpose "rewriting the positioning"
   tower-anywhere claim "Content Calendar" --section "October" --purpose "slotting webinars"
-  tower-anywhere guard "Homepage Copy" --who ana --purpose "hero rewrite"
+  tower-anywhere guard "Homepage Copy" --who alice --purpose "hero rewrite"
 `;
 
 function toNum(v: string | undefined): number | undefined {

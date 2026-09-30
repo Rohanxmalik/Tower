@@ -16,14 +16,14 @@ beforeEach(() => {
 
 const SYMBOL = { file: "src/auth.ts", symbol: "AuthService.verify" };
 /** The real root sha from the session — a fork and its upstream share it exactly. */
-const ROOT = "caaa8780f2853aec824905cc3278402fc26caa0a";
+const ROOT = "7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19";
 
 describe("T1 — a fork and its upstream share one coordination space (REQ-C / TWR-03)", () => {
   it("collides across two repo names that have nothing in common", () => {
     // Exactly the observed failure: these two agents were mutually invisible.
     const upstream = svc.claimIntent({
-      agentId: "claude-code-rohan",
-      repo: "github.com/Rohanxmalik/acme-api",
+      agentId: "claude-code-alice",
+      repo: "github.com/alice/acme-api",
       repoId: ROOT,
       branch: "main",
       files: [],
@@ -44,7 +44,7 @@ describe("T1 — a fork and its upstream share one coordination space (REQ-C / T
 
     expect(fork.conflicts).toHaveLength(1);
     expect(fork.conflicts[0]?.severity).toBe("hard");
-    expect(fork.conflicts[0]?.agentId).toBe("claude-code-rohan");
+    expect(fork.conflicts[0]?.agentId).toBe("claude-code-alice");
   });
 
   it("still isolates genuinely different projects", () => {
@@ -361,7 +361,7 @@ describe("T9 — a fork split warns instead of proceeding in silence (0.10.0)", 
     service.claimIntent({
       ...base,
       agentId: "alice",
-      repo: "github.com/rohanxmalik/acme-web",
+      repo: "github.com/alice/acme-web",
       repoId: "a".repeat(40),
     });
     const bob = service.claimIntent({

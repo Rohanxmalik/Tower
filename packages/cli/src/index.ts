@@ -1,6 +1,7 @@
 // MUST be first: installs the node:sqlite warning filter before the store loads.
 import "./hush.js";
 import { parseArgs } from "node:util";
+import { TOWER_VERSION } from "@tower/shared";
 import {
   cmdInit,
   cmdClaim,
@@ -40,8 +41,9 @@ Commands:
                              One-command onboarding: .mcp.json + rules + git hooks.
                              --keep-going: on a hard conflict, agents work around it
                              instead of stopping to ask (opt-in).
-  serve [--http] [--port n] [--token t] [--remote <url>]
-                             Start the coordination server. --remote runs it as a local
+  serve [--http] [--port n] [--host h] [--token t] [--remote <url>]
+                             Start the coordination server (--host defaults to 127.0.0.1;
+                             0.0.0.0 exposes it on your network). --remote runs it as a local
                              proxy to a hosted Tower, stamping this repo's identity onto
                              every call so forks and the upstream coordinate together.
   status                     Show active claims
@@ -71,8 +73,13 @@ Commands:
                              failure the worker cools down 10 min and reports low capacity.
                              --permission-mode bypass lets a task run git/tests/builds
                              (claude runner) — use only with --approve remote / a trusted clone.
+                             Also: --agent <id> --repo <r> (default: from git)
+                             --cmd "<shell>" (runner cmd; the task prompt arrives on stdin)
+                             --interval <s> (poll, default 15) --max-minutes <m> (per task,
+                             default 15) --no-push --no-pr (keep the result local)
+  version                    Print the version (also --version, -v)
 
-Run with no command to print this help.`;
+Every command accepts --help. Run with no command to print this help.`;
 
 function toNum(v: string | undefined): number | undefined {
   if (v == null) return undefined;
@@ -118,7 +125,20 @@ export async function run(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const cwd = process.cwd();
 
+  // `tower work --help` is the first thing a new user types, and every command handed it
+  // to parseArgs, which threw "Unknown option" and exited 1.
+  if (rest.includes("--help") || rest.includes("-h")) {
+    process.stdout.write(HELP + "\n");
+    return 0;
+  }
+
   switch (command) {
+    case "version":
+    case "--version":
+    case "-v":
+      process.stdout.write(TOWER_VERSION + "\n");
+      return 0;
+
     // --help is the most-run flag on any CLI. Falling through to `default` printed the
     // right text and exited 1, so `tower --help && ...` and every smoke test saw failure.
     case "help":

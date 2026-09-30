@@ -34,12 +34,12 @@ describe("normalizeRepoUrl", () => {
 });
 
 describe("resolveRepoKey", () => {
-  const ROOT = "caaa8780f2853aec824905cc3278402fc26caa0a";
+  const ROOT = "7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19";
 
   it("prefers repoId, so a fork and its upstream share one partition", () => {
     // T1's precondition — the two names have nothing in common, but the root
     // commit is identical because a fork inherits the whole history.
-    const upstream = resolveRepoKey(ROOT, "github.com/Rohanxmalik/acme-api");
+    const upstream = resolveRepoKey(ROOT, "github.com/alice/acme-api");
     const fork = resolveRepoKey(ROOT, "github.com/bob/acme-api");
     expect(upstream).toBe(fork);
     expect(upstream).toBe(ROOT);
@@ -64,7 +64,7 @@ describe("resolveRepoKey", () => {
 
 describe("isRepoId", () => {
   it("accepts sha-1 and sha-256 object ids", () => {
-    expect(isRepoId("caaa8780f2853aec824905cc3278402fc26caa0a")).toBe(true);
+    expect(isRepoId("7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19")).toBe(true);
     expect(isRepoId("a".repeat(64))).toBe(true);
   });
 
@@ -77,8 +77,8 @@ describe("isRepoId", () => {
 
 describe("pickRootCommit", () => {
   it("reads the single root commit", () => {
-    expect(pickRootCommit("caaa8780f2853aec824905cc3278402fc26caa0a\n")).toBe(
-      "caaa8780f2853aec824905cc3278402fc26caa0a",
+    expect(pickRootCommit("7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19\n")).toBe(
+      "7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19",
     );
   });
 
@@ -118,17 +118,12 @@ describe("projectId — the escape hatch that beats everything (0.10.0)", () => 
 
 describe("looksLikeForkSplit — warn, never partition", () => {
   it("flags a fork and its upstream: same name, different owner", () => {
-    expect(looksLikeForkSplit("github.com/rohanxmalik/acme-web", "github.com/dana/acme-web")).toBe(
-      true,
-    );
+    expect(looksLikeForkSplit("github.com/alice/acme-web", "github.com/dana/acme-web")).toBe(true);
   });
 
   it("flags it across url spellings", () => {
     expect(
-      looksLikeForkSplit(
-        "https://github.com/rohanxmalik/acme-web.git",
-        "git@github.com:dana/acme-web",
-      ),
+      looksLikeForkSplit("https://github.com/alice/acme-web.git", "git@github.com:dana/acme-web"),
     ).toBe(true);
   });
 

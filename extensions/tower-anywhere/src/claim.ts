@@ -1,4 +1,4 @@
-import type { ClaimIntentOutput, CheckCollisionOutput, Conflict, ToolCall } from "./client.js";
+import type { Alternatives, ClaimIntentOutput, Conflict, SymbolRef, ToolCall } from "./client.js";
 
 export interface ClaimArgs {
   /** Who is working — a person or an agent. */
@@ -32,19 +32,6 @@ export function buildIntent(args: ClaimArgs): Record<string, unknown> {
     ...(args.etaMinutes != null ? { etaMinutes: args.etaMinutes } : {}),
     ...(args.force ? { force: true } : {}),
   };
-}
-
-/** The scope-only shape `check_collision` takes — a dry run with no claim registered. */
-export function buildScope(args: ClaimArgs): Record<string, unknown> {
-  const { agentId, repo, projectId, branch, files, symbols } = buildIntent(args) as {
-    agentId: string;
-    repo: string;
-    projectId: string;
-    branch: string;
-    files: string[];
-    symbols: unknown[];
-  };
-  return { agentId, repo, projectId, branch, files, symbols };
 }
 
 /**
@@ -86,32 +73,61 @@ export async function claim(call: ToolCall, args: ClaimArgs, out: Writer): Promi
     out(`Claim ${res.claimId.slice(0, 8)} registered for ${args.who}.`);
   } else {
     out(`Claim REFUSED — someone else holds this. Re-run with --force to override.`);
+    const instead = renderAlternatives(res.alternatives);
+    if (instead) out(instead);
   }
   return res.blocking || res.conflicts.some((c) => c.severity === "hard");
 }
 
+/** How many avoided items to name before summarising the rest. */
+const AVOID_SHOWN = 5;
+
+const itemName = (s: SymbolRef): string => (s.symbol ? `${s.file} › ${s.symbol}` : s.file);
+
 /**
- * Check first, then claim only if clear — so a blocked caller never leaves a claim
- * behind. Returns true when blocked, for scripts that gate on the exit code.
+ * The "then what?" a refusal carries. Empty for a server too old to send it. Built from
+ * the structured fields rather than the server's `advice`, which is written for
+ * developers ("symbols") — the same reason conflicts get their own sentence above.
+ */
+export function renderAlternatives(alt: Alternatives | undefined): string {
+  if (!alt) return "";
+  const lines = [
+    "What to do instead:",
+    `  Don't wait: work on anything not listed here.${
+      alt.notifyOnRelease ? " Tower will message you when it frees up." : ""
+    }`,
+  ];
+  if (alt.avoid.length) {
+    const named = alt.avoid.slice(0, AVOID_SHOWN).map(itemName).join(", ");
+    const rest = alt.avoid.length - AVOID_SHOWN;
+    lines.push(`  Avoid for now: ${named}${rest > 0 ? ` and ${rest} more` : ""}`);
+  }
+  if (alt.nextTask) lines.push(`  Suggested next: "${alt.nextTask.module}"`);
+  return lines.join("\n");
+}
+
+/**
+ * Claim only if clear — a blocked caller never leaves a claim behind. Returns true when
+ * blocked, for scripts that gate on the exit code.
+ *
+ * One `claim_intent` call: a refusal registers nothing, so the `check_collision`
+ * pre-check this used to make bought nothing — and it cost the blocked caller the
+ * alternatives and the message Tower sends when the blocking claim ends.
  */
 export async function guard(call: ToolCall, args: ClaimArgs, out: Writer): Promise<boolean> {
-  const { conflicts } = (await call("check_collision", buildScope(args))) as CheckCollisionOutput;
-  const hard = conflicts.filter((c) => c.severity === "hard");
-  if (hard.length > 0) {
-    out(renderConflicts(conflicts));
-    if (!args.force) {
-      out(`BLOCKED — ${hard.length} hard conflict(s). Wait, pick something else, or --force.`);
-      return true;
-    }
-    out(`FORCED past ${hard.length} hard conflict(s) — you own the overwrite risk.`);
+  const res = (await call("claim_intent", buildIntent(args))) as ClaimIntentOutput;
+  const hard = res.conflicts.filter((c) => c.severity === "hard");
+  out(renderConflicts(res.conflicts));
+  if (!res.claimId) {
+    out(`BLOCKED — ${hard.length} hard conflict(s). Wait, pick something else, or --force.`);
+    const instead = renderAlternatives(res.alternatives);
+    if (instead) out(instead);
+    return true;
   }
-  const res = (await call("claim_intent", {
-    ...buildIntent(args),
-    ...(hard.length > 0 ? { force: true } : {}),
-  })) as ClaimIntentOutput;
-  if (hard.length === 0) {
-    out(renderConflicts(conflicts));
-    if (res.claimId) out(`CLEAR — registered claim ${res.claimId.slice(0, 8)}.`);
-  }
+  out(
+    hard.length > 0
+      ? `FORCED past ${hard.length} hard conflict(s) — you own the overwrite risk.`
+      : `CLEAR — registered claim ${res.claimId.slice(0, 8)}.`,
+  );
   return false;
 }

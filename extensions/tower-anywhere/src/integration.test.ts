@@ -104,21 +104,21 @@ afterAll(async () => {
 describe.skipIf(!BUILT)("against a real Tower server", () => {
   it("two people on the same whole artifact is a hard conflict", async () => {
     const artifact = "Q3 Launch Brief";
-    await call((c) => claim(c, args({ who: "ana", artifact }), swallow));
+    await call((c) => claim(c, args({ who: "alice", artifact }), swallow));
 
     const blocked = await call((c) =>
-      guard(c, args({ who: "bo", artifact, purpose: "adding the CTA" }), swallow),
+      guard(c, args({ who: "bob", artifact, purpose: "adding the CTA" }), swallow),
     );
     expect(blocked).toBe(true);
   });
 
   it("different sections of one artifact is soft — a warning, not a stop", async () => {
     const artifact = "Content Calendar";
-    await call((c) => claim(c, args({ who: "ana", artifact, section: "October" }), swallow));
+    await call((c) => claim(c, args({ who: "alice", artifact, section: "October" }), swallow));
 
     const conflicts: string[] = [];
     const blocked = await call((c) =>
-      guard(c, args({ who: "bo", artifact, section: "November" }), (l) => conflicts.push(l)),
+      guard(c, args({ who: "bob", artifact, section: "November" }), (l) => conflicts.push(l)),
     );
     expect(blocked).toBe(false);
     expect(conflicts.join("\n")).toContain("soft");
@@ -126,18 +126,20 @@ describe.skipIf(!BUILT)("against a real Tower server", () => {
 
   it("the same section twice is hard", async () => {
     const artifact = "Homepage Copy";
-    await call((c) => claim(c, args({ who: "ana", artifact, section: "hero headline" }), swallow));
+    await call((c) =>
+      claim(c, args({ who: "alice", artifact, section: "hero headline" }), swallow),
+    );
 
     const blocked = await call((c) =>
-      guard(c, args({ who: "bo", artifact, section: "hero headline" }), swallow),
+      guard(c, args({ who: "bob", artifact, section: "hero headline" }), swallow),
     );
     expect(blocked).toBe(true);
   });
 
   it("unrelated artifacts never collide", async () => {
-    await call((c) => claim(c, args({ who: "ana", artifact: "Webinar Deck" }), swallow));
+    await call((c) => claim(c, args({ who: "alice", artifact: "Webinar Deck" }), swallow));
     const blocked = await call((c) =>
-      guard(c, args({ who: "bo", artifact: "Pricing Page Copy" }), swallow),
+      guard(c, args({ who: "bob", artifact: "Pricing Page Copy" }), swallow),
     );
     expect(blocked).toBe(false);
   });
@@ -146,7 +148,7 @@ describe.skipIf(!BUILT)("against a real Tower server", () => {
     const artifact = "Brand Guidelines";
     const claimId = await call(async (c) => {
       const res = (await c("claim_intent", {
-        agentId: "ana",
+        agentId: "alice",
         repo: SPACE,
         projectId: SPACE,
         branch: "main",
@@ -158,25 +160,58 @@ describe.skipIf(!BUILT)("against a real Tower server", () => {
     });
     expect(claimId).not.toBeNull();
 
-    expect(await call((c) => guard(c, args({ who: "bo", artifact }), swallow))).toBe(true);
+    expect(await call((c) => guard(c, args({ who: "bob", artifact }), swallow))).toBe(true);
     await call((c) => c("complete_claim", { claimId }));
-    expect(await call((c) => guard(c, args({ who: "bo", artifact }), swallow))).toBe(false);
+    expect(await call((c) => guard(c, args({ who: "bob", artifact }), swallow))).toBe(false);
+  });
+
+  it("a blocked guard is told what to do instead, and messaged when the claim ends", async () => {
+    const artifact = "Launch Checklist";
+    const owner = await call(async (c) => {
+      const res = (await c("claim_intent", {
+        agentId: "alice",
+        repo: SPACE,
+        projectId: SPACE,
+        branch: "main",
+        files: [artifact],
+        symbols: [{ file: artifact, symbol: "" }],
+        purpose: "final pass",
+      })) as { claimId: string | null };
+      return res.claimId;
+    });
+    expect(owner).not.toBeNull();
+
+    const lines: string[] = [];
+    const blocked = await call((c) =>
+      guard(c, args({ who: "dana", artifact }), (l) => lines.push(l)),
+    );
+    expect(blocked).toBe(true);
+    expect(lines.join("\n")).toContain("What to do instead");
+
+    await call((c) => c("complete_claim", { claimId: owner }));
+    const { messages } = await call(
+      (c) =>
+        c("fetch_messages", { agentId: "dana", repo: SPACE, projectId: SPACE }) as Promise<{
+          messages: { fromAgentId: string; body: string }[];
+        }>,
+    );
+    expect(messages.some((m) => m.fromAgentId === "tower")).toBe(true);
   });
 
   it("--force claims through a hard conflict and records the override", async () => {
     const artifact = "Press Release";
-    await call((c) => claim(c, args({ who: "ana", artifact }), swallow));
+    await call((c) => claim(c, args({ who: "alice", artifact }), swallow));
     const blocked = await call((c) =>
-      guard(c, args({ who: "bo", artifact, force: true }), swallow),
+      guard(c, args({ who: "bob", artifact, force: true }), swallow),
     );
     expect(blocked).toBe(false);
   });
 
   it("separate spaces never see each other", async () => {
     const artifact = "Q4 Plan";
-    await call((c) => claim(c, args({ who: "ana", artifact }), swallow));
+    await call((c) => claim(c, args({ who: "alice", artifact }), swallow));
     const blocked = await call((c) =>
-      guard(c, { ...args({ who: "bo", artifact }), space: "other-team" }, swallow),
+      guard(c, { ...args({ who: "bob", artifact }), space: "other-team" }, swallow),
     );
     expect(blocked).toBe(false);
   });

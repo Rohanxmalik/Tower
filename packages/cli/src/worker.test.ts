@@ -135,7 +135,7 @@ describe("cmdWork (worker daemon)", () => {
     expect(inbox.some((m) => m.kind === "task_update" && m.replyTo === id)).toBe(true);
 
     expect(lines.join("\n")).toContain("✅");
-  });
+  }, 20_000); // real git + a spawned runner; slow under a loaded parallel run
 
   it("prints a startup banner with agent, repo, runner, mode, and server", async () => {
     initRepo();

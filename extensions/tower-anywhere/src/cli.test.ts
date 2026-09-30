@@ -24,10 +24,10 @@ describe("parseClaimArgs", () => {
   });
 
   it("falls back to TOWER_SPACE and TOWER_WHO", () => {
-    const args = parseClaimArgs(["Brief"], { TOWER_SPACE: "acme", TOWER_WHO: "ana" });
+    const args = parseClaimArgs(["Brief"], { TOWER_SPACE: "acme", TOWER_WHO: "alice" });
     if (typeof args === "string") throw new Error(args);
     expect(args.space).toBe("acme");
-    expect(args.who).toBe("ana");
+    expect(args.who).toBe("alice");
   });
 
   it("explains itself when the artifact is missing", () => {
@@ -66,11 +66,13 @@ describe("run", () => {
 
   it("exits 2 when guard hits a hard conflict", async () => {
     const { connect } = connectWith({
-      check_collision: {
+      claim_intent: {
+        claimId: null,
+        blocking: true,
         conflicts: [
           {
             claimId: "c1",
-            agentId: "bo",
+            agentId: "bob",
             severity: "hard",
             reason: "same artifact",
             overlap: [{ file: "Brief", symbol: "" }],

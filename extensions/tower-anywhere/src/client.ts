@@ -18,11 +18,21 @@ export interface Conflict {
   etaMinutes?: number;
 }
 
+/** What a 0.12+ server attaches to a refusal: what is still safe, and one line of advice. */
+export interface Alternatives {
+  avoid: SymbolRef[];
+  nextTask: { module: string } | null;
+  notifyOnRelease: boolean;
+  advice: string;
+}
+
 export interface ClaimIntentOutput {
   claimId: string | null;
   conflicts: Conflict[];
   blocking: boolean;
   recommendation?: "proceed" | "stand_down";
+  /** Absent from servers older than 0.12, and on any claim that was not refused. */
+  alternatives?: Alternatives;
 }
 
 export interface CheckCollisionOutput {

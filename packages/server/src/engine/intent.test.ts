@@ -78,7 +78,7 @@ describe("T7 — semantic duplicate is caught despite different file paths (DEV-
   it("flags the second agent before any file exists", () => {
     const held = claim({
       id: "held",
-      agentId: "claude-code-rohan",
+      agentId: "claude-code-alice",
       purpose: "AI agent security / prompt injection",
       files: ["ai-agent-security-prompt-injection.mdx"],
     });
@@ -88,7 +88,7 @@ describe("T7 — semantic duplicate is caught despite different file paths (DEV-
     });
 
     expect(matches).toHaveLength(1);
-    expect(matches[0]?.agentId).toBe("claude-code-rohan");
+    expect(matches[0]?.agentId).toBe("claude-code-alice");
     expect(matches[0]?.score).toBeGreaterThanOrEqual(DEFAULT_INTENT_THRESHOLD);
     // The point: the paths differ, so no file-level check would ever have fired.
     expect(matches[0]?.files).toEqual(["ai-agent-security-prompt-injection.mdx"]);

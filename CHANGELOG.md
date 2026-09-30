@@ -3,6 +3,70 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.11.0 - 2026-09-30
+
+**A claim is only as fresh as the read that produced it.** Comparing write sets catches
+two agents editing one symbol and is structurally blind to the more common failure: A
+moves `AuthService.verify` in `auth.ts` while B, having read the old signature, writes a
+caller in `payments.ts`. Different file, different symbol, so the collision check exited
+on its first line and told both agents to proceed. B found out at CI.
+
+### Added - version-aware claims
+
+- **`reads` on `claim_intent` and `check_collision`** - the declarations the work was
+  written against. A second detection pass compares them against what other agents hold
+  open, and reports `kind: "write_read"` when one is moving or has already moved.
+- **Signature fingerprints.** `SymbolRef` carries an optional `sig` - a digest of the
+  symbol's **declaration**, body excluded - and `sigText`, the readable form. A rewritten
+  body, a renamed local, a comment or a `prettier` run never move it; an added parameter
+  or a changed return type always does. That precision is the point: a staleness warning
+  that fires on a reformat gets muted, and a muted tool is worth nothing.
+- **Tower watches reads rather than asking for them.** The PostToolUse hook now also
+  matches `Read` and records what the agent looked at, with each declaration's signature
+  at that moment. An agent that never learns to send `reads` is covered anyway.
+  **Re-run `tower init --hooks` from a clone to pick this up.** PreToolUse stays
+  write-only on purpose - it blocks edits, and a Read must never be blocked.
+- **`heartbeat` reports what moved after you claimed.** Claim-time detection only sees
+  claims already open, so an agent that claimed first was never told when a declaration
+  moved under it later. `HeartbeatOutput` now carries `invalidations`, riding the call
+  agents already make every ~60s - no push channel, no polling.
+- **`record_reads`** - the twentieth tool. Normally called by the hook, not by an agent.
+
+A hard `write_read` conflict carries the delta:
+
+```
+[HARD] AuthService.verify moved under you - alice changed the declaration you read
+    was: verify(token: string)
+    now: verify(token: string, opts: Opts)
+```
+
+Two lines instead of "your context may be stale, re-read the file", which costs a whole
+module back in context to discover one parameter moved. Tower exists to spend fewer
+tokens, so a staleness signal that costs a file read is worse than silence.
+
+### Added - `tower stats`
+
+Tower detected collisions for four versions and forgot every one, so "which kind actually
+happens, and how often" had no answer. A `conflicts` table now records kind, severity and
+whether it was forced - **no file names, no symbol names, no code**, and nothing is sent
+anywhere. `tower stats` reads it locally.
+
+### Compatibility
+
+Every new field is optional and every new behaviour is additive. A client that sends no
+`reads` gets exactly 0.10.1's behaviour, and there is a test that says so. Calling
+`record_reads` against an older hosted Tower fails harmlessly - the hook swallows it, and
+a missed read costs a warning, never correctness.
+
+### Known limits, stated rather than left to be found
+
+Behavioural changes under an identical signature are invisible. That is deliberate: it is
+the trade that keeps false positives near zero. Cross-file _inference_ is not attempted -
+Tower knows what an agent read because it watched, not because it resolved a dependency
+graph.
+
+429 tests, 89.9% statements, 81.5% branches.
+
 ## 0.10.1 - 2026-09-30
 
 **`tower setup --url ... --token ...` wrote your team token into a file teams commit.**

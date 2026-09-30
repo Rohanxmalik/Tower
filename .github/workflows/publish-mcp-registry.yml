@@ -1,0 +1,68 @@
+name: Publish to MCP Registry
+
+# The registry is the upstream of the directory ecosystem — Glama, PulseMCP and mcp.so
+# sync from it. Publishing by hand means the listing drifts from the release the moment
+# anyone forgets a step, which is the bug class this repo has already shipped three
+# times. So it runs on the release itself.
+#
+# Auth is OIDC, not the interactive device flow: `mcp-publisher login github` is broken
+# in every published build (modelcontextprotocol/registry#1543, fixed by #1588 but
+# unreleased as of v1.8.1). OIDC is a separate code path and is unaffected.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  PUBLISHER_VERSION: v1.8.1
+
+jobs:
+  publish:
+    name: publish server.json
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for OIDC; nothing else needs elevating
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # A listing that advertises a version users cannot install is worse than no
+      # listing. Fail here rather than publish a mismatch.
+      - name: server.json must match the published package
+        run: |
+          server_version=$(jq -r '.version' server.json)
+          package_version=$(jq -r '.version' packages/cli/package.json)
+          package_name=$(jq -r '.name' packages/cli/package.json)
+          declared=$(jq -r '.packages[] | select(.registryType=="npm") | .version' server.json)
+          identifier=$(jq -r '.packages[] | select(.registryType=="npm") | .identifier' server.json)
+
+          echo "server.json      $server_version (npm entry: $identifier@$declared)"
+          echo "packages/cli     $package_name@$package_version"
+
+          [ "$server_version" = "$package_version" ] || { echo "::error::server.json version != packages/cli version"; exit 1; }
+          [ "$declared" = "$package_version" ]       || { echo "::error::server.json npm package version != packages/cli version"; exit 1; }
+          [ "$identifier" = "$package_name" ]        || { echo "::error::server.json npm identifier != published package name"; exit 1; }
+
+          # On a release, the tag is the source of truth for what was just shipped.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+            [ "${tag#v}" = "$package_version" ] || { echo "::error::tag $tag does not match version $package_version"; exit 1; }
+          fi
+
+      # The version is pinned rather than tracking latest: this step holds an OIDC token,
+      # so the binary it runs should change only when we decide it does.
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/${PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Validate against the live registry
+        run: ./mcp-publisher validate
+
+      - name: Authenticate (GitHub Actions OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish
+        run: ./mcp-publisher publish

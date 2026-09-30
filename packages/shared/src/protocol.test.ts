@@ -226,4 +226,31 @@ describe("version and tool count cannot drift from what users are told", () => {
       }
     }
   });
+
+  // server.json is a fourth place the version lives, and the one with the widest blast
+  // radius: the MCP Registry publishes from it and Glama, PulseMCP and mcp.so sync from
+  // the registry. A stale version here advertises a release users cannot install, in
+  // several directories at once, and nothing in the build would have noticed.
+  it("server.json agrees with the published package", () => {
+    const server = JSON.parse(read("server.json")) as {
+      name: string;
+      description: string;
+      version: string;
+      packages?: { registryType: string; identifier: string; version: string }[];
+    };
+    expect(server.version).toBe(TOWER_VERSION);
+
+    // Reverse-DNS, exactly one slash — the registry rejects anything else.
+    expect(server.name).toMatch(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
+
+    // The registry caps description at 100 characters and rejects the whole submission
+    // over it — which is why this is not the same string as the README one-liner.
+    expect(server.description.length).toBeLessThanOrEqual(100);
+
+    const npm = server.packages?.find((p) => p.registryType === "npm");
+    expect(npm, "server.json declares no npm package").toBeDefined();
+    const pkg = JSON.parse(read("packages/cli/package.json")) as { name: string };
+    expect(npm?.identifier).toBe(pkg.name);
+    expect(npm?.version).toBe(TOWER_VERSION);
+  });
 });

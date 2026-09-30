@@ -30,7 +30,9 @@ const SERVER_INFO = { name: "tower", version: TOWER_VERSION } as const;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:
-    "Register intent to edit code BEFORE editing. Returns any collisions with other active agents. Call this first, always.",
+    "Register intent to edit code BEFORE editing. Returns any collisions with other active agents. Call this first, always. " +
+    "Also pass `reads`: the declarations you consulted to write this — the functions, methods or types you are calling or implementing against. " +
+    "Tower tells you when one of them changes under you, and shows the old and new signature so you can patch your call sites without re-reading the file.",
   check_collision: "Check for collisions without registering a claim (a dry run).",
   heartbeat: "Keep an active claim alive; claims auto-expire without heartbeats.",
   complete_claim: "Release a claim after committing (optionally record the commit sha).",
@@ -64,10 +66,15 @@ function summarize(tool: string, result: unknown): string {
   if (tool === "claim_intent" || tool === "check_collision") {
     const conflicts = (result as { conflicts: Conflict[] }).conflicts;
     if (!conflicts.length) return "No collisions — safe to proceed.";
-    const lines = conflicts.map(
-      (c) =>
-        `[${c.severity.toUpperCase()}] ${c.reason}${c.etaMinutes ? ` (ETA ~${c.etaMinutes}m)` : ""}`,
-    );
+    const lines = conflicts.map((c) => {
+      const head = `[${c.severity.toUpperCase()}] ${c.reason}${c.etaMinutes ? ` (ETA ~${c.etaMinutes}m)` : ""}`;
+      // Ship the delta, never "go re-read the file". Two lines here replace pulling a
+      // whole module back into context to discover one parameter moved.
+      if (c.wasSigText && c.nowSigText) {
+        return `${head}\n    was: ${c.wasSigText}\n    now: ${c.nowSigText}`;
+      }
+      return head;
+    });
     return `${conflicts.length} collision(s):\n${lines.join("\n")}`;
   }
   return JSON.stringify(result);

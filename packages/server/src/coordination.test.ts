@@ -539,3 +539,124 @@ describe("T12 — decisions no longer leak across teams (0.10.0)", () => {
     service.store.close();
   });
 });
+
+describe("T9 — a contract moving under a reader (the antidependency case)", () => {
+  const OLD_SIG = {
+    file: "src/auth.ts",
+    symbol: "AuthService.verify",
+    sig: "c1:old",
+    sigText: "verify(token: string)",
+  };
+
+  function svc(): TowerService {
+    return new TowerService({
+      store: new TowerStore(),
+      policy: { modules: [], maxAgentsPerModule: null },
+    });
+  }
+
+  it("warns the reader while the writer is still in flight", () => {
+    const s = svc();
+    // alice takes the declaration itself.
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/auth.ts"],
+      symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify", sig: "c1:old" }],
+      purpose: "add an opts parameter",
+    });
+    // bob writes a different symbol in a different file, built on what he read.
+    const out = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/payments.ts"],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [OLD_SIG],
+      purpose: "charge flow",
+    });
+    const anti = out.conflicts.filter((c) => c.kind === "write_read");
+    expect(anti).toHaveLength(1);
+    expect(anti[0]?.agentId).toBe("alice");
+    // Advisory: bob is told, not blocked, because alice may only touch the body.
+    expect(out.claimId).not.toBeNull();
+  });
+
+  it("blocks and ships the delta once the declaration has actually moved", () => {
+    const s = svc();
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/auth.ts"],
+      symbols: [
+        {
+          file: "src/auth.ts",
+          symbol: "AuthService.verify",
+          sig: "c1:new",
+          sigText: "verify(token: string, opts: Opts)",
+        },
+      ],
+      purpose: "add an opts parameter",
+    });
+    const out = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/payments.ts"],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [OLD_SIG],
+      purpose: "charge flow",
+    });
+    expect(out.blocking).toBe(true);
+    const anti = out.conflicts.find((c) => c.kind === "write_read");
+    expect(anti?.severity).toBe("hard");
+    // The whole token argument: bob patches from this, instead of re-reading auth.ts.
+    expect(anti?.wasSigText).toBe("verify(token: string)");
+    expect(anti?.nowSigText).toBe("verify(token: string, opts: Opts)");
+  });
+
+  it("an agent that sends no reads sees exactly the old behaviour", () => {
+    const s = svc();
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/auth.ts"],
+      symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify", sig: "c1:new" }],
+      purpose: "change it",
+    });
+    const out = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/payments.ts"],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      purpose: "charge flow",
+    });
+    expect(out.conflicts).toHaveLength(0);
+    expect(out.claimId).not.toBeNull();
+  });
+
+  it("check_collision sees it too, so guard and the hook are not blind to it", () => {
+    const s = svc();
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/auth.ts"],
+      symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify", sig: "c1:new" }],
+      purpose: "change it",
+    });
+    const { conflicts } = s.checkCollision({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: ["src/payments.ts"],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [OLD_SIG],
+    });
+    expect(conflicts.some((c) => c.kind === "write_read" && c.severity === "hard")).toBe(true);
+  });
+});

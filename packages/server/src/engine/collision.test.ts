@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectCollisions } from "./collision.js";
+import { detectCollisions, detectAntidependencies } from "./collision.js";
 import type { Claim } from "@tower/shared";
 
 function activeClaim(over: Partial<Claim> = {}): Claim {
@@ -183,5 +183,146 @@ describe("pairwiseCollisions (board)", () => {
     const b = activeClaim({ id: "B", agentId: "bob" });
     const c = activeClaim({ id: "C", agentId: "carol" });
     expect(pairwiseCollisions([a, b, c])).toHaveLength(3); // AB, AC, BC
+  });
+});
+
+describe("antidependencies — the contract moved under you", () => {
+  const claim = (over: Partial<Claim>): Claim => ({
+    id: "c-1",
+    agentId: "alice",
+    repo: "acme/app",
+    branch: "main",
+    files: [],
+    symbols: [],
+    purpose: "",
+    status: "active",
+    createdAt: 0,
+    expiresAt: Date.now() + 60_000,
+    ...over,
+  });
+
+  const OLD = {
+    file: "src/auth.ts",
+    symbol: "AuthService.verify",
+    sig: "c1:aaaa",
+    sigText: "verify(token: string)",
+  };
+  const NEW = {
+    file: "src/auth.ts",
+    symbol: "AuthService.verify",
+    sig: "c1:bbbb",
+    sigText: "verify(token: string, opts: Opts)",
+  };
+
+  // The case the whole feature exists for. Bob writes payments.ts; alice writes auth.ts.
+  // No shared file, no shared symbol — the write-write pass returns nothing.
+  it("fires when someone is editing a declaration you read, in another file", () => {
+    const conflicts = detectAntidependencies(
+      {
+        files: ["src/payments.ts"],
+        symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+        reads: [OLD],
+        agentId: "bob",
+        branch: "main",
+      },
+      [claim({ symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify" }] })],
+    );
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.kind).toBe("write_read");
+    expect(conflicts[0]?.agentId).toBe("alice");
+  });
+
+  it("the write-write pass really is blind to it — this is not a redundant check", () => {
+    expect(
+      detectCollisions(
+        {
+          files: ["src/payments.ts"],
+          symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+          agentId: "bob",
+        },
+        [claim({ symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify" }] })],
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("is hard when the signature already moved, and carries the delta", () => {
+    const conflicts = detectAntidependencies(
+      { files: [], symbols: [], reads: [OLD], agentId: "bob", branch: "main" },
+      [claim({ symbols: [NEW] })],
+    );
+    expect(conflicts[0]?.severity).toBe("hard");
+    expect(conflicts[0]?.wasSigText).toBe("verify(token: string)");
+    expect(conflicts[0]?.nowSigText).toBe("verify(token: string, opts: Opts)");
+  });
+
+  // Precision is the whole game: a warning that fires on a reformat gets muted.
+  it("stays quiet when the declaration is untouched", () => {
+    const conflicts = detectAntidependencies(
+      { files: [], symbols: [], reads: [OLD], agentId: "bob", branch: "main" },
+      [claim({ symbols: [{ ...OLD }] })],
+    );
+    expect(conflicts[0]?.severity).toBe("soft");
+    expect(conflicts[0]?.reason).toMatch(/editing|in flight|right now/i);
+  });
+
+  it("never reports an agent against itself", () => {
+    expect(
+      detectAntidependencies(
+        { files: [], symbols: [], reads: [OLD], agentId: "alice", branch: "main" },
+        [claim({ agentId: "alice", symbols: [NEW] })],
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("ignores reads nobody is touching", () => {
+    expect(
+      detectAntidependencies(
+        {
+          files: [],
+          symbols: [],
+          reads: [{ file: "src/other.ts", symbol: "unrelated", sig: "c1:zzzz" }],
+          agentId: "bob",
+        },
+        [claim({ symbols: [NEW] })],
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("ignores a read with no signature — too coarse to be worth a warning", () => {
+    expect(
+      detectAntidependencies(
+        {
+          files: [],
+          symbols: [],
+          reads: [{ file: "src/auth.ts", symbol: "AuthService.verify" }],
+          agentId: "bob",
+        },
+        [claim({ symbols: [NEW] })],
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("caps at soft across branches, like the write-write pass", () => {
+    const conflicts = detectAntidependencies(
+      { files: [], symbols: [], reads: [OLD], agentId: "bob", branch: "feature" },
+      [claim({ branch: "main", symbols: [NEW] })],
+    );
+    expect(conflicts[0]?.severity).toBe("soft");
+  });
+
+  it("skips claims that are no longer active", () => {
+    expect(
+      detectAntidependencies({ files: [], symbols: [], reads: [OLD], agentId: "bob" }, [
+        claim({ status: "completed", symbols: [NEW] }),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it("returns nothing when the agent declared no reads — today's behaviour, unchanged", () => {
+    expect(
+      detectAntidependencies({ files: [], symbols: [], reads: [], agentId: "bob" }, [
+        claim({ symbols: [NEW] }),
+      ]),
+    ).toHaveLength(0);
   });
 });

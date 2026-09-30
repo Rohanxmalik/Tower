@@ -38,11 +38,52 @@ transport and MCP standardized agent-to-tool access.
 
 ## Severity
 
-| Severity | Meaning           | When                                                                                    |
-| -------- | ----------------- | --------------------------------------------------------------------------------------- |
-| `hard`   | Do not proceed    | Same file **and** same symbol, or either side claims the whole file                     |
-| `soft`   | Proceed with care | Same file, different symbols (overlapping diffs likely)                                 |
-| `info`   | FYI               | A claimed symbol depends on another agent's claimed symbol _(reserved; off by default)_ |
+Conflicts carry a `kind`. `write_write` is the classic overlap; `write_read` is an
+**antidependency** — someone is changing, or has already changed, a declaration you built
+against.
+
+| Severity | Kind          | Meaning           | When                                                                    |
+| -------- | ------------- | ----------------- | ----------------------------------------------------------------------- |
+| `hard`   | `write_write` | Do not proceed    | Same file **and** same symbol, or either side claims the whole file     |
+| `soft`   | `write_write` | Proceed with care | Same file, different symbols (overlapping diffs likely)                 |
+| `hard`   | `write_read`  | Do not proceed    | A declaration in your `reads` **has already moved** — the `sig` differs |
+| `soft`   | `write_read`  | Proceed with care | Another agent holds a declaration you read, but it still matches        |
+| `info`   | —             | FYI               | Reserved; off by default                                                |
+
+## Freshness — `reads`, `sig`, and why a write set is not enough
+
+A claim is only as fresh as the read that produced it. Comparing write sets catches two
+agents editing one symbol, and is structurally blind to the more common case: A moves
+`AuthService.verify` while B, having read the old signature, writes a caller in another
+file. Different file, different symbol — the write-write pass exits immediately, and B
+finds out at CI.
+
+So `claim_intent` and `check_collision` take an optional **`reads`**: the declarations the
+work was written against. Each `SymbolRef` may carry:
+
+- **`sig`** — a scheme-tagged digest (`c1:…`) of the symbol's **declaration**, body
+  excluded. A rewritten body, a renamed local, a comment or a `prettier` run never move
+  it; an added parameter or a changed return type always does. Interfaces, type aliases
+  and enums hash whole, because every part of them is visible to a caller.
+- **`sigText`** — the same declaration in readable form, capped at 240 chars.
+
+When a `write_read` conflict is `hard`, the response carries `wasSigText` and
+`nowSigText`, so an agent patches its call sites from a two-line delta rather than pulling
+the module back into context:
+
+```
+[HARD] AuthService.verify moved under you — alice changed the declaration you read
+    was: verify(token: string)
+    now: verify(token: string, opts: Opts)
+```
+
+Everything here is optional. Send no `reads` and the behaviour is exactly as before.
+
+**Current limit, stated plainly:** detection runs when the _reader_ calls, against claims
+that are already open. An agent that claimed first is not retroactively notified when
+someone later moves a declaration it read — delivery on `heartbeat` is the next step.
+Behavioural changes under an identical signature are invisible by design; that is the
+trade that keeps false positives near zero.
 
 ## Tools
 

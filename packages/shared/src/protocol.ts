@@ -67,6 +67,15 @@ export type Claim = z.infer<typeof Claim>;
 export const Severity = z.enum(["hard", "soft", "info"]);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * `write_write` — the classic: two agents editing the same thing.
+ * `write_read` — an antidependency: someone is changing, or has already changed, a
+ * declaration you built against. Different symbols, often different files, so the
+ * write-write pass is structurally blind to it.
+ */
+export const ConflictKind = z.enum(["write_write", "write_read"]);
+export type ConflictKind = z.infer<typeof ConflictKind>;
+
 export const Conflict = z.object({
   claimId: z.string(),
   agentId: z.string(),
@@ -74,6 +83,11 @@ export const Conflict = z.object({
   reason: z.string(),
   overlap: z.array(SymbolRef),
   etaMinutes: z.number().int().positive().optional(),
+  kind: ConflictKind.default("write_write"),
+  /** For `write_read`: the declaration as you read it, and as it stands now. Carried so
+   * an agent can patch its call sites from the delta instead of re-reading the file. */
+  wasSigText: z.string().max(240).optional(),
+  nowSigText: z.string().max(240).optional(),
 });
 export type Conflict = z.infer<typeof Conflict>;
 
@@ -131,6 +145,13 @@ export const ClaimIntentInput = z.object({
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
+  /**
+   * The declarations this work was written against, with the `sig` they carried when the
+   * agent read them. A claim is only as fresh as the read that produced it: without this,
+   * an agent that read `verify(token)` and writes a caller in another file collides with
+   * nobody, and finds out at CI. Optional — omit it and behaviour is exactly as before.
+   */
+  reads: z.array(SymbolRef).optional(),
   purpose: z.string().default(""),
   etaMinutes: z.number().int().positive().optional(),
   /** Claim anyway despite a hard conflict. Recorded, so the board shows who forced what. */
@@ -203,6 +224,8 @@ export const CheckCollisionInput = z.object({
   branch: z.string().min(1),
   files: z.array(z.string()).default([]),
   symbols: z.array(SymbolRef).default([]),
+  /** Declarations this work was written against — see `ClaimIntentInput.reads`. */
+  reads: z.array(SymbolRef).optional(),
   agentId: z.string().optional(),
 });
 export type CheckCollisionInput = z.infer<typeof CheckCollisionInput>;

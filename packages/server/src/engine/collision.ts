@@ -4,6 +4,9 @@ import { resolveRepoKey } from "@tower/shared";
 export interface CollisionInput {
   files: string[];
   symbols: SymbolRef[];
+  /** Declarations this work was written against, carrying the `sig` read at the time.
+   * Empty means the caller opted out and only write-write detection applies. */
+  reads?: SymbolRef[];
   /** The agent making the incoming claim; its own active claims are ignored. */
   agentId?: string;
   /** Branch of the incoming intent. Overlaps on a *different* branch are real — they
@@ -105,6 +108,7 @@ export function detectCollisions(
       claimId: claim.id,
       agentId: claim.agentId,
       severity,
+      kind: "write_write",
       reason:
         reasonFor(severity, claim.agentId, overlap) +
         (sameBranch ? "" : ` (on branch ${claim.branch})`),
@@ -114,6 +118,71 @@ export function detectCollisions(
   }
 
   // Most severe first.
+  return conflicts.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+}
+
+/**
+ * Antidependencies: someone is writing a declaration this agent *read*.
+ *
+ * `detectCollisions` compares write sets, so it is structurally blind to the common
+ * case — A moves `AuthService.verify` in auth.ts while B, having read the old
+ * signature, writes a caller in payments.ts. No shared file, no shared symbol,
+ * `pairSeverity` returns null on its first line, and B finds out at CI.
+ *
+ * Severity here is evidence-graded, and that asymmetry is what keeps the signal
+ * trustworthy enough to leave switched on:
+ *   - the other agent holds the symbol but its declaration still matches what you read
+ *     → `soft`. They may only be touching the body, and most edits are.
+ *   - the declaration has already moved → `hard`, carrying both forms so the agent can
+ *     patch from the delta instead of pulling the file back into context.
+ *
+ * A read with no `sig` is skipped: file-granularity is too coarse to be worth a warning,
+ * and a warning nobody trusts is worse than silence.
+ */
+export function detectAntidependencies(incoming: CollisionInput, active: Claim[]): Conflict[] {
+  const reads = (incoming.reads ?? []).filter((r) => r.symbol !== "" && r.sig);
+  if (reads.length === 0) return [];
+  const conflicts: Conflict[] = [];
+
+  for (const claim of active) {
+    if (claim.status !== "active") continue;
+    if (incoming.agentId && claim.agentId === incoming.agentId) continue;
+
+    const overlap: SymbolRef[] = [];
+    let moved: { read: SymbolRef; now: SymbolRef } | null = null;
+
+    for (const read of reads) {
+      for (const written of claim.symbols) {
+        if (written.file !== read.file || written.symbol !== read.symbol) continue;
+        overlap.push(read);
+        if (written.sig && written.sig !== read.sig) moved ??= { read, now: written };
+      }
+    }
+    if (overlap.length === 0) continue;
+
+    const sameBranch = incoming.branch === undefined || incoming.branch === claim.branch;
+    const severity = capForBranch(moved ? "hard" : "soft", sameBranch);
+    const where = dedupeSymbols(overlap)
+      .map((s) => s.symbol)
+      .join(", ");
+
+    conflicts.push({
+      claimId: claim.id,
+      agentId: claim.agentId,
+      severity,
+      kind: "write_read",
+      reason: moved
+        ? `${where} moved under you — ${claim.agentId} changed the declaration you read` +
+          (sameBranch ? "" : ` (on branch ${claim.branch})`)
+        : `${claim.agentId} is editing ${where} right now, which you read` +
+          (sameBranch ? "" : ` (on branch ${claim.branch})`),
+      overlap: dedupeSymbols(overlap),
+      ...(claim.etaMinutes != null ? { etaMinutes: claim.etaMinutes } : {}),
+      ...(moved?.read.sigText ? { wasSigText: moved.read.sigText } : {}),
+      ...(moved?.now.sigText ? { nowSigText: moved.now.sigText } : {}),
+    });
+  }
+
   return conflicts.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 }
 

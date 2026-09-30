@@ -54,7 +54,15 @@ export const WORKER_CONNECTED_MS = 15 * 60 * 1000;
  * waste as doing it in parallel. */
 export const RECENT_INTENT_MS = 6 * 60 * 60 * 1000;
 import { TowerStore } from "./store/sqlite.js";
-import { detectCollisions, pairwiseCollisions, type PairConflict } from "./engine/collision.js";
+import {
+  detectCollisions,
+  detectAntidependencies,
+  pairwiseCollisions,
+  type PairConflict,
+} from "./engine/collision.js";
+
+/** Most severe first, across both collision passes. */
+const SEVERITY_ORDER = { info: 0, soft: 1, hard: 2 } as const;
 import { matchIntent } from "./engine/intent.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
 
@@ -110,15 +118,23 @@ export class TowerService {
   claimIntent(input: ClaimIntentInput): ClaimIntentOutput {
     const repoKey = resolveRepoKey(input.repoId, input.repo, input.projectId);
     const active = this.store.activeClaims(repoKey);
-    const conflicts = detectCollisions(
-      {
-        agentId: input.agentId,
-        files: input.files,
-        symbols: input.symbols,
-        branch: input.branch,
-      },
-      active,
-    );
+    const scope = {
+      agentId: input.agentId,
+      files: input.files,
+      symbols: input.symbols,
+      branch: input.branch,
+    };
+    // Two passes over the same active set. The write-write pass cannot see an
+    // antidependency — different file, different symbol, so it exits on its first
+    // line — and the antidependency pass says nothing about overlapping writes.
+    // An agent that sends no `reads` gets exactly the old behaviour.
+    const conflicts = [
+      ...detectCollisions(scope, active),
+      ...detectAntidependencies(
+        { ...scope, ...(input.reads ? { reads: input.reads } : {}) },
+        active,
+      ),
+    ].sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]);
 
     // "You've got mail" rides along on every claim, so agents notice their inbox
     // without polling (MCP has no push channel).
@@ -236,15 +252,22 @@ export class TowerService {
     const active = this.store.activeClaims(
       resolveRepoKey(input.repoId, input.repo, input.projectId),
     );
-    const conflicts = detectCollisions(
-      {
-        ...(input.agentId ? { agentId: input.agentId } : {}),
-        files: input.files,
-        symbols: input.symbols,
-        branch: input.branch,
-      },
-      active,
-    );
+    const scope = {
+      ...(input.agentId ? { agentId: input.agentId } : {}),
+      files: input.files,
+      symbols: input.symbols,
+      branch: input.branch,
+    };
+    // `guard` runs this before claiming, so it has to see antidependencies too —
+    // otherwise the enforcement path is blind to exactly the case the claim path warns
+    // about, and a hook would wave through the edit a claim would have flagged.
+    const conflicts = [
+      ...detectCollisions(scope, active),
+      ...detectAntidependencies(
+        { ...scope, ...(input.reads ? { reads: input.reads } : {}) },
+        active,
+      ),
+    ].sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]);
     return { conflicts };
   }
 

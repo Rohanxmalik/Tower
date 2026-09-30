@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   SymbolRef,
   Claim,
@@ -9,6 +12,7 @@ import {
   LogDecisionInput,
   NextTaskInput,
   TOOL_SCHEMAS,
+  TOWER_VERSION,
 } from "./protocol.js";
 
 describe("SymbolRef", () => {
@@ -160,5 +164,66 @@ describe("TOOL_SCHEMAS registry", () => {
   it("ClaimIntentOutput validates a conflict list", () => {
     const out = ClaimIntentOutput.parse({ claimId: "c1", conflicts: [] });
     expect(out.conflicts).toEqual([]);
+  });
+});
+
+describe("version and tool count cannot drift from what users are told", () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const read = (p: string): string => readFileSync(join(root, p), "utf8");
+
+  // Three times in one release cycle a published number went stale: the tool count in
+  // six docs, the test count on the landing page, and the README status line — twice.
+  // Every one was caught by a human reading carefully, which is not a control.
+  it("TOWER_VERSION matches the published package", () => {
+    const pkg = JSON.parse(read("packages/cli/package.json")) as { version: string };
+    expect(TOWER_VERSION).toBe(pkg.version);
+  });
+
+  it("the root package.json agrees too", () => {
+    const pkg = JSON.parse(read("package.json")) as { version: string };
+    expect(TOWER_VERSION).toBe(pkg.version);
+  });
+
+  it("the README status line names the shipped version", () => {
+    const status = /^> Status: \*\*v(\d+\.\d+\.\d+)/m.exec(read("README.md"));
+    expect(status, "README has no `> Status: **vX.Y.Z` line to check").not.toBeNull();
+    expect(status?.[1]).toBe(TOWER_VERSION);
+  });
+
+  it("every doc that states a tool count states the real one", () => {
+    const actual = Object.keys(TOOL_SCHEMAS).length;
+    const words: Record<number, string> = {
+      18: "eighteen",
+      19: "nineteen",
+      20: "twenty",
+      21: "twenty-one",
+      22: "twenty-two",
+    };
+    for (const f of [
+      "README.md",
+      "docs/protocol.md",
+      "SECURITY.md",
+      "CLAUDE.md",
+      "site/index.html",
+    ]) {
+      const text = read(f);
+      // A wrong count is worse than no count, so only flag numbers that claim to be one.
+      for (const m of text.matchAll(/(\d+) (?:MCP )?tools/g)) {
+        expect(Number(m[1]), `${f} claims "${m[0]}" but there are ${actual}`).toBe(actual);
+      }
+      // Plain substring checks, not a built regex: a `\b` written into a template
+      // literal is a backspace character, not a word boundary, and the guard silently
+      // matches nothing. That exact bug was in the first version of this test.
+      const lower = text.toLowerCase();
+      for (const [n, word] of Object.entries(words)) {
+        if (Number(n) === actual) continue;
+        for (const phrase of [`${word} tools`, `${word} mcp tools`]) {
+          expect(
+            lower.includes(phrase),
+            `${f} spells out "${phrase}" but there are ${actual} tools`,
+          ).toBe(false);
+        }
+      }
+    }
   });
 });

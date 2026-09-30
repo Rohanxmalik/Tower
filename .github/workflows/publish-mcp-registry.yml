@@ -64,5 +64,22 @@ jobs:
       - name: Authenticate (GitHub Actions OIDC)
         run: ./mcp-publisher login github-oidc
 
+      # Publishing a version the registry already carries is not a failure — the end
+      # state this job exists to guarantee already holds. It happens whenever a release
+      # is re-cut, the workflow is re-run, or a version was published manually first, and
+      # a red X on the release would say the listing is broken when it is fine. Every
+      # other error still fails the job.
       - name: Publish
-        run: ./mcp-publisher publish
+        run: |
+          set +e
+          output=$(./mcp-publisher publish 2>&1)
+          status=$?
+          echo "$output"
+          if [ $status -eq 0 ]; then
+            exit 0
+          fi
+          if echo "$output" | grep -q "cannot publish duplicate version"; then
+            echo "::notice::Registry already carries this version — nothing to publish."
+            exit 0
+          fi
+          exit $status

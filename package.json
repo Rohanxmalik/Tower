@@ -2,7 +2,7 @@
   "name": "tower-monorepo",
   "version": "0.11.0",
   "private": true,
-  "description": "Tower — air-traffic control for AI agents editing a shared repo. Semantic pre-flight collision detection over MCP.",
+  "description": "Tower \u2014 air-traffic control for AI agents editing a shared repo. Semantic pre-flight collision detection over MCP.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -41,6 +41,9 @@
     "node": ">=22"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "fast-uri": "^3.1.8",
+    "hono": "^4.13.11",
+    "ip-address": "^10.7.2"
   }
 }

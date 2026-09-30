@@ -5,7 +5,7 @@ and moving fast — issues, PRs, and protocol feedback are all welcome.
 
 ## Getting set up
 
-Requires **Node 22.13+** (Tower uses the built-in `node:sqlite`, so there is no native
+Requires **Node 22.13+ or 23.4+** (Tower uses the built-in `node:sqlite`, so there is no native
 module to compile).
 
 ```bash
@@ -33,9 +33,13 @@ npm run demo    # the two-agent collision demo
 
 - **New language grammars** for symbol extraction (Go, Rust, Java…) — see
   `packages/server/src/engine/symbols.ts`; grammars come from `tree-sitter-wasms`.
+  Today only TypeScript, JavaScript and Python are mapped in `GRAMMAR_BY_EXT`; every
+  other file falls back to one file-level symbol, so two agents in different functions of
+  a `.go` file still collide. `tree-sitter-wasms` already ships `go`, `rust`, `java`,
+  `ruby`, `c_sharp`, `kotlin` and more — one extension mapping, that language's
+  declaration node types in `DECLARATION_KINDS`, and tests is a self-contained PR.
 - **Editor recipes** — tested setup docs for Windsurf, Zed, Gemini CLI, etc.
 - **Board polish** — repo filter, claim history (`packages/server/src/board.ts`).
-- **`tower doctor`** — a command that diagnoses common setup problems.
 
 ## Before opening a PR
 

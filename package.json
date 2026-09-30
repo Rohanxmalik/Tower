@@ -1,6 +1,6 @@
 {
   "name": "tower-monorepo",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "private": true,
   "description": "Tower \u2014 air-traffic control for AI agents editing a shared repo. Semantic pre-flight collision detection over MCP.",
   "type": "module",

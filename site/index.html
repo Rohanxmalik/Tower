@@ -16,7 +16,10 @@
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rohanxmalik.github.io/Tower/" />
-    <meta property="og:image" content="https://raw.githubusercontent.com/Rohanxmalik/Tower/main/site/board.png" />
+    <meta property="og:image" content="https://rohanxmalik.github.io/Tower/og.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content="Tower — multiplayer for your AI coding agents" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -455,7 +458,7 @@
           <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
           <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Editable from the board, no git commit, no redeploy.</p></div>
           <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
-          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason fed back to the agent. It claims the function the edit lands in, so two agents in one file don't block each other. A universal git pre-commit guard covers every other editor.</p></div>
+          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason and what's still safe to do fed back to the agent. It claims the function the edit lands in, so two agents in one file don't block each other. A universal git pre-commit guard covers every other editor.</p></div>
           <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>
           <div class="card"><div class="tag">agnostic</div><h3>Any agent, any model</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. Coordination is only useful if the other vendor's agent is in the room.</p></div>
           <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A zero-dependency GitHub Action comments when two open PRs touch overlapping lines, and shows which files an agent is editing right now. One workflow file, no server needed.</p></div>
@@ -564,7 +567,10 @@
               An MCP tool is advisory — the agent has to choose to call it. A Claude Code
               <span class="mono">PreToolUse</span> hook doesn't: a conflicting
               <span class="mono">Edit</span> exits 2 and never runs, with the reason fed back
-              to the model. A git <span class="mono">pre-commit</span> guard does the same at
+              to the model — including an edit built on a declaration that has since moved.
+              The block is a refused claim like any other: the agent gets the same
+              <span class="mono">alternatives</span>, and a message from Tower when the claim
+              ends. A git <span class="mono">pre-commit</span> guard does the same at
               commit time for any editor, any agent, including a human.
             </p>
             <p class="lead-p">
@@ -595,8 +601,8 @@
           <div class="term">
             <div class="term-head">git rev-list --max-parents=0 HEAD</div>
             <div class="term-body">
-<pre>acme/app         → caaa8780f2853aec824905cc3278402fc26caa0a
-someone/app-fork → caaa8780f2853aec824905cc3278402fc26caa0a
+<pre>acme/app         → 7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19
+someone/app-fork → 7c1e9a04b3d2f58e6a90c4d1b7e3f2a8c5d60e19
 
   same project. same coordination space.</pre>
             </div>
@@ -687,7 +693,7 @@ someone/app-fork → caaa8780f2853aec824905cc3278402fc26caa0a
           <div class="tool"><span class="name">claim_intent</span><span class="desc">Register intent + get collisions; a hard conflict is <b>refused</b>, not just reported</span></div>
           <div class="tool"><span class="name">check_collision</span><span class="desc">Dry-run check, no claim persisted</span></div>
           <div class="tool"><span class="name">heartbeat</span><span class="desc">Keep a claim alive; auto-expires otherwise</span></div>
-          <div class="tool"><span class="name">complete_claim</span><span class="desc">Release on commit (records the sha)</span></div>
+          <div class="tool"><span class="name">complete_claim</span><span class="desc">Release on commit (records the sha); tells readers whether the landed signature matches what was declared</span></div>
           <div class="tool"><span class="name">release_claim</span><span class="desc">Abandon a claim</span></div>
           <div class="tool"><span class="name">list_claims</span><span class="desc">Live claim state</span></div>
           <div class="tool"><span class="name">log_decision</span><span class="desc">Record a decision or team rule + the why</span></div>
@@ -702,6 +708,7 @@ someone/app-fork → caaa8780f2853aec824905cc3278402fc26caa0a
           <div class="tool"><span class="name">resolve_approval</span><span class="desc">Approve or reject a parked task from the board</span></div>
           <div class="tool"><span class="name">heartbeat_worker</span><span class="desc">Live presence + capacity for each machine</span></div>
           <div class="tool"><span class="name">pending</span><span class="desc">What's waiting for you — unread messages + open tasks, marks nothing read</span></div>
+          <div class="tool"><span class="name">record_reads</span><span class="desc">What you just read — and who is changing it right now</span></div>
         </div>
       </div>
     </section>

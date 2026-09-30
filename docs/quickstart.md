@@ -73,6 +73,19 @@ headlessly, and PRs the result → [worker.md](./worker.md).
 - PR collision reports in CI → [action.md](./action.md)
 - The wire contract (all 20 tools) → [protocol.md](./protocol.md)
 
+## What changed in 0.12.1
+
+- **Hook-blocked edits get the full 0.12 treatment.** An edit blocked by the PreToolUse
+  hook or the pre-commit guard now shows the `alternatives`, and Tower messages the agent
+  when the blocking claim ends. It is also blocked when a declaration it read has since
+  moved, and it is counted once in `tower stats`.
+- **Claims made from the CLI or the hooks carry signatures**, so "moved under you"
+  warnings and landed-signature notices work there too, not only for MCP clients.
+- **`init --hooks` upgrades an existing install**, including an older `PostToolUse`
+  matcher that never watched `Read`. From your Tower clone:
+  `git pull && npm install && npm run build && npx tower-mcp init --hooks`
+- **`tower <command> --help` works** (it used to exit 1), and `tower --version` is new.
+
 ## What changed in 0.12.0 — nobody waits
 
 - A **refused claim says what to do instead**: `alternatives.avoid` lists what the holder

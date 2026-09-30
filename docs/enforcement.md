@@ -62,8 +62,19 @@ For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 
 1. It works out which function the edit lands in and calls `tower guard` for it.
 2. If another active agent holds a **hard**-conflicting claim → the hook exits `2`,
-   Claude Code **blocks the edit**, and the reason (who / what / ETA) is fed back to Claude.
+   Claude Code **blocks the edit**, and the reason (who / what / ETA) is fed back to Claude,
+   followed by **"What to do instead"**: the refusal's `alternatives` (what to avoid for
+   now, and a suggested next task when modules are defined). The blocked agent is
+   registered as waiting, so Tower messages it when the blocking claim is completed,
+   released or expires.
 3. Otherwise it registers a claim for this agent and lets the edit through.
+
+Since 0.12.1 `tower guard` (this hook, and the pre-commit guard in Layer 3) goes straight
+through `claim_intent` rather than pre-checking with `check_collision`. Before that, a
+hook-blocked agent got no alternatives, no release message and no entry in `tower stats`,
+and an edit against a declaration it had read — one that has since moved — went through
+unclaimed instead of being blocked. A hook that retries the same blocked edit is counted
+once in `tower stats`, not once per retry.
 
 It **fails open but loud** — any error allows the edit, so a hook bug can never brick your
 session, and it prints that coordination was not enforced so you can tell the difference.
@@ -92,6 +103,19 @@ npx -y tower-mcp init --hooks   # or: cp .claude/settings.example.json .claude/s
 Then reload Claude Code. Open two Claude sessions on the same repo and watch the second
 get blocked when it reaches for a file the first is editing.
 
+**Upgrading.** Re-run the same command after pulling a new Tower:
+
+```bash
+git pull && npm install && npm run build && npx tower-mcp init --hooks
+```
+
+Since 0.12.1 `init --hooks` upgrades an existing install: it rewrites Tower's own hook
+entries to the current version (for example an older `PostToolUse` matcher without
+`|Read`), moves Tower's command out of a group it shares with your own hooks rather than
+editing that group, and adds Tower's entry beside your own hooks for the same event. Your
+own hooks are never changed, and running it twice changes nothing the second time.
+`.claude/settings.example.json` is exactly what `init --hooks` writes.
+
 ```jsonc
 // .claude/settings.json
 {
@@ -112,7 +136,8 @@ get blocked when it reaches for a file the first is editing.
   `.tower/tower.db`, coordinating the agent sessions on _your_ machine in _this_ repo.
 - **Cross-developer enforcement**: set `TOWER_URL` (and `TOWER_TOKEN`) and the hook blocks
   based on _teammates'_ claims on a shared hosted Tower — see [team.md](./team.md). Repo
-  identity is taken from the git `origin` remote so it matches across everyone's clones.
+  identity is the root commit sha, which every clone, fork and mirror shares; the `origin`
+  remote only supplies the readable label (and the fallback when there is no commit yet).
 - Granularity is the **function** an edit lands in, found by locating the edit's
   `old_string` in the parsed file. A `Write`, a new file, or an edit between declarations
   falls back to the whole file — over-claiming is safe, under-claiming is not.

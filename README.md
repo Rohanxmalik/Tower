@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.12.0 — early, building in public.** Everything below works end-to-end today,
+> Status: **v0.12.1 — early, building in public.** Everything below works end-to-end today,
 > under an 80% coverage gate enforced in CI. What's shipped and what's next:
 > [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
@@ -318,6 +318,10 @@ from what agents actually read.
 **Nobody polls.** The moment bob's claim completes, is released or expires, the agent
 that was refused gets a message from `tower` saying what freed up.
 
+The same holds when the block comes from the PreToolUse hook or the git pre-commit guard
+(as of 0.12.1): the blocked agent sees the alternatives and gets the message when the
+claim frees up.
+
 **You find out when you read, not when you edit.** Open a file someone is changing and
 the `PostToolUse` hook tells your agent right then — before it plans anything on top of
 code that's about to move.
@@ -384,7 +388,7 @@ MCP clients (Claude Code / Cursor / Codex)
         ▼
 Tower server ── collision engine (tree-sitter) · agent inbox · sequencer · SQLite · /board UI
         ▲
-tower CLI: demo · doctor · init · setup · serve · status · watch · claim · guard · send · inbox · nudge · work · next-task · complete
+tower CLI: demo · doctor · init · setup · serve · status · stats · watch · complete · claim · guard · next-task · send · inbox · nudge · work · version
 ```
 
 - **Semantic, not textual:** symbols come from tree-sitter ASTs (TS/JS/Python), so
@@ -398,12 +402,21 @@ layers** — stack them:
 
 1. **MCP tools + rules file** — every agent (Claude, Cursor, Codex) claims before editing.
    `tower setup` writes this for you.
-2. **Claude Code PreToolUse hook** — a conflicting `Edit`/`Write` is physically **blocked**.
-   ⚠️ **Needs a clone of Tower today** — the hook script isn't in the npm package yet:
+2. **Claude Code hooks** — a conflicting `Edit`/`Write`/`MultiEdit` is physically
+   **blocked**. ⚠️ **Needs a clone of Tower today** — the hook scripts aren't in the npm
+   package; they run from the clone and import its built CLI:
    ```bash
-   npm run build
-   cp .claude/settings.example.json .claude/settings.json   # then reload Claude Code
+   npm install && npm run build
+   npx tower-mcp init --hooks   # writes .claude/settings.json, then reload Claude Code
    ```
+   That wires five hooks: **SessionStart** registers the session, **UserPromptSubmit**
+   tells you when tasks or messages are waiting, **PreToolUse** blocks a hard-conflicting
+   edit (exit 2), **PostToolUse** keeps your presence alive on edits and, on `Read`,
+   records what you read and warns you if someone is changing it, **SessionEnd** releases
+   your claims. **Upgrading** an existing install is the same command —
+   `git pull && npm install && npm run build && npx tower-mcp init --hooks` — which
+   rewrites Tower's own entries to the current version and never changes your own hooks.
+   Re-running it changes nothing.
 3. **Universal git pre-commit guard** — works with _any_ editor or agent; the commit itself
    is refused while a teammate's agent holds a conflicting claim:
    ```bash
@@ -451,10 +464,10 @@ No server needed — one workflow file comments on any PR that touches the same 
 hosted Tower:
 
 ```yaml
-- uses: Rohanxmalik/Tower/action@main
+- uses: Rohanxmalik/Tower/action@v0.12.1
 ```
 
-Setup + screenshots → [docs/action.md](./docs/action.md).
+Pin a release tag like this; `@main` works too but tracks the bleeding edge. Setup + screenshots → [docs/action.md](./docs/action.md).
 
 ## Team mode (whole team, different machines)
 
@@ -497,7 +510,8 @@ same-WiFi mode + click-by-click Render steps + per-editor config →
 - **Tower never blocks you by failing.** Every hook fails _open_: if Tower is unreachable
   or a hook errors, your edit and your commit go through.
 - **To remove it:** delete `.tower/`, drop the `tower` entry from `.mcp.json`, and delete
-  `.git/hooks/pre-commit` and `post-commit` if you installed them with `--hooks`.
+  `.git/hooks/pre-commit` and `post-commit` if you installed them with `--hooks`. If you
+  ran `init --hooks`, also drop Tower's `node hooks/…` entries from `.claude/settings.json`.
 
 ## Monorepo layout
 
@@ -505,10 +519,11 @@ same-WiFi mode + click-by-click Render steps + per-editor config →
 packages/shared   protocol types + zod schemas (source of truth)
 packages/server   collision engine, sequencer, SQLite store, MCP server, transports
 packages/cli      the `tower` command
-hooks/            Claude Code PreToolUse enforcement hook
+hooks/            the five Claude Code hooks (SessionStart … SessionEnd; PreToolUse blocks)
 action/           GitHub Action — PR collision reports
+extensions/       tower-anywhere — claim-before-you-edit for non-code work (docs, briefs)
 examples/         two-agents-demo, git-hooks (pre-commit guard, post-commit release)
-docs/             quickstart, protocol, worker, enforcement, team, action, waitlist
+docs/             quickstart, protocol, worker, enforcement, team, action
 Dockerfile        hosted team server
 ```
 

@@ -37,15 +37,36 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
 - **Delegated prompts travel on stdin.** Every worker runner — including custom
   `--cmd` commands — receives the task text on stdin, never spliced into a shell
   command line, so a hostile task body cannot shell-inject on a worker machine.
-- **The Claude Code hook fails open** — a hook error can never brick your editor session —
-  and shells out only to fixed `git rev-parse` commands (no user input interpolated).
-- **No telemetry.** Tower makes no network calls except the ones you configure.
+- **The Claude Code hooks fail open.** There are five: SessionStart (registers the
+  session), UserPromptSubmit (the nudge: tasks or messages waiting for you), PreToolUse
+  (blocks a hard-conflicting `Edit`/`Write`/`MultiEdit` by exiting 2), PostToolUse
+  (presence on edits; on `Read` it records what was read and warns if someone is changing
+  that code) and SessionEnd (releases your claims). A hook error never bricks your editor
+  session — it allows the action and says so on stderr, so "checked and clear" and "never
+  checked" stay distinguishable. The exit code is the verdict; no hook calls
+  `process.exit()` directly.
+- **What the hooks run.** They import the built CLI from your Tower clone
+  (`packages/cli/dist`, plus `packages/server/dist` for symbol lookup) and shell out only to fixed git commands — `git rev-parse`,
+  `git config --get remote.origin.url` and `git rev-list --max-parents=0 HEAD` — with no
+  user input interpolated. Nothing is fetched from npm: the UserPromptSubmit nudge no
+  longer falls back to `npx -y tower-mcp` (a registry lookup on every prompt); if the
+  CLI isn't built it says so on stderr and lets the prompt through.
+- **No telemetry.** Tower makes no network calls except the ones you configure. With
+  `TOWER_URL` / `TOWER_TOKEN` set, the hooks talk to that hosted Tower; without them
+  they read the local `.tower` store.
 
 **Known limitations (by design, documented):**
 
-- Claims are _advisory_ between cooperating agents; enforcement exists on a single machine
-  via the PreToolUse hook. A hostile local process can bypass coordination — Tower is not
-  an access-control system.
+- Claims are _advisory_ between cooperating agents. Enforcement is the PreToolUse hook
+  (and the optional git pre-commit guard) on each machine that installs it; point those
+  machines at one hosted Tower with `TOWER_URL` / `TOWER_TOKEN` and the block holds across
+  machines. An agent without the hook, or a hostile local process, can bypass
+  coordination — Tower is not an access-control system.
+- Coordination is keyed by the repository's **root commit sha**, so every clone, fork and
+  mirror of a repo shares one coordination space on a given Tower (the `origin` remote only
+  supplies the readable label, or the key when there is no commit yet; a hand-set
+  `projectId` overrides both). Anyone with the token and a copy of the repo's history
+  lands in the same space.
 - The bearer token is a shared team secret; rotate it by restarting the server with a new
   `TOWER_TOKEN`.
 - **No per-agent identity:** any token holder can claim or send messages as any `agentId`

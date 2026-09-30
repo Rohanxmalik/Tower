@@ -8,14 +8,17 @@ hard/soft severities. The only difference is what you claim. Instead of
 `src/auth.ts#verify`, you claim `"Q3 Launch Brief"`.
 
 ```
-$ tower-anywhere claim "Q3 Launch Brief" --who ana --purpose "rewriting the positioning" --eta 30
+$ tower-anywhere claim "Q3 Launch Brief" --who alice --purpose "rewriting the positioning" --eta 30
 No conflicts — nobody else is on this.
-Claim da615161 registered for ana.
+Claim da615161 registered for alice.
 
-$ tower-anywhere guard "Q3 Launch Brief" --who bo --purpose "adding the CTA"
+$ tower-anywhere guard "Q3 Launch Brief" --who bob --purpose "adding the CTA"
 1 conflict(s):
-  [hard] ana already has all of Q3 Launch Brief (~30m left)
+  [hard] alice already has all of Q3 Launch Brief (~30m left)
 BLOCKED — 1 hard conflict(s). Wait, pick something else, or --force.
+What to do instead:
+  Don't wait: work on anything not listed here. Tower will message you when it frees up.
+  Avoid for now: Q3 Launch Brief
 ```
 
 ## Why there's no Figma/Notion/Google integration
@@ -52,7 +55,7 @@ Then everyone points at it:
 export TOWER_URL=http://your-server:4319/mcp
 export TOWER_TOKEN=our-team-token
 export TOWER_SPACE=acme-marketing   # your team's shared board
-export TOWER_WHO=ana                # your name
+export TOWER_WHO=alice              # your name
 ```
 
 Install this CLI:
@@ -65,17 +68,20 @@ npm link          # gives you `tower-anywhere` on your PATH
 
 ## Commands
 
-| Command                  | What it does                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `claim <artifact>`       | Register intent, print conflicts. Exit 2 on a hard conflict, but the claim still registers.          |
-| `guard <artifact>`       | Check first, claim only if clear. Exit 2 and register **nothing** when blocked. Use this in scripts. |
-| `release --claim <id>`   | Done — frees the artifact for everyone else.                                                         |
-| `keepalive --claim <id>` | Claims expire. Call this every ~60s on long work.                                                    |
+| Command                  | What it does                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `claim <artifact>`       | Register intent, print conflicts. A hard conflict is refused: exit 2, **nothing** registered. |
+| `guard <artifact>`       | The same check with one-word verdicts (CLEAR / BLOCKED / FORCED). Use this in scripts.        |
+| `release --claim <id>`   | Done — frees the artifact for everyone else.                                                  |
+| `keepalive --claim <id>` | Claims expire. Call this every ~60s on long work.                                             |
 
 Options: `--who`, `--space`, `--section`, `--purpose`, `--eta`, `--force`.
 
-`claim` vs `guard`: `claim` tells you and proceeds — right for a person who can read the
-warning and decide. `guard` refuses — right for an automation that can't.
+`claim` vs `guard`: both refuse a hard conflict and register nothing — Tower has done that
+since 0.9. `claim` reads for a person; `guard` prints a verdict a script can match on.
+Either way, a refusal says what is still free to work on, and Tower leaves you a message
+(it shows on the team's board) when the holder releases the artifact or their claim
+expires. `--force` claims anyway, and the override is recorded.
 
 ## What counts as a conflict
 

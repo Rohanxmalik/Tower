@@ -173,7 +173,8 @@ All twenty tools take and return JSON validated by the schemas in
 
 ```
 1. Before editing            → claim_intent { agentId, repo, branch, files, symbols, purpose }
-2. If a "hard" conflict      → work outside alternatives.avoid; Tower messages you when free
+2. If a "hard" conflict      → stop and ask (default), or with --keep-going work outside
+                               alternatives.avoid; either way Tower messages you when it frees up
 3. If unreadMessages > 0     → fetch_messages { agentId }; act on tasks, reply with task_update
 4. While editing (~60s)      → heartbeat { claimId }
 5. On commit (git hook)      → complete_claim { claimId, commitSha }

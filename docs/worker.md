@@ -53,7 +53,10 @@ in the same tap. Both endpoints use the same `TOWER_TOKEN` as everything else �
 can open your board can drive your worker, so treat the token accordingly.
 
 > The flags below describe the shipped behavior at a high level; the exact, current CLI
-> surface is always `tower work --help`.
+> surface is always `tower work --help` (it prints the full command list, including every
+> `work` flag: `--agent`, `--repo`, `--runner`, `--cmd`, `--interval` (seconds, default
+> 15), `--max-minutes` (per task, default 15), `--budget`, `--allow-from`,
+> `--permission-mode`, `--no-push`, `--no-pr`).
 
 ## The task lifecycle
 
@@ -134,6 +137,27 @@ The worker never touches the branch you have checked out:
 
 If the run fails or exceeds the max runtime, the task is completed as `failed` with the
 error as the result — the delegator hears about failures too, not just successes.
+
+## When a task hits a conflict
+
+A headless run has no human to ask. If the agent in the worker's clone is refused a
+`hard` conflict (by `claim_intent`, or by the PreToolUse hook if you wired it there), what
+happens next depends on the rule `tower setup` wrote into that clone:
+
+- **Default rule — stop and ask.** The agent stops and says why. The runner still exits
+  normally, so the worker completes the task as done, not `failed`: with no file changes
+  the board shows **"done · no changes"**, and the `task_update` result carries the last
+  ~2,000 characters of the agent's output — which is where its account of the refusal
+  ends up. Anything it had already changed before stopping is committed and pushed like
+  any other result. Nobody retries the task for you; the delegator reads the reply and
+  decides.
+- **`--keep-going` — work around it.** A team can choose this on purpose by running
+  `npx -y tower-mcp setup --keep-going` in the worker's clone. The rule then tells the
+  agent to work on anything outside the refusal's `alternatives.avoid` (or its
+  `nextTask`) and to ask only if nothing safe is left. Tower messages the agent when the
+  blocking claim is completed, released or expires — but a headless run only sees that
+  message if it is still running and touches Tower again; once the runner exits, the task
+  is reported as it stands.
 
 ## Keeping the worker alive
 

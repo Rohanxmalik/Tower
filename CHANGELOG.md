@@ -3,6 +3,62 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.12.1 - 2026-10-01
+
+**0.12.0's promises now hold on the path most blocked edits actually take.** An audit
+after release found that `tower guard` — what the PreToolUse hook and the pre-commit
+guard run — never reached the code 0.12.0 added. Everything below is a fix or a
+correction; no protocol changes, still 20 tools.
+
+### Fixed
+
+- **A hook-blocked agent was promised a message it never got.** `tower guard`
+  pre-checked with `check_collision` and returned before `claim_intent`, so the blocked
+  agent was never registered as a waiter, never saw `alternatives`, and the collision
+  never reached `tower stats` — while the prompt printed "[w] wait — Tower messages you"
+  and 0.12.0's notes said the same. `guard` now goes straight through `claim_intent`
+  (a refusal registers nothing, so the pre-check bought nothing).
+- **An edit built on a moved declaration went through unclaimed.** The same pre-check
+  ignored the agent's recorded reads; the claim that followed was refused over them, and
+  the refusal was dropped. It now blocks.
+- **Claims from the CLI and the hooks carried no signatures.** `path#name` symbols were
+  sent without their declaration fingerprint, so on the hook path there was no hard
+  `write_read`, no heartbeat invalidation and no landed-signature notice on complete —
+  only MCP clients that sent `sig` themselves got any of it. They are now fingerprinted
+  from the working tree.
+- **`tower stats` counted a retry as a new collision.** A hook retries a blocked edit each
+  time the agent reaches for it. A refusal is now counted once per agent per blocking
+  claim.
+- **`init --hooks` never upgraded an existing install.** It skipped any event already in
+  `.claude/settings.json`, so an install from before 0.11 kept a `PostToolUse` matcher
+  without `Read` — no recorded reads, none of 0.12's read-time warnings — and re-running
+  the documented command said "already wires every Tower hook". It now rewrites Tower's
+  own entries, moves Tower's command out of a group it shares with yours rather than
+  editing that group, adds Tower's entry beside your own hooks for the same event, and
+  never changes your hooks. **Upgrade:** in your Tower clone,
+  `git pull && npm install && npm run build && npx tower-mcp init --hooks`.
+- `.claude/settings.example.json` had the old matcher too; a test now holds it equal to
+  what `init --hooks` writes.
+- `tower init` printed a hand-copied pre-0.12 rule; it now prints the one `tower setup`
+  writes.
+- `tower <command> --help` exited 1 with "Unknown option"; every command now prints help
+  and exits 0. New: `tower --version`. Help now lists `work`'s `--agent`, `--repo`,
+  `--cmd`, `--interval`, `--max-minutes`, `--no-push`, `--no-pr` and `serve`'s `--host`.
+- The UserPromptSubmit nudge hook fell back to `npx -y tower-mcp nudge` — a registry call
+  on every prompt, contradicting "no network calls you didn't configure". Like every
+  other hook it now needs the built CLI, and says so on stderr if it is missing.
+- `tower-anywhere` had the same guard bug; its `guard` now goes through `claim_intent`
+  too, and both commands print what is still free when refused.
+- Docs: SECURITY.md described one hook on one machine; team.md and enforcement.md said
+  repo identity comes from `origin` (it is the root commit sha); worker.md never said what
+  happens when a headless run hits a conflict; the site's tool grid listed 19 of 20
+  tools. Sample repo ids and agent names in tests and on the site are now made up.
+
+### Added
+
+- `site/logo.png` (listed as the registry icon) and `site/og.png`, the link preview.
+- `glama.json`, for claiming the Glama directory listing.
+
 ## 0.12.0 - 2026-10-01
 
 **Nobody waits.** Before this release a `hard` conflict ended in `stand_down` and

@@ -156,6 +156,31 @@ Put it behind TLS (a reverse proxy / your platform's HTTPS) before exposing it p
 the bearer token is sent in a header. And treat `/board#token=…` one-tap links as the
 token itself: pasting one into a chat leaves the token in that channel's history.
 
+## Upgrading your team server
+
+The server image builds from the repo's source (see the [`Dockerfile`](../Dockerfile)),
+so upgrading means getting the new source to wherever it builds:
+
+1. **Update the code.** Render / Railway from a fork: on GitHub, open your fork and click
+   **Sync fork** → **Update branch**. Fly.io or Docker from a clone: `git pull`.
+2. **Let it redeploy.** Render and Railway rebuild on a push to the connected branch
+   (or use the dashboard's manual deploy). Fly.io: `fly deploy`. Docker Compose:
+   `docker compose up -d --build`. The Docker volume keeps the database; on Render's free
+   tier a redeploy starts from an empty one (see
+   [Data persistence on Render](#data-persistence-on-render)).
+3. **Check it took:** `curl https://tower-xxxx.onrender.com/health` should print the new
+   `"version"`.
+4. **Each teammate upgrades their hooks.** The Claude Code hooks run from a local Tower
+   clone, not from the server or npm, so every developer runs, in that clone:
+
+   ```bash
+   git pull && npm install && npm run build && npx tower-mcp init --hooks
+   ```
+
+   Re-running `init --hooks` rewrites Tower's own hook entries to the current version
+   and leaves your own hooks alone. Workers pointed at the server warn on startup when
+   their major.minor differs from the server's ([worker.md](./worker.md#version-handshake)).
+
 ## Point each developer's agent at it
 
 **One command per developer** (writes `.mcp.json`, the agent rules, and the git hooks):
@@ -226,8 +251,10 @@ you're coordinating with yourself locally.
 
 Set those in the shell that launches your editor (so the hook inherits them), enable the
 hook, and now Developer B's `Edit` is **blocked** while Developer A holds the file. Repo
-identity comes from your git remote (`origin`), so it matches across everyone's clones
-regardless of local folder name.
+identity is the repository's **root commit sha** (`git rev-list --max-parents=0 HEAD`),
+which every clone, fork and mirror shares, so it matches across everyone's machines
+regardless of folder name or how the remote is spelled. The `origin` remote only supplies
+the readable repo label, and is the fallback for a repo with no commits yet.
 
 ## Test it with your team (5 minutes)
 

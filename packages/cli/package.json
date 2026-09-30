@@ -1,8 +1,8 @@
 {
   "name": "tower-mcp",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "mcpName": "io.github.Rohanxmalik/tower",
-  "description": "Multiplayer for AI coding agents \u2014 delegate tasks across machines, see every claim, task and reply on one shared board, and catch collisions before the first keystroke. Over MCP, model-agnostic (Claude Code, Cursor, Codex).",
+  "description": "Multiplayer for AI coding agents — delegate tasks across machines, see every claim, task and reply on one shared board, and catch collisions before the first keystroke. Over MCP, model-agnostic (Claude Code, Cursor, Codex).",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -10,7 +10,7 @@
     "url": "git+https://github.com/Rohanxmalik/Tower.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/Rohanxmalik/Tower#readme",
+  "homepage": "https://rohanxmalik.github.io/Tower/",
   "bugs": "https://github.com/Rohanxmalik/Tower/issues",
   "keywords": [
     "mcp",
@@ -20,7 +20,12 @@
     "cursor",
     "codex",
     "developer-tools",
-    "coordination"
+    "coordination",
+    "mcp-server",
+    "claude-code",
+    "multi-agent",
+    "agent-coordination",
+    "tree-sitter"
   ],
   "bin": {
     "tower": "dist/index.js"

@@ -18,10 +18,14 @@ What you expected instead.
 
 **Environment**
 
-- Tower version / commit:
-- Node version (`node -v`, must be ≥22):
+- Tower version (`npx -y tower-mcp --version`) / commit if running from a clone:
+- Node version (`node -v`, must be 22.13+ or 23.4+ — `node:sqlite` is behind a flag
+  below those):
 - OS:
 - Agent / MCP client (Claude Code, Cursor, Codex, …):
+
+**`tower doctor` output**
+Run `npx -y tower-mcp doctor` in the repo where it failed and paste the output.
 
 **Logs / output**
 Paste the collision output, server logs, or a failing test.

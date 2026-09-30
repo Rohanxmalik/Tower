@@ -21,8 +21,10 @@ jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - uses: Rohanxmalik/Tower/action@main
+      - uses: Rohanxmalik/Tower/action@v0.12.1
 ```
+
+Pin a release tag as above; `@main` works too but tracks the bleeding edge.
 
 What you get on a colliding PR:
 
@@ -42,7 +44,7 @@ If your team runs a [hosted Tower](./team.md), the report also shows claims that
 active _at review time_:
 
 ```yaml
-- uses: Rohanxmalik/Tower/action@main
+- uses: Rohanxmalik/Tower/action@v0.12.1
   with:
     tower-url: https://tower-xxxx.onrender.com
     tower-token: ${{ secrets.TOWER_TOKEN }}

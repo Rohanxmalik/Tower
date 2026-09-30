@@ -660,3 +660,148 @@ describe("T9 — a contract moving under a reader (the antidependency case)", ()
     expect(conflicts.some((c) => c.kind === "write_read" && c.severity === "hard")).toBe(true);
   });
 });
+
+describe("T10 — reads Tower observed, and invalidation after the fact", () => {
+  function svc(): TowerService {
+    return new TowerService({
+      store: new TowerStore(),
+      policy: { modules: [], maxAgentsPerModule: null },
+    });
+  }
+  const READ = {
+    file: "src/auth.ts",
+    symbol: "AuthService.verify",
+    sig: "c1:old",
+    sigText: "verify(token)",
+  };
+
+  it("uses reads the hook recorded when the agent declares none", () => {
+    const s = svc();
+    s.recordReads({ agentId: "bob", repo: "acme/app", reads: [READ] });
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [
+        {
+          file: "src/auth.ts",
+          symbol: "AuthService.verify",
+          sig: "c1:new",
+          sigText: "verify(token, opts)",
+        },
+      ],
+      purpose: "add opts",
+    });
+    // bob declares nothing — the agent never had to remember what it read.
+    const out = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      purpose: "charge",
+    });
+    expect(out.conflicts.some((c) => c.kind === "write_read")).toBe(true);
+  });
+
+  it("a declared read set wins over the observed one", () => {
+    const s = svc();
+    s.recordReads({ agentId: "bob", repo: "acme/app", reads: [READ] });
+    const out = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [{ file: "src/other.ts", symbol: "nothing", sig: "c1:z" }],
+      purpose: "charge",
+    });
+    expect(out.conflicts).toHaveLength(0);
+    s.close?.();
+  });
+
+  it("heartbeat reports a declaration that moved after the claim was taken", () => {
+    const s = svc();
+    // bob claims FIRST, carrying what he read. Nobody has touched it yet.
+    const bob = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [READ],
+      purpose: "charge",
+    });
+    expect(bob.conflicts).toHaveLength(0);
+    expect(s.heartbeat({ claimId: bob.claimId! }).invalidations).toHaveLength(0);
+
+    // alice moves it afterwards — at claim time bob could not have been told.
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [
+        {
+          file: "src/auth.ts",
+          symbol: "AuthService.verify",
+          sig: "c1:new",
+          sigText: "verify(token, opts)",
+        },
+      ],
+      purpose: "add opts",
+      force: true,
+    });
+
+    const beat = s.heartbeat({ claimId: bob.claimId! });
+    expect(beat.invalidations).toHaveLength(1);
+    expect(beat.invalidations[0]?.wasSigText).toBe("verify(token)");
+    expect(beat.invalidations[0]?.nowSigText).toBe("verify(token, opts)");
+  });
+
+  it("heartbeat stays quiet when nothing moved", () => {
+    const s = svc();
+    const bob = s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/payments.ts", symbol: "charge" }],
+      reads: [READ],
+      purpose: "charge",
+    });
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: [],
+      symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify", sig: "c1:old" }],
+      purpose: "body only",
+    });
+    expect(s.heartbeat({ claimId: bob.claimId! }).invalidations).toHaveLength(0);
+  });
+
+  it("counts every collision it reports, by kind", () => {
+    const s = svc();
+    s.claimIntent({
+      agentId: "alice",
+      repo: "acme/app",
+      branch: "main",
+      files: ["a.ts"],
+      symbols: [],
+      purpose: "x",
+    });
+    s.claimIntent({
+      agentId: "bob",
+      repo: "acme/app",
+      branch: "main",
+      files: ["a.ts"],
+      symbols: [],
+      purpose: "y",
+    });
+    const stats = s.store.conflictStats();
+    expect(stats.total).toBeGreaterThan(0);
+    expect(stats.byKind.write_write).toBeGreaterThan(0);
+  });
+});

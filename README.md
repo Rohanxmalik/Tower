@@ -252,7 +252,7 @@ Matched on meaning, not paths — it fires even though one agent would have writ
 `ai-agent-security-prompt-injection.mdx`. Entirely local: no model, no embeddings, no
 network call.
 
-## The 19 tools
+## The 20 tools
 
 | Tool                                           | Purpose                                                                     |
 | ---------------------------------------------- | --------------------------------------------------------------------------- |

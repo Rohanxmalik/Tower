@@ -70,7 +70,7 @@ headlessly, and PRs the result → [worker.md](./worker.md).
 - Whole team on one server (Render one-click, same-WiFi mode) → [team.md](./team.md)
 - Blocking enforcement (Claude Code hook + universal pre-commit) → [enforcement.md](./enforcement.md)
 - PR collision reports in CI → [action.md](./action.md)
-- The wire contract (all 19 tools) → [protocol.md](./protocol.md)
+- The wire contract (all 20 tools) → [protocol.md](./protocol.md)
 
 ## What changed in 0.9.0
 

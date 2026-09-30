@@ -12,6 +12,8 @@ import {
   cmdServe,
   cmdWatch,
   cmdSetup,
+  cmdRecordReads,
+  cmdStats,
   resolveSymbols,
   resolvePort,
   localServeConflict,
@@ -19,6 +21,7 @@ import {
   type ClaimArgs,
 } from "./commands.js";
 import { buildService } from "./lib.js";
+import { resolveRepoKey } from "@tower/shared";
 
 let dir: string;
 beforeEach(() => {
@@ -725,5 +728,68 @@ describe("symbol-level blocking — two agents in one file, different functions 
     await cmdGuard(dir, { ...base, agentId: "alice", symbols: [`${FILE}#`] }, () => {});
     const beta = await symbolFor("return 2;");
     expect(await cmdGuard(dir, { ...base, agentId: "bob", symbols: [beta] }, () => {})).toBe(true);
+  });
+});
+
+describe("cmdRecordReads — the hook's half of a version-aware claim", () => {
+  const AUTH = `export class AuthService {\n  verify(token: string): boolean { return !!token; }\n}\n`;
+
+  it("records every declaration in a file it was pointed at, with signatures", async () => {
+    writeFileSync(join(dir, "auth.ts"), AUTH);
+    await cmdRecordReads(dir, { agentId: "bob", repo: "acme/app", file: "auth.ts" });
+    const service = buildService(dir);
+    const reads = service.store.takeReads("bob", resolveRepoKey(undefined, "acme/app"));
+    service.store.close();
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((r) => r.sig)).toBe(true);
+    expect(reads.map((r) => r.symbol)).toContain("AuthService.verify");
+  });
+
+  it("is silent when the file is gone — a Read must never fail on coordination", async () => {
+    await expect(
+      cmdRecordReads(dir, { agentId: "bob", repo: "acme/app", file: "nope.ts" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("records nothing for a file with no declarations to depend on", async () => {
+    writeFileSync(join(dir, "notes.txt"), "just prose");
+    await cmdRecordReads(dir, { agentId: "bob", repo: "acme/app", file: "notes.txt" });
+    const service = buildService(dir);
+    const reads = service.store.takeReads("bob", resolveRepoKey(undefined, "acme/app"));
+    service.store.close();
+    expect(reads).toHaveLength(0);
+  });
+});
+
+describe("cmdStats — what actually collided", () => {
+  it("says so plainly when nothing has collided yet", async () => {
+    const { out, lines } = collect();
+    await cmdStats(dir, out);
+    expect(lines.join("\n")).toContain("No collisions recorded yet");
+  });
+
+  it("breaks the count down by kind, with percentages", async () => {
+    const service = buildService(dir);
+    service.store.recordConflict({
+      repoKey: "k",
+      kind: "write_read",
+      severity: "hard",
+      forced: true,
+    });
+    service.store.recordConflict({
+      repoKey: "k",
+      kind: "write_write",
+      severity: "soft",
+      forced: false,
+    });
+    service.store.close();
+
+    const { out, lines } = collect();
+    await cmdStats(dir, out);
+    const text = lines.join("\n");
+    expect(text).toContain("2 collision(s) recorded");
+    expect(text).toContain("write_read");
+    expect(text).toContain("50%");
+    expect(text).toContain("forced past a hard conflict: 1");
   });
 });

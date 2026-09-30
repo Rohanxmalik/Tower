@@ -15,7 +15,7 @@ Tower coordinates _cooperating_ agents; it is not a sandbox for malicious ones.
 - **No native modules.** Uses Node's built-in `node:sqlite` and wasm tree-sitter grammars —
   nothing compiles on install.
 - **Parameterized SQL everywhere** — no string-concatenated queries.
-- **Zod validation at every MCP boundary** — all nineteen tools validate input/output schemas.
+- **Zod validation at every MCP boundary** — all twenty tools validate input/output schemas.
 - **Brute-force lockout** on the HTTP endpoint: 10 failed auth attempts per IP per minute
   → 429 until the window resets. A **valid token always gets in** — teammates behind a
   NAT or reverse proxy are never locked out by a stranger's failures on the shared

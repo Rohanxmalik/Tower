@@ -560,3 +560,80 @@ describe("TowerStore — worker presence", () => {
     expect(online.map((w) => w.agentId)).toEqual(["fresh"]);
   });
 });
+
+describe("conflict stats — counts only, never content", () => {
+  it("records a conflict and counts it by kind", () => {
+    const s = new TowerStore();
+    s.recordConflict({ repoKey: "k", kind: "write_write", severity: "hard", forced: false });
+    s.recordConflict({ repoKey: "k", kind: "write_read", severity: "hard", forced: true });
+    s.recordConflict({ repoKey: "k", kind: "write_read", severity: "soft", forced: false });
+    const stats = s.conflictStats("k");
+    expect(stats.total).toBe(3);
+    expect(stats.byKind.write_read).toBe(2);
+    expect(stats.byKind.write_write).toBe(1);
+    expect(stats.bySeverity.hard).toBe(2);
+    expect(stats.forced).toBe(1);
+    s.close();
+  });
+
+  it("scopes stats to one repo", () => {
+    const s = new TowerStore();
+    s.recordConflict({ repoKey: "a", kind: "write_read", severity: "hard", forced: false });
+    s.recordConflict({ repoKey: "b", kind: "write_read", severity: "hard", forced: false });
+    expect(s.conflictStats("a").total).toBe(1);
+    expect(s.conflictStats().total).toBe(2);
+    s.close();
+  });
+
+  it("stores nothing that could identify code", () => {
+    const s = new TowerStore();
+    s.recordConflict({ repoKey: "k", kind: "write_read", severity: "hard", forced: false });
+    const cols = (s as unknown as { db: { prepare(q: string): { all(): unknown[] } } }).db
+      .prepare("PRAGMA table_info(conflicts)")
+      .all() as { name: string }[];
+    const names = cols.map((c) => c.name);
+    expect(names).not.toContain("file");
+    expect(names).not.toContain("symbol");
+    expect(names).not.toContain("sigText");
+    s.close();
+  });
+});
+
+describe("recorded reads — what the hook saw", () => {
+  it("records reads and hands them to the next claim", () => {
+    const s = new TowerStore();
+    s.recordReads("bob", "k", [
+      { file: "src/auth.ts", symbol: "AuthService.verify", sig: "c1:old", sigText: "verify(t)" },
+    ]);
+    const reads = s.takeReads("bob", "k");
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.sig).toBe("c1:old");
+    s.close();
+  });
+
+  it("keeps one row per symbol — re-reading a file does not pile up duplicates", () => {
+    const s = new TowerStore();
+    const r = { file: "a.ts", symbol: "f", sig: "c1:one" };
+    s.recordReads("bob", "k", [r]);
+    s.recordReads("bob", "k", [{ ...r, sig: "c1:two" }]);
+    const reads = s.takeReads("bob", "k");
+    expect(reads).toHaveLength(1);
+    // Latest read wins: it is the version the agent is actually working from.
+    expect(reads[0]?.sig).toBe("c1:two");
+    s.close();
+  });
+
+  it("does not leak one agent's reads to another", () => {
+    const s = new TowerStore();
+    s.recordReads("bob", "k", [{ file: "a.ts", symbol: "f", sig: "c1:x" }]);
+    expect(s.takeReads("alice", "k")).toHaveLength(0);
+    s.close();
+  });
+
+  it("scopes reads to the repo", () => {
+    const s = new TowerStore();
+    s.recordReads("bob", "a", [{ file: "x.ts", symbol: "f", sig: "c1:x" }]);
+    expect(s.takeReads("bob", "b")).toHaveLength(0);
+    s.close();
+  });
+});

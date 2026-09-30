@@ -142,7 +142,7 @@ export const CLAUDE_HOOKS = {
   ],
   PostToolUse: [
     {
-      matcher: "Edit|Write|MultiEdit",
+      matcher: "Edit|Write|MultiEdit|Read",
       hooks: [{ type: "command", command: "node hooks/posttooluse-tower.mjs" }],
     },
   ],
@@ -218,7 +218,8 @@ export interface SetupOpts {
 const TOWER_RULE = `## Tower (agent coordination)
 
 Before editing any file, call the \`claim_intent\` MCP tool on the \`tower\` server with
-the files and symbols you will change. If a \`hard\` conflict returns, stop and ask the
+the files and symbols you will change, and \`reads\`: the declarations your work is
+built against. If a \`hard\` conflict returns, stop and ask the
 user. If the response reports \`unreadMessages > 0\`, call \`fetch_messages\` — a teammate's
 agent may have delegated you a task; act on it and reply with a \`task_update\`.
 `;
@@ -1091,4 +1092,90 @@ export async function cmdRelease(
   service.store.close();
   out(`released ${mine.length} claim(s) for ${agentId}`);
   return mine.length;
+}
+
+export interface RecordReadsArgs {
+  agentId: string;
+  repo: string;
+  repoId?: string;
+  file: string;
+}
+
+/**
+ * Record the declarations in a file the agent just read, with the signature each had at
+ * that moment. Called by the PostToolUse hook on every Read, so an agent's next claim
+ * carries a read set it never had to assemble.
+ *
+ * Silent and best-effort: a missed read costs a warning Tower could have given, never
+ * correctness, and a Read must never fail because coordination was unavailable.
+ */
+export async function cmdRecordReads(cwd: string, args: RecordReadsArgs): Promise<void> {
+  const abs = join(cwd, args.file);
+  const rel = args.file.startsWith(cwd) ? args.file.slice(cwd.length + 1) : args.file;
+  if (!existsSync(abs) && !existsSync(args.file)) return;
+  const source = readFileSync(existsSync(abs) ? abs : args.file, "utf8");
+  const reads = (await extractor.extract(rel.split("\\").join("/"), source)).filter(
+    (s) => s.symbol !== "" && s.sig,
+  );
+  if (reads.length === 0) return;
+
+  const projectId = loadProjectId(cwd);
+  const payload = {
+    agentId: args.agentId,
+    repo: args.repo,
+    ...(args.repoId ? { repoId: args.repoId } : {}),
+    ...(projectId ? { projectId } : {}),
+    reads,
+  };
+  const remote = remoteConfig();
+  if (remote) {
+    await withRemote(remote, (call) => call("record_reads", payload));
+    return;
+  }
+  const service = buildService(cwd);
+  service.recordReads(payload);
+  service.store.close();
+}
+
+/** Print how often each kind of collision has actually fired. Counts only — the store
+ * keeps no file, symbol or line of code against a conflict. */
+export async function cmdStats(cwd: string, out: Writer = stdout): Promise<void> {
+  const remote = remoteConfig();
+  const stats = remote
+    ? ((await withRemote(remote, (call) => call("list_claims", { status: "active" }))) as never)
+    : (() => {
+        const service = buildService(cwd);
+        const s = service.store.conflictStats();
+        service.store.close();
+        return s;
+      })();
+
+  if (remote) {
+    out("stats reads the local store; run it where the server runs.");
+    return;
+  }
+  const s = stats as unknown as {
+    total: number;
+    byKind: Record<string, number>;
+    bySeverity: Record<string, number>;
+    forced: number;
+  };
+  if (s.total === 0) {
+    out("No collisions recorded yet — nothing has collided, or nothing has claimed.");
+    return;
+  }
+  const pct = (n: number): string => `${Math.round((n / s.total) * 100)}%`;
+  out(`${s.total} collision(s) recorded\n`);
+  out(`  by kind`);
+  out(
+    `    write_write  ${s.byKind.write_write ?? 0}  (${pct(s.byKind.write_write ?? 0)})  two agents on the same symbol`,
+  );
+  out(
+    `    write_read   ${s.byKind.write_read ?? 0}  (${pct(s.byKind.write_read ?? 0)})  a contract moved under a reader`,
+  );
+  out(`\n  by severity`);
+  out(
+    `    hard ${s.bySeverity.hard ?? 0}   soft ${s.bySeverity.soft ?? 0}   info ${s.bySeverity.info ?? 0}`,
+  );
+  out(`\n  forced past a hard conflict: ${s.forced}`);
 }

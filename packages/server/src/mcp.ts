@@ -16,6 +16,7 @@ import type {
   FetchMessagesInput,
   PendingInput,
   ProposeIntentInput,
+  RecordReadsInput,
   AcceptTaskInput,
   CompleteTaskInput,
   ListTasksInput,
@@ -34,6 +35,8 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
     "Also pass `reads`: the declarations you consulted to write this — the functions, methods or types you are calling or implementing against. " +
     "Tower tells you when one of them changes under you, and shows the old and new signature so you can patch your call sites without re-reading the file.",
   check_collision: "Check for collisions without registering a claim (a dry run).",
+  record_reads:
+    "Record declarations you just read, so your next claim_intent knows what your work is built on. Normally called by the PostToolUse hook, not by you.",
   heartbeat: "Keep an active claim alive; claims auto-expire without heartbeats.",
   complete_claim: "Release a claim after committing (optionally record the commit sha).",
   release_claim: "Abandon a claim without committing.",
@@ -169,7 +172,7 @@ function touchPresence(service: TowerService, args: unknown): void {
   );
 }
 
-/** Build an MCP server exposing Tower's 19 tools, delegating to the given service. */
+/** Build an MCP server exposing Tower's 20 tools, delegating to the given service. */
 export function buildMcpServer(service: TowerService): McpServer {
   const server = new McpServer(SERVER_INFO);
 
@@ -186,6 +189,7 @@ export function buildMcpServer(service: TowerService): McpServer {
     get_decisions: (a) => service.getDecisions(a as GetDecisionsInput),
     next_task: (a) => service.nextTask(a as NextTaskInput),
     propose_intent: (a) => service.proposeIntent(a as ProposeIntentInput),
+    record_reads: (a) => service.recordReads(a as RecordReadsInput),
     send_message: (a) => service.sendMessage(a as SendMessageInput),
     fetch_messages: (a) => service.fetchMessages(a as FetchMessagesInput),
     pending: (a) => service.pending(a as PendingInput),

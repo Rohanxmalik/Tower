@@ -87,7 +87,7 @@ trade that keeps false positives near zero.
 
 ## Tools
 
-All nineteen tools take and return JSON validated by the schemas in
+All twenty tools take and return JSON validated by the schemas in
 [`packages/shared/src/protocol.ts`](../packages/shared/src/protocol.ts).
 
 | Tool               | Purpose                                                               |

@@ -27,9 +27,36 @@ function readStdin() {
 }
 
 const input = readStdin();
-if (!/^(Edit|Write|MultiEdit)$/.test(input.tool_name ?? "")) process.exit(0);
+const tool = input.tool_name ?? "";
+if (!/^(Edit|Write|MultiEdit|Read)$/.test(tool)) process.exit(0);
 
 const cwd = input.cwd ?? process.cwd();
+
+// A Read is the other half of a claim. Watching it here is what makes version-aware
+// claims work in practice: the agent never has to remember what it looked at, and a
+// read set costs it no extra call and no extra tokens. Tower learns the declaration
+// and its signature at the moment the agent actually saw them.
+if (tool === "Read") {
+  try {
+    const file = input.tool_input?.file_path;
+    if (file) {
+      const { repo, repoId } = repoContext(cwd);
+      const { cmdRecordReads } = await loadCommands(dirname(fileURLToPath(import.meta.url)));
+      await cmdRecordReads(cwd, {
+        agentId: agentIdFor(input),
+        repo,
+        ...(repoId ? { repoId } : {}),
+        file,
+      });
+    }
+  } catch (err) {
+    // Best-effort: a missed read costs a warning Tower could have given, never
+    // correctness. Never make a Read fail because coordination was unavailable.
+    process.stderr.write(`Tower: read not recorded — ${err?.message || err}
+`);
+  }
+  process.exit(0);
+}
 
 try {
   const { repo, repoId } = repoContext(cwd);

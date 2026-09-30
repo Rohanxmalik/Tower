@@ -55,6 +55,9 @@ export const Claim = z.object({
   branch: z.string().min(1),
   files: z.array(z.string()),
   symbols: z.array(SymbolRef),
+  /** The declarations this work was built on, as read. Enables heartbeat to report
+   * one moving after the claim was taken. */
+  reads: z.array(SymbolRef).optional(),
   purpose: z.string(),
   status: ClaimStatus,
   etaMinutes: z.number().int().positive().optional(),
@@ -130,7 +133,7 @@ export const Message = z.object({
 export type Message = z.infer<typeof Message>;
 
 // ---------------------------------------------------------------------------
-// MCP tool I/O contracts (19 tools)
+// MCP tool I/O contracts (20 tools)
 // ---------------------------------------------------------------------------
 
 export const ClaimIntentInput = z.object({
@@ -236,8 +239,31 @@ export type CheckCollisionOutput = z.infer<typeof CheckCollisionOutput>;
 export const HeartbeatInput = z.object({ claimId: z.string().min(1) });
 export type HeartbeatInput = z.infer<typeof HeartbeatInput>;
 
-export const HeartbeatOutput = z.object({ ok: z.boolean(), expiresAt: z.number().int() });
+export const HeartbeatOutput = z.object({
+  ok: z.boolean(),
+  expiresAt: z.number().int(),
+  /**
+   * Declarations this claim was built on that have moved since. MCP has no push
+   * channel, so this rides the call an agent already makes every ~60s — it learns
+   * mid-edit, with no extra round trip and no polling. Each carries the old and new
+   * signature so the agent patches its call sites instead of re-reading the file.
+   */
+  invalidations: z.array(Conflict).default([]),
+});
 export type HeartbeatOutput = z.infer<typeof HeartbeatOutput>;
+
+/** What the PostToolUse hook saw an agent read, so a read set costs the agent nothing. */
+export const RecordReadsInput = z.object({
+  agentId: z.string().min(1),
+  repo: z.string().min(1),
+  repoId: z.string().optional(),
+  projectId: z.string().optional(),
+  reads: z.array(SymbolRef).default([]),
+});
+export type RecordReadsInput = z.infer<typeof RecordReadsInput>;
+
+export const RecordReadsOutput = z.object({ ok: z.boolean(), recorded: z.number().int() });
+export type RecordReadsOutput = z.infer<typeof RecordReadsOutput>;
 
 export const CompleteClaimInput = z.object({
   claimId: z.string().min(1),
@@ -556,6 +582,7 @@ export const TOOL_SCHEMAS = {
   resolve_approval: { input: ResolveApprovalInput, output: OkOutput },
   heartbeat_worker: { input: HeartbeatWorkerInput, output: OkOutput },
   propose_intent: { input: ProposeIntentInput, output: ProposeIntentOutput },
+  record_reads: { input: RecordReadsInput, output: RecordReadsOutput },
 } as const;
 
 export type ToolName = keyof typeof TOOL_SCHEMAS;

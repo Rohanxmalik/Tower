@@ -23,6 +23,8 @@ import type {
   PendingInput,
   PendingOutput,
   ProposeIntentInput,
+  RecordReadsInput,
+  RecordReadsOutput,
   ProposeIntentOutput,
   AcceptTaskInput,
   AcceptTaskOutput,
@@ -34,7 +36,7 @@ import type {
   ResolveApprovalInput,
   HeartbeatWorkerInput,
 } from "@tower/shared";
-import type { Claim, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
+import type { Claim, Conflict, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
 import { resolveRepoKey, looksLikeForkSplit } from "@tower/shared";
 
 /**
@@ -55,6 +57,7 @@ export const WORKER_CONNECTED_MS = 15 * 60 * 1000;
 export const RECENT_INTENT_MS = 6 * 60 * 60 * 1000;
 import { TowerStore } from "./store/sqlite.js";
 import {
+  claimRepoKey,
   detectCollisions,
   detectAntidependencies,
   pairwiseCollisions,
@@ -124,16 +127,17 @@ export class TowerService {
       symbols: input.symbols,
       branch: input.branch,
     };
+    // The read set the caller sent, or — when it sent none — what the PostToolUse hook
+    // watched this agent actually read. An agent that never learns to declare reads
+    // still gets covered, which matters because agents are unreliable narrators.
+    const reads = input.reads?.length ? input.reads : this.store.takeReads(input.agentId, repoKey);
+
     // Two passes over the same active set. The write-write pass cannot see an
     // antidependency — different file, different symbol, so it exits on its first
     // line — and the antidependency pass says nothing about overlapping writes.
-    // An agent that sends no `reads` gets exactly the old behaviour.
     const conflicts = [
       ...detectCollisions(scope, active),
-      ...detectAntidependencies(
-        { ...scope, ...(input.reads ? { reads: input.reads } : {}) },
-        active,
-      ),
+      ...detectAntidependencies({ ...scope, reads }, active),
     ].sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]);
 
     // "You've got mail" rides along on every claim, so agents notice their inbox
@@ -143,6 +147,17 @@ export class TowerService {
     const split = this.forkSplitWarning(repoKey, input.repo);
 
     const hard = conflicts.find((c) => c.severity === "hard");
+    // Counted whether or not the claim is granted — a refused claim is a collision that
+    // happened, and forcing past one is the single most interesting event on the board.
+    for (const c of conflicts) {
+      this.store.recordConflict({
+        repoKey,
+        kind: c.kind,
+        severity: c.severity,
+        forced: Boolean(hard && input.force),
+      });
+    }
+
     if (hard && !input.force) {
       return {
         claimId: null,
@@ -164,6 +179,10 @@ export class TowerService {
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
+      // Stored, not just used for the check above: heartbeat needs them to answer
+      // "has anything I built on moved since?" — the case claim-time detection cannot
+      // see, because at claim time nobody had touched it yet.
+      ...(reads.length ? { reads } : {}),
       purpose: input.purpose,
       ...(input.etaMinutes != null ? { etaMinutes: input.etaMinutes } : {}),
       ...(hard && input.force ? { forced: true } : {}),
@@ -271,8 +290,42 @@ export class TowerService {
     return { conflicts };
   }
 
+  /** Record what an agent read, so its next claim carries a read set it never had to
+   * remember. Fed by the PostToolUse hook watching Read. */
+  recordReads(input: RecordReadsInput): RecordReadsOutput {
+    const repoKey = resolveRepoKey(input.repoId, input.repo, input.projectId);
+    const named = input.reads.filter((r) => r.symbol !== "");
+    this.store.recordReads(input.agentId, repoKey, named);
+    return { ok: true, recorded: named.length };
+  }
+
+  /**
+   * Keep a claim alive, and answer the question the claim could not: has anything this
+   * work was built on moved since?
+   *
+   * Detection at claim time only sees claims already open. When this agent claimed
+   * first and someone changed a declaration afterwards, nothing would ever have told
+   * it. Heartbeat is the one call an agent already makes on a timer, so the answer
+   * rides along — no push channel required, no polling, no extra tokens.
+   */
   heartbeat(input: HeartbeatInput): HeartbeatOutput {
-    return this.store.heartbeat(input.claimId);
+    const beat = { ...this.store.heartbeat(input.claimId), invalidations: [] as Conflict[] };
+    const claim = this.store.getClaim(input.claimId);
+    if (!beat.ok || !claim || !claim.reads?.length) return beat;
+
+    const repoKey = claimRepoKey(claim);
+    const invalidations = detectAntidependencies(
+      {
+        agentId: claim.agentId,
+        files: claim.files,
+        symbols: claim.symbols,
+        reads: claim.reads,
+        branch: claim.branch,
+      },
+      this.store.activeClaims(repoKey),
+    ).filter((c) => c.severity === "hard"); // only report a contract that actually moved
+
+    return invalidations.length ? { ...beat, invalidations } : beat;
   }
 
   completeClaim(input: CompleteClaimInput): OkOutput {

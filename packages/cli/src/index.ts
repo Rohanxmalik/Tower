@@ -6,6 +6,7 @@ import {
   cmdClaim,
   cmdGuard,
   cmdStatus,
+  cmdStats,
   cmdServe,
   cmdWatch,
   cmdComplete,
@@ -41,6 +42,8 @@ Commands:
                              proxy to a hosted Tower, stamping this repo's identity onto
                              every call so forks and the upstream coordinate together.
   status                     Show active claims
+  stats                      How often each kind of collision has actually fired
+                             (counts only; no file or symbol names are stored)
   watch                      Live-poll active claims
   complete --claim <id> [--sha <sha>]     Complete a claim (used by the git hook)
   claim --agent <id> --repo <r> [--branch b] [--file p]... [--symbol path#name]... [--purpose s] [--eta m]
@@ -172,6 +175,10 @@ export async function run(argv: string[]): Promise<number> {
 
     case "status":
       await cmdStatus(cwd);
+      return 0;
+
+    case "stats":
+      await cmdStats(cwd);
       return 0;
 
     case "watch":

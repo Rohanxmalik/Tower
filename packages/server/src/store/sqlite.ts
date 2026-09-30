@@ -9,6 +9,8 @@ const { DatabaseSync } = nodeRequire("node:sqlite") as typeof import("node:sqlit
 import type {
   Claim,
   ClaimStatus,
+  ConflictKind,
+  Severity,
   Decision,
   ApprovalState,
   DelegatedTask,
@@ -43,6 +45,23 @@ CREATE TABLE IF NOT EXISTS claims (
 -- Claims are looked up by repoKey + status; branch is deliberately NOT in the key, so
 -- agents on different branches still see each other (they still produce one merge).
 CREATE INDEX IF NOT EXISTS idx_claims_scope ON claims (repoKey, status);
+-- Every collision Tower reports, as counts only. No file names, no symbol names, no
+-- code — nothing that could leak a private repo's shape if this file were shared.
+-- Exists because Tower detected collisions for four versions and forgot every one, so
+-- "how often does this actually happen, and which kind" had no answer.
+CREATE TABLE IF NOT EXISTS conflicts (
+  id TEXT PRIMARY KEY, repoKey TEXT, kind TEXT NOT NULL, severity TEXT NOT NULL,
+  forced INTEGER NOT NULL DEFAULT 0, createdAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conflicts_scope ON conflicts (repoKey, createdAt);
+-- What an agent read, recorded by the PostToolUse hook as it reads. Consumed by the
+-- next claim_intent from that agent, so a read set costs the agent no extra call and
+-- no extra tokens — it never has to remember what it looked at.
+CREATE TABLE IF NOT EXISTS reads (
+  id TEXT PRIMARY KEY, agentId TEXT NOT NULL, repoKey TEXT, file TEXT NOT NULL,
+  symbol TEXT NOT NULL, sig TEXT, sigText TEXT, createdAt INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reads_agent ON reads (agentId, repoKey);
 CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL,
   tags TEXT NOT NULL, relatedFiles TEXT NOT NULL, createdAt INTEGER NOT NULL
@@ -96,6 +115,8 @@ export interface RepoScope {
 }
 
 export interface NewClaim {
+  /** Declarations this work was written against, as read. */
+  reads?: SymbolRef[];
   agentId: string;
   repo: string;
   /** Root commit sha, when the caller could derive one. */
@@ -120,6 +141,7 @@ interface ClaimRow {
   branch: string;
   files: string;
   symbols: string;
+  reads: string | null;
   purpose: string;
   status: string;
   etaMinutes: number | null;
@@ -214,6 +236,7 @@ function rowToClaim(r: ClaimRow): Claim {
     branch: r.branch,
     files: JSON.parse(r.files) as string[],
     symbols: JSON.parse(r.symbols) as SymbolRef[],
+    ...(r.reads ? { reads: JSON.parse(r.reads) as SymbolRef[] } : {}),
     purpose: r.purpose,
     status: r.status as ClaimStatus,
     ...(r.etaMinutes != null ? { etaMinutes: r.etaMinutes } : {}),
@@ -281,6 +304,9 @@ export class TowerStore {
       addColumn(table, "repoKey", "repoKey TEXT");
     }
     addColumn("decisions", "repo", "repo TEXT");
+    // 0.10.x → version-aware claims: what an agent read, and what it was written
+    // against, so a moved declaration can be reported to the reader.
+    addColumn("claims", "reads", "reads TEXT");
     this.backfillRepoKeys();
   }
 
@@ -320,6 +346,7 @@ export class TowerStore {
       branch: input.branch,
       files: input.files,
       symbols: input.symbols,
+      ...(input.reads?.length ? { reads: input.reads } : {}),
       purpose: input.purpose,
       status: "active",
       ...(input.etaMinutes != null ? { etaMinutes: input.etaMinutes } : {}),
@@ -328,8 +355,8 @@ export class TowerStore {
     };
     this.db
       .prepare(
-        `INSERT INTO claims (id,agentId,repo,repoId,repoKey,branch,files,symbols,purpose,status,etaMinutes,createdAt,expiresAt,commitSha,forced)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO claims (id,agentId,repo,repoId,repoKey,branch,files,symbols,reads,purpose,status,etaMinutes,createdAt,expiresAt,commitSha,forced)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         claim.id,
@@ -340,6 +367,7 @@ export class TowerStore {
         claim.branch,
         JSON.stringify(claim.files),
         JSON.stringify(claim.symbols),
+        claim.reads ? JSON.stringify(claim.reads) : null,
         claim.purpose,
         claim.status,
         claim.etaMinutes ?? null,
@@ -975,7 +1003,125 @@ export class TowerStore {
     return decisions;
   }
 
+  /**
+   * Record that a collision was reported. Counts only — kind, severity, whether it was
+   * forced. Never a file, a symbol or a line of code, so this table stays safe to share
+   * even from a private repo.
+   *
+   * Tower detected collisions for four versions and forgot every one, which is why
+   * "which kind actually happens, and how often" has never had an answer. It is the one
+   * question only a coordination layer can answer, because it sits where it happens.
+   */
+  recordConflict(input: {
+    repoKey?: string;
+    kind: ConflictKind;
+    severity: Severity;
+    forced: boolean;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO conflicts (id, repoKey, kind, severity, forced, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        input.repoKey ?? null,
+        input.kind,
+        input.severity,
+        input.forced ? 1 : 0,
+        Date.now(),
+      );
+  }
+
+  /** Counts of every collision reported, optionally for one repo. */
+  conflictStats(repoKey?: string): ConflictStats {
+    const rows = (repoKey
+      ? this.db
+          .prepare(`SELECT kind, severity, forced FROM conflicts WHERE repoKey = ?`)
+          .all(repoKey)
+      : this.db.prepare(`SELECT kind, severity, forced FROM conflicts`).all()) as unknown as {
+      kind: string;
+      severity: string;
+      forced: number;
+    }[];
+
+    const stats: ConflictStats = {
+      total: rows.length,
+      byKind: { write_write: 0, write_read: 0 },
+      bySeverity: { hard: 0, soft: 0, info: 0 },
+      forced: 0,
+    };
+    for (const r of rows) {
+      if (r.kind === "write_read") stats.byKind.write_read++;
+      else if (r.kind === "write_write") stats.byKind.write_write++;
+      if (r.severity === "hard") stats.bySeverity.hard++;
+      else if (r.severity === "soft") stats.bySeverity.soft++;
+      else if (r.severity === "info") stats.bySeverity.info++;
+      if (r.forced) stats.forced++;
+    }
+    return stats;
+  }
+
+  /**
+   * Record declarations an agent has read. Upserted per (agent, repo, file, symbol), so
+   * re-reading a file replaces rather than accumulates — the latest read is the version
+   * the agent is actually working from.
+   */
+  recordReads(agentId: string, repoKey: string | undefined, reads: SymbolRef[]): void {
+    const del = this.db.prepare(
+      `DELETE FROM reads WHERE agentId = ? AND ifnull(repoKey,'') = ifnull(?,'')
+         AND file = ? AND symbol = ?`,
+    );
+    const ins = this.db.prepare(
+      `INSERT INTO reads (id, agentId, repoKey, file, symbol, sig, sigText, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const now = Date.now();
+    for (const r of reads) {
+      if (r.symbol === "") continue; // file granularity is too coarse to be worth a row
+      del.run(agentId, repoKey ?? null, r.file, r.symbol);
+      ins.run(
+        randomUUID(),
+        agentId,
+        repoKey ?? null,
+        r.file,
+        r.symbol,
+        r.sig ?? null,
+        r.sigText ?? null,
+        now,
+      );
+    }
+  }
+
+  /** The declarations this agent has read in this repo. */
+  takeReads(agentId: string, repoKey?: string): SymbolRef[] {
+    const rows = this.db
+      .prepare(
+        `SELECT file, symbol, sig, sigText FROM reads
+         WHERE agentId = ? AND ifnull(repoKey,'') = ifnull(?,'')`,
+      )
+      .all(agentId, repoKey ?? null) as unknown as {
+      file: string;
+      symbol: string;
+      sig: string | null;
+      sigText: string | null;
+    }[];
+    return rows.map((r) => ({
+      file: r.file,
+      symbol: r.symbol,
+      ...(r.sig ? { sig: r.sig } : {}),
+      ...(r.sigText ? { sigText: r.sigText } : {}),
+    }));
+  }
+
   close(): void {
     this.db.close();
   }
+}
+
+export interface ConflictStats {
+  total: number;
+  byKind: Record<ConflictKind, number>;
+  bySeverity: Record<Severity, number>;
+  forced: number;
 }

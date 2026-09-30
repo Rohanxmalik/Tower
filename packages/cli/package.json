@@ -1,6 +1,7 @@
 {
   "name": "tower-mcp",
-  "version": "0.11.0",
+  "version": "0.11.1",
+  "mcpName": "io.github.Rohanxmalik/tower",
   "description": "Multiplayer for AI coding agents \u2014 delegate tasks across machines, see every claim, task and reply on one shared board, and catch collisions before the first keystroke. Over MCP, model-agnostic (Claude Code, Cursor, Codex).",
   "type": "module",
   "license": "MIT",

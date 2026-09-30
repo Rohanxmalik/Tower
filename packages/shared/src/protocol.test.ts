@@ -249,8 +249,17 @@ describe("version and tool count cannot drift from what users are told", () => {
 
     const npm = server.packages?.find((p) => p.registryType === "npm");
     expect(npm, "server.json declares no npm package").toBeDefined();
-    const pkg = JSON.parse(read("packages/cli/package.json")) as { name: string };
+    const pkg = JSON.parse(read("packages/cli/package.json")) as {
+      name: string;
+      mcpName?: string;
+    };
     expect(npm?.identifier).toBe(pkg.name);
     expect(npm?.version).toBe(TOWER_VERSION);
+
+    // The registry proves npm ownership by fetching the *published* package and
+    // matching its `mcpName` against the server name. If these two drift apart the
+    // publish fails with a 400 — and because npm versions are immutable, the fix is a
+    // whole new release, not an edit. That is what it cost the first time.
+    expect(pkg.mcpName, "packages/cli/package.json is missing mcpName").toBe(server.name);
   });
 });

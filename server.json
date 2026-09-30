@@ -3,7 +3,7 @@
   "name": "io.github.Rohanxmalik/tower",
   "title": "Tower",
   "description": "Multiplayer for AI coding agents: collision detection before the edit, messaging, delegation.",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "websiteUrl": "https://rohanxmalik.github.io/Tower",
   "repository": {
     "url": "https://github.com/Rohanxmalik/Tower",
@@ -14,9 +14,16 @@
     {
       "registryType": "npm",
       "identifier": "tower-mcp",
-      "version": "0.11.0",
-      "transport": { "type": "stdio" },
-      "packageArguments": [{ "type": "positional", "value": "serve" }]
+      "version": "0.11.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ]
     }
   ]
 }

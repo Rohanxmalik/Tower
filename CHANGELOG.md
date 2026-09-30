@@ -3,6 +3,36 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.11.1 - 2026-09-30
+
+**Listed on the official MCP Registry.** The registry is upstream of the directory
+ecosystem — Glama, PulseMCP and mcp.so sync from it — so one listing reaches further
+than filling in each of their forms by hand.
+
+### Added
+
+- `server.json` — the registry manifest, validated against the live registry rather
+  than a schema file. (The schema served at `2025-07-09` is stale and snake_case; the
+  current one is `2025-12-11` and camelCase, and validating locally against the old
+  copy reports "valid" for a document the registry rejects with a 422.)
+- `mcpName` in the published package. The registry proves npm ownership by fetching the
+  package and matching this field against the server name. **This is the only functional
+  reason for this release** — npm versions are immutable, so the field cannot be added
+  to one already published.
+- A workflow that publishes the manifest on every release, authenticating with GitHub
+  Actions OIDC. `mcp-publisher login github` is broken in every published build
+  (modelcontextprotocol/registry#1543, fixed by #1588 but unreleased as of v1.8.1);
+  OIDC is a separate code path. Publishing from CI also means the listing cannot drift
+  from the release, which hand-publishing does the first time anyone forgets a step.
+
+### Fixed
+
+- The landing page claimed 429 tests; the suite was at 433. Now states `430+`, which
+  stays true as tests are added — a precise number that is wrong reads worse than an
+  approximate one that is right.
+
+No API, protocol or tool changes. Still 20 tools.
+
 ## 0.11.0 - 2026-09-30
 
 **A claim is only as fresh as the read that produced it.** Comparing write sets catches

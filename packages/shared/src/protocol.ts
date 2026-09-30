@@ -23,6 +23,21 @@ export const SymbolRef = z.object({
   file: z.string().min(1),
   symbol: z.string(),
   kind: SymbolKind.optional(),
+  /**
+   * Fingerprint of the symbol's **declaration** — not its body — when it was read or
+   * written. A claim is only as fresh as the read that produced it: two agents can write
+   * different symbols and still collide, when one moves a contract the other read
+   * against. Comparing declarations catches that; comparing bodies would fire on every
+   * reformat and be switched off within a week. Scheme-tagged (`c1:`) so the algorithm
+   * can change without silently comparing apples to oranges.
+   */
+  sig: z.string().optional(),
+  /**
+   * The normalized declaration, capped. Carried so a staleness report can show what
+   * moved — `verify(token)` → `verify(token, opts)` — instead of telling the agent to
+   * re-read the file. Tower exists to spend fewer tokens, not more.
+   */
+  sigText: z.string().max(240).optional(),
 });
 export type SymbolRef = z.infer<typeof SymbolRef>;
 

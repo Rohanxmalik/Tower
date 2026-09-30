@@ -9,7 +9,7 @@ import { z } from "zod";
 /** One version string for the whole release: the MCP server, the remote client and
  * `/health` all report this, and the worker warns when major.minor drifts from the
  * server it talks to. Bump together with packages/cli/package.json. */
-export const TOWER_VERSION = "0.11.1";
+export const TOWER_VERSION = "0.12.0";
 
 // ---------------------------------------------------------------------------
 // Core domain types
@@ -38,6 +38,14 @@ export const SymbolRef = z.object({
    * re-read the file. Tower exists to spend fewer tokens, not more.
    */
   sigText: z.string().max(240).optional(),
+  /**
+   * Contract-first: the declaration this symbol **will** have once your change lands —
+   * `verify(token: string, opts: Opts): boolean`. Only meaningful on a symbol you are
+   * claiming. Anyone whose work reads the symbol is handed this text immediately, so
+   * they can code against the new contract in parallel instead of waiting for yours
+   * to land. Tower checks it against what you actually wrote when you complete.
+   */
+  declares: z.string().max(240).optional(),
 });
 export type SymbolRef = z.infer<typeof SymbolRef>;
 
@@ -91,6 +99,10 @@ export const Conflict = z.object({
    * an agent can patch its call sites from the delta instead of re-reading the file. */
   wasSigText: z.string().max(240).optional(),
   nowSigText: z.string().max(240).optional(),
+  /** For `write_read`: the contract the holder has *declared* it is about to write.
+   * When present the conflict is never `hard` — you have the new signature, so code
+   * against it and carry on rather than waiting for theirs to land. */
+  declaredSigText: z.string().max(240).optional(),
 });
 export type Conflict = z.infer<typeof Conflict>;
 
@@ -166,6 +178,30 @@ export type ClaimIntentInput = z.infer<typeof ClaimIntentInput>;
 export const Recommendation = z.enum(["proceed", "stand_down"]);
 export type Recommendation = z.infer<typeof Recommendation>;
 
+/**
+ * What a refused agent can do instead of stopping. Before 0.12.0 a refusal said only
+ * `stand_down`, and the rules `tower setup` writes said "stop and ask the user" — so a
+ * single conflict parked the agent until a human noticed. This is the answer to "then
+ * what?", carried on the refusal itself so the agent never has to know to ask.
+ */
+export const Alternatives = z.object({
+  /**
+   * Stay out of these for now: every symbol the blocking claims hold, plus code Tower
+   * has seen written *against* them (inferred from recorded reads — no policy file
+   * needed). Anything not listed is free to work on.
+   */
+  avoid: z.array(SymbolRef),
+  /** A task the sequencer says is safe to start now. Only when `.tower/policy.yaml`
+   * defines modules; otherwise `null`, and `avoid` is the guide. */
+  nextTask: Task.nullable(),
+  /** Tower will message you when the blocking claim ends — completed, released or
+   * expired — so there is no need to keep retrying. */
+  notifyOnRelease: z.boolean(),
+  /** One line the agent can act on without parsing the rest. */
+  advice: z.string(),
+});
+export type Alternatives = z.infer<typeof Alternatives>;
+
 export const ClaimIntentOutput = z.object({
   /** `null` when the claim was refused — a hard conflict without `force`. */
   claimId: z.string().nullable(),
@@ -180,6 +216,8 @@ export const ClaimIntentOutput = z.object({
    * owner — i.e. a fork and its upstream, coordinating in separate spaces. Advisory:
    * the claim still succeeds. Silence was the original failure, so this never is. */
   projectWarning: z.string().optional(),
+  /** Present only when the claim was refused: what you can do instead of waiting. */
+  alternatives: Alternatives.optional(),
 });
 export type ClaimIntentOutput = z.infer<typeof ClaimIntentOutput>;
 
@@ -258,16 +296,34 @@ export const RecordReadsInput = z.object({
   repo: z.string().min(1),
   repoId: z.string().optional(),
   projectId: z.string().optional(),
+  /** So a read of work happening on another branch is warned as `soft`, not `hard`. */
+  branch: z.string().optional(),
   reads: z.array(SymbolRef).default([]),
 });
 export type RecordReadsInput = z.infer<typeof RecordReadsInput>;
 
-export const RecordReadsOutput = z.object({ ok: z.boolean(), recorded: z.number().int() });
+export const RecordReadsOutput = z.object({
+  ok: z.boolean(),
+  recorded: z.number().int(),
+  /**
+   * Warned at the moment of reading: someone else is changing what you just read. The
+   * cheapest point to find out — before any planning has been built on it. Waiting for
+   * the edit to learn this meant spending the whole plan's tokens first.
+   */
+  conflicts: z.array(Conflict).default([]),
+});
 export type RecordReadsOutput = z.infer<typeof RecordReadsOutput>;
 
 export const CompleteClaimInput = z.object({
   claimId: z.string().min(1),
   commitSha: z.string().optional(),
+  /**
+   * The claimed symbols as they stand after your change, with fresh `sig`/`sigText`.
+   * Where a declaration actually moved, everyone whose work reads it is messaged the new
+   * signature — and told whether it matches the contract you declared. Optional; the
+   * `tower complete` CLI and post-commit hook fill it in from the working tree.
+   */
+  symbols: z.array(SymbolRef).optional(),
 });
 export type CompleteClaimInput = z.infer<typeof CompleteClaimInput>;
 
@@ -275,6 +331,12 @@ export const ReleaseClaimInput = z.object({ claimId: z.string().min(1) });
 export type ReleaseClaimInput = z.infer<typeof ReleaseClaimInput>;
 
 export const OkOutput = z.object({ ok: z.boolean() });
+
+export const CompleteClaimOutput = OkOutput.extend({
+  /** Agents messaged because a declaration they read landed with a new signature. */
+  notified: z.number().int().nonnegative().default(0),
+});
+export type CompleteClaimOutput = z.infer<typeof CompleteClaimOutput>;
 export type OkOutput = z.infer<typeof OkOutput>;
 
 export const ListClaimsInput = z.object({
@@ -566,7 +628,7 @@ export const TOOL_SCHEMAS = {
   claim_intent: { input: ClaimIntentInput, output: ClaimIntentOutput },
   check_collision: { input: CheckCollisionInput, output: CheckCollisionOutput },
   heartbeat: { input: HeartbeatInput, output: HeartbeatOutput },
-  complete_claim: { input: CompleteClaimInput, output: OkOutput },
+  complete_claim: { input: CompleteClaimInput, output: CompleteClaimOutput },
   release_claim: { input: ReleaseClaimInput, output: OkOutput },
   list_claims: { input: ListClaimsInput, output: ListClaimsOutput },
   log_decision: { input: LogDecisionInput, output: LogDecisionOutput },

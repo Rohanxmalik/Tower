@@ -24,6 +24,7 @@ import type {
   AcceptFailure,
 } from "@tower/shared";
 import { normalizeRepoUrl, resolveRepoKey } from "@tower/shared";
+import { releaseNotice, type ReleaseKind } from "../engine/notices.js";
 
 /** Default time-to-live for a claim before it auto-expires (ms). Refreshed by heartbeat. */
 export const DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -62,6 +63,14 @@ CREATE TABLE IF NOT EXISTS reads (
   symbol TEXT NOT NULL, sig TEXT, sigText TEXT, createdAt INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reads_agent ON reads (agentId, repoKey);
+-- Agents refused by a claim, told when it stops blocking them. Before 0.12.0 a refused
+-- agent learned nothing until it retried, so "wait" meant "poll". Rows are transient:
+-- deleted the moment the notice is sent. Keyed per (agent, claim) so a retry storm
+-- still produces one message.
+CREATE TABLE IF NOT EXISTS waiters (
+  agentId TEXT NOT NULL, claimId TEXT NOT NULL, repo TEXT NOT NULL, repoKey TEXT,
+  createdAt INTEGER NOT NULL, PRIMARY KEY (agentId, claimId)
+);
 CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL,
   tags TEXT NOT NULL, relatedFiles TEXT NOT NULL, createdAt INTEGER NOT NULL
@@ -391,9 +400,17 @@ export class TowerStore {
    */
   sweepExpired(): number {
     const now = this.now();
+    // Collected before the update so their waiters can be told. Expiry is the release
+    // nobody calls anything for, which is exactly why it has to notify from here.
+    const expiring = (
+      this.db
+        .prepare(`SELECT id FROM claims WHERE status = 'active' AND expiresAt < ?`)
+        .all(now) as unknown as { id: string }[]
+    ).map((r) => r.id);
     const res = this.db
       .prepare(`UPDATE claims SET status = 'expired' WHERE status = 'active' AND expiresAt < ?`)
       .run(now);
+    for (const id of expiring) this.notifyWaiters(id, "expired");
     if (now - this.lastPruneAt >= PRUNE_INTERVAL_MS) {
       this.lastPruneAt = now;
       this.prune();
@@ -421,6 +438,12 @@ export class TowerStore {
     const messages = this.db.prepare(`DELETE FROM messages WHERE createdAt < ?`).run(cutoff);
     this.db
       .prepare(`DELETE FROM message_reads WHERE messageId NOT IN (SELECT id FROM messages)`)
+      .run();
+    // A waiter is only meaningful while its claim is live; anything else is residue.
+    this.db
+      .prepare(
+        `DELETE FROM waiters WHERE claimId NOT IN (SELECT id FROM claims WHERE status = 'active')`,
+      )
       .run();
     // Finished tasks age out; open/accepted work is never dropped.
     this.db
@@ -483,14 +506,78 @@ export class TowerStore {
         `UPDATE claims SET status = 'completed', commitSha = ? WHERE id = ? AND status = 'active'`,
       )
       .run(commitSha ?? null, id);
-    return Number(res.changes) > 0;
+    const changed = Number(res.changes) > 0;
+    if (changed) this.notifyWaiters(id, "completed", commitSha);
+    return changed;
   }
 
   releaseClaim(id: string): boolean {
     const res = this.db
       .prepare(`UPDATE claims SET status = 'released' WHERE id = ? AND status = 'active'`)
       .run(id);
-    return Number(res.changes) > 0;
+    const changed = Number(res.changes) > 0;
+    if (changed) this.notifyWaiters(id, "released");
+    return changed;
+  }
+
+  // -- waiters (refused agents, told when the blocker ends) -------------------
+
+  /** Register an agent refused by `claimId`. Idempotent per (agent, claim). */
+  addWaiter(input: { agentId: string; claimId: string; repo: string; repoKey?: string }): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO waiters (agentId, claimId, repo, repoKey, createdAt) VALUES (?,?,?,?,?)`,
+      )
+      .run(input.agentId, input.claimId, input.repo, input.repoKey ?? null, this.now());
+  }
+
+  /** Agents still waiting on a claim — inspection and tests. */
+  waitersFor(claimId: string): string[] {
+    return (
+      this.db.prepare(`SELECT agentId FROM waiters WHERE claimId = ?`).all(claimId) as unknown as {
+        agentId: string;
+      }[]
+    ).map((r) => r.agentId);
+  }
+
+  /**
+   * Tell everyone refused by this claim that it no longer blocks them, then forget them.
+   * Sent from `tower`, in the claim's own partition — recomputing the key from the repo
+   * string would file a projectId-keyed claim's notice somewhere its reader never looks.
+   */
+  private notifyWaiters(claimId: string, how: ReleaseKind, commitSha?: string): void {
+    const waiters = this.db
+      .prepare(`SELECT agentId, repo, repoKey FROM waiters WHERE claimId = ?`)
+      .all(claimId) as unknown as { agentId: string; repo: string; repoKey: string | null }[];
+    if (waiters.length === 0) return;
+    const claim = this.getClaim(claimId);
+    this.db.prepare(`DELETE FROM waiters WHERE claimId = ?`).run(claimId);
+    if (!claim) return;
+    const body = releaseNotice(claim, how, commitSha);
+    for (const w of waiters) {
+      this.sendMessage({
+        fromAgentId: "tower",
+        toAgentId: w.agentId,
+        repo: w.repo,
+        ...(w.repoKey ? { repoKey: w.repoKey } : {}),
+        kind: "message",
+        body,
+      });
+    }
+  }
+
+  /**
+   * Every claim in a partition created within the last `windowMs`, whatever its status.
+   * The dependency map is inferred from this: finished claims still record what their
+   * work read and wrote, which is the evidence. Measured on the store's own clock, not
+   * the caller's, so an injected test clock and a real one cannot disagree about "recent".
+   * Bounded in practice by `prune()`.
+   */
+  recentClaims(repoKey: string, windowMs: number): Claim[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM claims WHERE repoKey = ? AND createdAt >= ? ORDER BY createdAt DESC`)
+      .all(repoKey, this.now() - windowMs) as unknown as ClaimRow[];
+    return rows.map(rowToClaim);
   }
 
   // -- messages (agent inbox) -------------------------------------------------
@@ -501,6 +588,9 @@ export class TowerStore {
     repo: string;
     repoId?: string;
     projectId?: string;
+    /** Store-internal: file the message under this partition as-is. Not reachable from
+     * the wire — `SendMessageInput` has no such field and zod strips unknown keys. */
+    repoKey?: string;
     kind: MessageKind;
     body: string;
     replyTo?: string;
@@ -523,7 +613,7 @@ export class TowerStore {
       .run(
         msg.id,
         msg.repo,
-        resolveRepoKey(input.repoId, input.repo, input.projectId),
+        input.repoKey ?? resolveRepoKey(input.repoId, input.repo, input.projectId),
         msg.fromAgentId,
         msg.toAgentId,
         msg.kind,

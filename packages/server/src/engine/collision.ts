@@ -1,5 +1,6 @@
 import type { Claim, Conflict, Severity, SymbolRef } from "@tower/shared";
 import { resolveRepoKey } from "@tower/shared";
+import { fingerprintDeclaration } from "./signature.js";
 
 export interface CollisionInput {
   files: string[];
@@ -150,10 +151,21 @@ export function detectAntidependencies(incoming: CollisionInput, active: Claim[]
 
     const overlap: SymbolRef[] = [];
     let moved: { read: SymbolRef; now: SymbolRef } | null = null;
+    let declared: string | undefined;
 
     for (const read of reads) {
       for (const written of claim.symbols) {
         if (written.file !== read.file || written.symbol !== read.symbol) continue;
+        if (written.declares) {
+          // Contract-first. The holder has said what the declaration will become, so the
+          // reader has what it needs to carry on: never `hard`, which would put it back
+          // into the wait this exists to remove. A reader whose copy already matches the
+          // declared contract is on the new version — there is nothing to tell it.
+          if (read.sig && fingerprintDeclaration(written.declares)?.sig === read.sig) continue;
+          declared ??= written.declares;
+          overlap.push(read);
+          continue;
+        }
         overlap.push(read);
         if (written.sig && written.sig !== read.sig) moved ??= { read, now: written };
       }
@@ -165,6 +177,7 @@ export function detectAntidependencies(incoming: CollisionInput, active: Claim[]
     const where = dedupeSymbols(overlap)
       .map((s) => s.symbol)
       .join(", ");
+    const onBranch = sameBranch ? "" : ` (on branch ${claim.branch})`;
 
     conflicts.push({
       claimId: claim.id,
@@ -172,10 +185,12 @@ export function detectAntidependencies(incoming: CollisionInput, active: Claim[]
       severity,
       kind: "write_read",
       reason: moved
-        ? `${where} moved under you — ${claim.agentId} changed the declaration you read` +
-          (sameBranch ? "" : ` (on branch ${claim.branch})`)
-        : `${claim.agentId} is editing ${where} right now, which you read` +
-          (sameBranch ? "" : ` (on branch ${claim.branch})`),
+        ? `${where} moved under you — ${claim.agentId} changed the declaration you read${onBranch}`
+        : declared
+          ? `${claim.agentId} is changing ${where} to \`${declared}\` — code against that; ` +
+            `no need to wait${onBranch}`
+          : `${claim.agentId} is editing ${where} right now, which you read${onBranch}`,
+      ...(declared ? { declaredSigText: declared } : {}),
       overlap: dedupeSymbols(overlap),
       ...(claim.etaMinutes != null ? { etaMinutes: claim.etaMinutes } : {}),
       ...(moved?.read.sigText ? { wasSigText: moved.read.sigText } : {}),

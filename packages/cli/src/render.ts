@@ -38,7 +38,7 @@ export function renderConflicts(
         `⛔ COLLISION — ${targetLabel(c)}`,
         context,
         `   Options:`,
-        `     [w] wait      — retry in a few minutes; their claim expires without heartbeats`,
+        `     [w] wait      — no need to retry: Tower messages you when their claim ends`,
         `     [d] dependent — run: tower next-task  (a module that's safe to start now)`,
         `     [b] branch    — build on their WIP instead of racing them`,
         `     [f] force     — re-run guard with --force; you own the merge risk`,

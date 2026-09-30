@@ -14,16 +14,19 @@ import type {
   Claim,
   CheckCollisionOutput,
   ClaimIntentOutput,
+  CompleteClaimOutput,
+  Conflict,
+  RecordReadsOutput,
   ListClaimsOutput,
   Message,
   NextTaskOutput,
-  OkOutput,
   SendMessageOutput,
   FetchMessagesOutput,
   PendingOutput,
 } from "@tower/shared";
 import { normalizeRepoUrl, pickRootCommit } from "@tower/shared";
 import { renderConflicts, renderClaimsTable, formatAgo } from "./render.js";
+import { hookContext, readWarning, renderAlternatives, towerRule } from "./nobody-waits.js";
 import { remoteConfig, withRemote, openRemote, type RemoteCall } from "./remote.js";
 import {
   buildService,
@@ -213,16 +216,10 @@ export interface SetupOpts {
   token?: string;
   /** Also install the pre-commit / post-commit git hooks. */
   hooks?: boolean;
+  /** Write the keep-going rule: on a hard conflict, work outside `alternatives.avoid`
+   * instead of stopping to ask. Opt-in — it trades a little human control for no waiting. */
+  keepGoing?: boolean;
 }
-
-const TOWER_RULE = `## Tower (agent coordination)
-
-Before editing any file, call the \`claim_intent\` MCP tool on the \`tower\` server with
-the files and symbols you will change, and \`reads\`: the declarations your work is
-built against. If a \`hard\` conflict returns, stop and ask the
-user. If the response reports \`unreadMessages > 0\`, call \`fetch_messages\` — a teammate's
-agent may have delegated you a task; act on it and reply with a \`task_update\`.
-`;
 
 /** The tower entry for .mcp.json: hosted HTTP when a url is given, else local via npx. */
 function towerServerEntry(opts: SetupOpts): Record<string, unknown> {
@@ -269,7 +266,13 @@ function setupMcpJson(cwd: string, opts: SetupOpts, out: Writer): void {
 }
 
 /** Append the claim-first rule to a rules file; idempotent via the claim_intent marker. */
-function setupRulesFile(cwd: string, name: string, createIfMissing: boolean, out: Writer): void {
+function setupRulesFile(
+  cwd: string,
+  name: string,
+  createIfMissing: boolean,
+  rule: string,
+  out: Writer,
+): void {
   const path = join(cwd, name);
   const exists = existsSync(path);
   if (!exists && !createIfMissing) return;
@@ -279,7 +282,7 @@ function setupRulesFile(cwd: string, name: string, createIfMissing: boolean, out
     return;
   }
   const sep = current === "" ? "" : current.endsWith("\n") ? "\n" : "\n\n";
-  writeFileSync(path, current + sep + TOWER_RULE);
+  writeFileSync(path, current + sep + rule);
   out(`✔ ${name} — claim-first rule ${exists ? "appended" : "created"}`);
 }
 
@@ -343,8 +346,9 @@ export function setupGitignore(cwd: string, out: Writer = stdout, opts: SetupOpt
 /** One-command onboarding: .mcp.json + agent rules (+ git hooks with --hooks). */
 export function cmdSetup(cwd: string, opts: SetupOpts, out: Writer = stdout): void {
   setupMcpJson(cwd, opts, out);
-  setupRulesFile(cwd, "CLAUDE.md", true, out);
-  setupRulesFile(cwd, "AGENTS.md", false, out);
+  const rule = towerRule({ ...(opts.keepGoing ? { keepGoing: true } : {}) });
+  setupRulesFile(cwd, "CLAUDE.md", true, rule, out);
+  setupRulesFile(cwd, "AGENTS.md", false, rule, out);
   setupGitignore(cwd, out, opts);
   if (opts.hooks) {
     const hooksDir = join(cwd, ".git", "hooks");
@@ -384,7 +388,7 @@ export async function cmdClaim(
   const remote = remoteConfig();
   if (remote) {
     return withRemote(remote, async (call) => {
-      const { claimId, conflicts, blocking } = (await call(
+      const { claimId, conflicts, blocking, alternatives } = (await call(
         "claim_intent",
         intent,
       )) as ClaimIntentOutput;
@@ -399,12 +403,13 @@ export async function cmdClaim(
           ? `(claim ${claimId.slice(0, 8)} registered for ${args.agentId} on ${remote.url})`
           : `(claim REFUSED — another agent holds this. Re-run with --force to override.)`,
       );
+      if (alternatives) out(renderAlternatives(alternatives));
       return blocking || conflicts.some((c) => c.severity === "hard");
     });
   }
 
   const service = buildService(cwd, build);
-  const { claimId, conflicts, blocking } = service.claimIntent(intent);
+  const { claimId, conflicts, blocking, alternatives } = service.claimIntent(intent);
   if (claimId) writeClaimId(cwd, claimId);
   out(renderConflicts(conflicts, (id) => service.store.getClaim(id)));
   out("");
@@ -413,6 +418,7 @@ export async function cmdClaim(
       ? `(claim ${claimId.slice(0, 8)} registered for ${args.agentId})`
       : `(claim REFUSED — another agent holds this. Re-run with --force to override.)`,
   );
+  if (alternatives) out(renderAlternatives(alternatives));
   const hard = blocking || conflicts.some((c) => c.severity === "hard");
   service.store.close();
   return hard;
@@ -559,18 +565,57 @@ export async function cmdComplete(
   out: Writer = stdout,
   build?: BuildOptions,
 ): Promise<boolean> {
-  const input = { claimId, ...(commitSha ? { commitSha } : {}) };
+  const base = { claimId, ...(commitSha ? { commitSha } : {}) };
   const remote = remoteConfig();
-  const ok = remote
-    ? ((await withRemote(remote, (call) => call("complete_claim", input))) as OkOutput).ok
-    : (() => {
-        const service = buildService(cwd, build);
-        const result = service.completeClaim(input);
-        service.store.close();
-        return result.ok;
-      })();
-  out(ok ? `Completed claim ${claimId.slice(0, 8)}.` : `No active claim ${claimId.slice(0, 8)}.`);
-  return ok;
+  let result: CompleteClaimOutput;
+  if (remote) {
+    result = await withRemote(remote, async (call) => {
+      const { claims } = (await call("list_claims", { status: "active" })) as ListClaimsOutput;
+      const symbols = await finalDeclarations(
+        cwd,
+        claims.find((c) => c.id === claimId),
+      );
+      return (await call("complete_claim", {
+        ...base,
+        ...(symbols.length ? { symbols } : {}),
+      })) as CompleteClaimOutput;
+    });
+  } else {
+    const service = buildService(cwd, build);
+    const symbols = await finalDeclarations(cwd, service.store.getClaim(claimId));
+    result = service.completeClaim({ ...base, ...(symbols.length ? { symbols } : {}) });
+    service.store.close();
+  }
+  const told = result.notified ?? 0;
+  out(
+    result.ok
+      ? `Completed claim ${claimId.slice(0, 8)}.` +
+          (told
+            ? ` Told ${told} agent${told === 1 ? "" : "s"} what a declaration they read landed as.`
+            : "")
+      : `No active claim ${claimId.slice(0, 8)}.`,
+  );
+  return result.ok;
+}
+
+/**
+ * The claimed symbols as they stand now, fingerprinted from the working tree. Sent with
+ * `complete_claim` so Tower can tell each reader what a declaration landed as — and
+ * whether that matches what was declared. Best-effort: a file that has gone, or a
+ * symbol that no longer parses, is simply left out.
+ */
+async function finalDeclarations(cwd: string, claim: Claim | undefined): Promise<SymbolRef[]> {
+  if (!claim) return [];
+  const wanted = claim.symbols.filter((s) => s.symbol !== "");
+  const out: SymbolRef[] = [];
+  for (const file of new Set(wanted.map((s) => s.file))) {
+    const abs = join(cwd, file);
+    if (!existsSync(abs)) continue;
+    const names = new Set(wanted.filter((s) => s.file === file).map((s) => s.symbol));
+    const now = await extractor.extract(file, readFileSync(abs, "utf8"));
+    out.push(...now.filter((s) => names.has(s.symbol) && s.sig));
+  }
+  return out;
 }
 
 /** Print the active-claims table (from the hosted Tower when TOWER_URL is set). */
@@ -1098,6 +1143,8 @@ export interface RecordReadsArgs {
   agentId: string;
   repo: string;
   repoId?: string;
+  /** So a read of work on another branch is warned as soft. The hook passes it. */
+  branch?: string;
   file: string;
 }
 
@@ -1109,32 +1156,52 @@ export interface RecordReadsArgs {
  * Silent and best-effort: a missed read costs a warning Tower could have given, never
  * correctness, and a Read must never fail because coordination was unavailable.
  */
-export async function cmdRecordReads(cwd: string, args: RecordReadsArgs): Promise<void> {
+export async function cmdRecordReads(cwd: string, args: RecordReadsArgs): Promise<Conflict[]> {
   const abs = join(cwd, args.file);
   const rel = args.file.startsWith(cwd) ? args.file.slice(cwd.length + 1) : args.file;
-  if (!existsSync(abs) && !existsSync(args.file)) return;
+  if (!existsSync(abs) && !existsSync(args.file)) return [];
   const source = readFileSync(existsSync(abs) ? abs : args.file, "utf8");
   const reads = (await extractor.extract(rel.split("\\").join("/"), source)).filter(
     (s) => s.symbol !== "" && s.sig,
   );
-  if (reads.length === 0) return;
+  if (reads.length === 0) return [];
 
   const projectId = loadProjectId(cwd);
+  // Derived exactly as cmdClaim derives it. Without the fallback a caller that omitted
+  // repoId recorded its reads under the bare repo name while its claims went under the
+  // root commit — two partitions, so no read was ever matched against a claim.
+  const repoId = args.repoId ?? gitRepoId(cwd);
   const payload = {
     agentId: args.agentId,
     repo: args.repo,
-    ...(args.repoId ? { repoId: args.repoId } : {}),
+    ...(repoId ? { repoId } : {}),
     ...(projectId ? { projectId } : {}),
+    ...(args.branch ? { branch: args.branch } : {}),
     reads,
   };
+  // The warnings come back to the caller — the PostToolUse hook — which is what gets
+  // them in front of the agent at the moment of reading rather than at its next claim.
   const remote = remoteConfig();
   if (remote) {
-    await withRemote(remote, (call) => call("record_reads", payload));
-    return;
+    const res = (await withRemote(remote, (call) => call("record_reads", payload))) as
+      RecordReadsOutput | undefined;
+    return res?.conflicts ?? [];
   }
   const service = buildService(cwd);
-  service.recordReads(payload);
+  const res = service.recordReads(payload);
   service.store.close();
+  return res.conflicts;
+}
+
+/**
+ * What the PostToolUse hook prints after a Read: `additionalContext` JSON when someone is
+ * changing what was just read, or `null` to print nothing. The hook stays a thin shell
+ * around this so the output an agent actually sees is covered by the unit suite — hooks
+ * run from the built CLI, which the suite never executes.
+ */
+export async function hookRecordReads(cwd: string, args: RecordReadsArgs): Promise<string | null> {
+  const text = readWarning(await cmdRecordReads(cwd, args));
+  return text ? hookContext(text) : null;
 }
 
 /** Print how often each kind of collision has actually fired. Counts only — the store

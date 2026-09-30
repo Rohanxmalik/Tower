@@ -637,3 +637,82 @@ describe("recorded reads — what the hook saw", () => {
     s.close();
   });
 });
+
+describe("waiters — refused agents are told when the blocker ends (0.12.0)", () => {
+  let store: TowerStore;
+  beforeEach(() => {
+    store = makeStore();
+  });
+  const inbox = (agentId: string) => store.fetchMessages({ agentId, unreadOnly: true });
+
+  it("messages every waiter once when the blocking claim completes, then forgets them", () => {
+    const c = store.createClaim({ ...baseClaim, agentId: "bob" });
+    store.addWaiter({ agentId: "alice", claimId: c.id, repo: "acme/app", repoKey: c.repoKey });
+    store.addWaiter({ agentId: "alice", claimId: c.id, repo: "acme/app", repoKey: c.repoKey }); // idempotent
+    store.addWaiter({ agentId: "carol", claimId: c.id, repo: "acme/app", repoKey: c.repoKey });
+
+    expect(store.completeClaim(c.id, "abc1234def")).toBe(true);
+
+    // fetchMessages marks what it returns as read, so each inbox is read exactly once.
+    const alice = inbox("alice");
+    expect(alice).toHaveLength(1);
+    expect(inbox("carol")).toHaveLength(1);
+    expect(alice[0]?.fromAgentId).toBe("tower");
+    expect(alice[0]?.body).toContain("verify");
+    expect(alice[0]?.body).toContain("completed");
+    expect(alice[0]?.body).toContain("abc1234");
+    expect(store.waitersFor(c.id)).toEqual([]);
+
+    // Completing twice changes nothing and must not message anyone again — counted over
+    // the whole inbox, read or not, so a duplicate cannot hide behind the read marker.
+    expect(store.completeClaim(c.id)).toBe(false);
+    expect(store.fetchMessages({ agentId: "alice", unreadOnly: false })).toHaveLength(1);
+  });
+
+  it("messages waiters when the claim is released instead", () => {
+    const c = store.createClaim({ ...baseClaim, agentId: "bob" });
+    store.addWaiter({ agentId: "alice", claimId: c.id, repo: "acme/app", repoKey: c.repoKey });
+    store.releaseClaim(c.id);
+    expect(inbox("alice")[0]?.body).toContain("released");
+  });
+
+  it("messages waiters when the claim simply expires — the case nobody calls anything for", () => {
+    const c = store.createClaim({ ...baseClaim, agentId: "bob" });
+    store.addWaiter({ agentId: "alice", claimId: c.id, repo: "acme/app", repoKey: c.repoKey });
+    clock += 20_000; // past the 10s ttl
+    expect(store.sweepExpired()).toBe(1);
+    expect(inbox("alice")[0]?.body).toContain("expired");
+    expect(store.waitersFor(c.id)).toEqual([]);
+  });
+
+  it("sends nothing for a claim nobody was waiting on", () => {
+    const c = store.createClaim({ ...baseClaim, agentId: "bob" });
+    store.completeClaim(c.id);
+    expect(store.listMessages({ limit: 10 })).toHaveLength(0);
+  });
+
+  it("files the notice in the claim's own partition, even when it was keyed by projectId", () => {
+    const c = store.createClaim({ ...baseClaim, agentId: "bob", projectId: "team-x" });
+    store.addWaiter({ agentId: "alice", claimId: c.id, repo: "acme/app", repoKey: c.repoKey });
+    store.completeClaim(c.id);
+    const [msg] = store.fetchMessages({ agentId: "alice", repo: "acme/app", projectId: "team-x" });
+    expect(msg?.fromAgentId).toBe("tower");
+  });
+});
+
+describe("recentClaims — the history dependency inference reads", () => {
+  it("returns claims of every status inside the window, in one partition only", () => {
+    const store = makeStore();
+    const done = store.createClaim({ ...baseClaim });
+    store.completeClaim(done.id);
+    clock += 5_000;
+    const live = store.createClaim({ ...baseClaim, agentId: "bob" });
+    store.createClaim({ ...baseClaim, repo: "other/repo" });
+
+    // clock is now 6_000: done was created at 1_000, live at 6_000.
+    const ids = store.recentClaims(done.repoKey!, 10_000).map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining([done.id, live.id]));
+    expect(ids).toHaveLength(2);
+    expect(store.recentClaims(done.repoKey!, 500).map((c) => c.id)).toEqual([live.id]);
+  });
+});

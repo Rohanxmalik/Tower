@@ -36,7 +36,10 @@ Commands:
   init [--hooks]             Write .tower/policy.yaml + print MCP setup.
                              --hooks also wires all five Claude Code hooks into
                              .claude/settings.json (an unwired hook enforces nothing).
-  setup [--url <https://...>] [--token t] [--hooks]   One-command onboarding: .mcp.json + rules + git hooks
+  setup [--url <https://...>] [--token t] [--hooks] [--keep-going]
+                             One-command onboarding: .mcp.json + rules + git hooks.
+                             --keep-going: on a hard conflict, agents work around it
+                             instead of stopping to ask (opt-in).
   serve [--http] [--port n] [--token t] [--remote <url>]
                              Start the coordination server. --remote runs it as a local
                              proxy to a hosted Tower, stamping this repo's identity onto
@@ -162,6 +165,7 @@ export async function run(argv: string[]): Promise<number> {
           url: { type: "string" },
           token: { type: "string" },
           hooks: { type: "boolean" },
+          "keep-going": { type: "boolean" },
         },
         allowPositionals: false,
       });
@@ -169,6 +173,7 @@ export async function run(argv: string[]): Promise<number> {
         ...(values.url ? { url: values.url } : {}),
         ...(values.token ? { token: values.token } : {}),
         ...(values.hooks ? { hooks: true } : {}),
+        ...(values["keep-going"] ? { keepGoing: true } : {}),
       });
       return 0;
     }

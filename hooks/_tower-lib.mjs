@@ -41,6 +41,24 @@ export function agentIdFor(input) {
   return process.env.TOWER_AGENT || `claude-${(input?.session_id ?? "code").slice(0, 8)}`;
 }
 
+/** How long a finished hook may linger before it is ended by force. */
+const FINISH_GRACE_MS = 2000;
+
+/**
+ * End the hook with `code`. Every hook exits through here, never `process.exit()`.
+ *
+ * The exit code is the hook's whole verdict: PreToolUse blocks only by exiting 2, and
+ * PostToolUse's JSON is read only on exit 0. On Windows, `process.exit()` while V8 is
+ * still compiling tree-sitter's WebAssembly in the background aborts in libuv and the
+ * process exits 127 — the block printed its reason and then let the edit through. So set
+ * the code and let the event loop drain. The unref'd timer only fires if something else
+ * holds the process open, by which time that compilation has long finished.
+ */
+export function finish(code) {
+  process.exitCode = code;
+  setTimeout(() => process.exit(code), FINISH_GRACE_MS).unref();
+}
+
 /** Import the built CLI's command module (hooks run from source, not from npm). */
 export async function loadCommands(hookDir) {
   return import(new URL("../packages/cli/dist/commands.js", `file://${hookDir}/`).href);

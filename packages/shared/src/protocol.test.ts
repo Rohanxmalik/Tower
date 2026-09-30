@@ -11,6 +11,10 @@ import {
   CheckCollisionInput,
   LogDecisionInput,
   NextTaskInput,
+  RecordReadsInput,
+  RecordReadsOutput,
+  CompleteClaimInput,
+  CompleteClaimOutput,
   TOOL_SCHEMAS,
   TOWER_VERSION,
 } from "./protocol.js";
@@ -164,6 +168,68 @@ describe("TOOL_SCHEMAS registry", () => {
   it("ClaimIntentOutput validates a conflict list", () => {
     const out = ClaimIntentOutput.parse({ claimId: "c1", conflicts: [] });
     expect(out.conflicts).toEqual([]);
+  });
+});
+
+describe("0.12.0 — nobody waits", () => {
+  // Every field below is additive and optional. A 0.11 client that sends none of them
+  // and ignores the new outputs must behave exactly as it did — that is the contract.
+  it("SymbolRef accepts a declared future signature, capped", () => {
+    const r = SymbolRef.parse({ file: "a.ts", symbol: "verify", declares: "verify(token, opts)" });
+    expect(r.declares).toBe("verify(token, opts)");
+    expect(() =>
+      SymbolRef.parse({ file: "a.ts", symbol: "v", declares: "x".repeat(241) }),
+    ).toThrow();
+    expect(SymbolRef.parse({ file: "a.ts", symbol: "v" }).declares).toBeUndefined();
+  });
+
+  it("Conflict carries the declared contract for a reader to code against", () => {
+    const c = Conflict.parse({
+      claimId: "c",
+      agentId: "alice",
+      severity: "soft",
+      reason: "r",
+      overlap: [],
+      kind: "write_read",
+      declaredSigText: "verify(token, opts)",
+    });
+    expect(c.declaredSigText).toBe("verify(token, opts)");
+  });
+
+  it("record_reads returns warnings, defaulting to none", () => {
+    expect(RecordReadsOutput.parse({ ok: true, recorded: 1 }).conflicts).toEqual([]);
+    expect(RecordReadsInput.parse({ agentId: "a", repo: "r", branch: "b" }).branch).toBe("b");
+  });
+
+  it("a refused claim can carry alternatives; a granted one need not", () => {
+    const refused = ClaimIntentOutput.parse({
+      claimId: null,
+      conflicts: [],
+      blocking: true,
+      recommendation: "stand_down",
+      alternatives: {
+        avoid: [{ file: "auth.ts", symbol: "verify" }],
+        nextTask: null,
+        notifyOnRelease: true,
+        advice: "Work outside verify(); you will be told when it frees up.",
+      },
+    });
+    expect(refused.alternatives?.notifyOnRelease).toBe(true);
+    expect(ClaimIntentOutput.parse({ claimId: "c1", conflicts: [] }).alternatives).toBeUndefined();
+  });
+
+  it("complete_claim accepts final declarations and reports who was told", () => {
+    const input = CompleteClaimInput.parse({
+      claimId: "c1",
+      symbols: [{ file: "a.ts", symbol: "verify", sig: "c1:ab" }],
+    });
+    expect(input.symbols).toHaveLength(1);
+    expect(CompleteClaimInput.parse({ claimId: "c1" }).symbols).toBeUndefined();
+    expect(CompleteClaimOutput.parse({ ok: true }).notified).toBe(0);
+  });
+
+  it("the tool registry exposes the widened complete_claim output", () => {
+    expect(TOOL_SCHEMAS.complete_claim.output.parse({ ok: true }).notified).toBe(0);
   });
 });
 

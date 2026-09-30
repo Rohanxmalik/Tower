@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import Parser from "web-tree-sitter";
 import type { SymbolRef, SymbolKind } from "@tower/shared";
+import { fingerprintDeclaration } from "./signature.js";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -137,14 +137,6 @@ export function symbolAt(symbols: RangedSymbol[], offset: number): RangedSymbol 
   return best;
 }
 
-/** Scheme tag on every fingerprint. Bump it when the normalization below changes, so an
- * old `c1:` digest is never compared against a new one and read as "unchanged". */
-const SIG_SCHEME = "c1";
-
-/** Cap on the stored declaration text. Long enough to read a signature back, short
- * enough that a pathological one cannot bloat every claim that touches it. */
-const SIG_TEXT_MAX = 240;
-
 /** Declarations that *are* their own contract — there is no body to exclude, because
  * every part of them is visible to a caller. */
 const WHOLE_DECLARATION = new Set([
@@ -176,38 +168,15 @@ function bodyOf(node: TsNode): TsNode | null {
   return value ? value.childForFieldName("body") : null;
 }
 
-/** For display: collapse runs of whitespace, keep it readable. */
-function readableDeclaration(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
 /**
- * For comparison: drop whitespace entirely and the trailing comma prettier leaves when
- * it breaks a parameter list across lines. `verify(token: string)` and
- * `verify(\n  token: string,\n)` are the same contract, and a fingerprint that
- * disagreed would fire on every reformat — the fastest way to get the feature muted.
- */
-function canonicalDeclaration(text: string): string {
-  return text.replace(/\s+/g, "").replace(/,(?=[)\]}>])/g, "");
-}
-
-/**
- * Fingerprint a declaration. Returns the digest plus the readable form, so a staleness
- * report can show `verify(token)` → `verify(token, opts)` rather than sending the agent
- * back to re-read the file.
+ * Fingerprint a declaration parsed from code. The normalization lives in
+ * `signature.ts`, shared with declared contracts, so the two can never disagree.
  */
 export function signatureOf(
   node: TsNode,
   code: string,
 ): { sig: string; sigText: string } | undefined {
-  const raw = declarationText(node, code);
-  const canonical = canonicalDeclaration(raw);
-  if (canonical === "") return undefined;
-  const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
-  return {
-    sig: `${SIG_SCHEME}:${digest}`,
-    sigText: readableDeclaration(raw).slice(0, SIG_TEXT_MAX),
-  };
+  return fingerprintDeclaration(declarationText(node, code));
 }
 
 /** Node types that name a symbol, and the SymbolKind to record. */

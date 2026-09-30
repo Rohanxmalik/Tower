@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectCollisions, detectAntidependencies } from "./collision.js";
+import { fingerprintDeclaration } from "./signature.js";
 import type { Claim } from "@tower/shared";
 
 function activeClaim(over: Partial<Claim> = {}): Claim {
@@ -324,5 +325,80 @@ describe("antidependencies — the contract moved under you", () => {
         claim({ symbols: [NEW] }),
       ]),
     ).toHaveLength(0);
+  });
+});
+
+describe("contract-first — the holder declared its new signature", () => {
+  // The point of declaring: nobody waits. A reader handed the future contract can write
+  // against it immediately, so the conflict must never be `hard` — a hard conflict would
+  // put the reader straight back into the wait this exists to remove.
+  const holder = (symbols: Claim["symbols"]): Claim => ({
+    id: "c-alice",
+    agentId: "alice",
+    repo: "acme/app",
+    branch: "main",
+    files: [],
+    symbols,
+    purpose: "",
+    status: "active",
+    createdAt: 0,
+    expiresAt: Date.now() + 60_000,
+  });
+  const DECLARED = "function verify(token: string, opts: Opts): boolean";
+  const current = {
+    file: "src/auth.ts",
+    symbol: "verify",
+    sig: fingerprintDeclaration("function verify(token: string): boolean")!.sig,
+    sigText: "function verify(token: string): boolean",
+  };
+  const reader = (read: Claim["symbols"][number]) => ({
+    agentId: "bob",
+    files: [],
+    symbols: [],
+    reads: [read],
+    branch: "main",
+  });
+
+  it("hands a reader of the current version the declared contract, as soft", () => {
+    const [c] = detectAntidependencies(reader(current), [
+      holder([{ ...current, declares: DECLARED }]),
+    ]);
+    expect(c?.severity).toBe("soft");
+    expect(c?.kind).toBe("write_read");
+    expect(c?.declaredSigText).toBe(DECLARED);
+    expect(c?.reason).toContain(DECLARED);
+  });
+
+  it("stays soft even when the reader's copy is stale — it has the contract to move to", () => {
+    const stale = { ...current, sig: "c1:0000000000000000", sigText: "function verify()" };
+    const [c] = detectAntidependencies(reader(stale), [
+      holder([{ ...current, declares: DECLARED }]),
+    ]);
+    expect(c?.severity).toBe("soft");
+    expect(c?.declaredSigText).toBe(DECLARED);
+  });
+
+  it("says nothing to a reader already on the declared contract", () => {
+    const onNew = { ...current, ...fingerprintDeclaration(DECLARED)! };
+    expect(
+      detectAntidependencies(reader(onNew), [holder([{ ...current, declares: DECLARED }])]),
+    ).toEqual([]);
+  });
+
+  it("recognises the declared contract even when the holder wrote `export`", () => {
+    const onNew = { ...current, ...fingerprintDeclaration(DECLARED)! };
+    const declaredWithExport = `export ${DECLARED}`;
+    expect(
+      detectAntidependencies(reader(onNew), [
+        holder([{ ...current, declares: declaredWithExport }]),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("leaves undeclared symbols exactly as 0.11.0 behaved", () => {
+    const moved = { ...current, sig: "c1:ffffffffffffffff", sigText: "function verify(x)" };
+    const [c] = detectAntidependencies(reader(current), [holder([moved])]);
+    expect(c?.severity).toBe("hard");
+    expect(c?.declaredSigText).toBeUndefined();
   });
 });

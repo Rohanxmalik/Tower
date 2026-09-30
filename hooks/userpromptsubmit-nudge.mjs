@@ -19,6 +19,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { finish } from "./_tower-lib.mjs";
 
 function readStdin() {
   try {
@@ -53,4 +54,4 @@ try {
   process.stderr.write(`Tower: could not check for waiting work — ${err?.message || err}
 `);
 }
-process.exit(0);
+finish(0);

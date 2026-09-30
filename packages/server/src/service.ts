@@ -6,6 +6,7 @@ import type {
   HeartbeatInput,
   HeartbeatOutput,
   CompleteClaimInput,
+  CompleteClaimOutput,
   ReleaseClaimInput,
   OkOutput,
   ListClaimsInput,
@@ -36,7 +37,15 @@ import type {
   ResolveApprovalInput,
   HeartbeatWorkerInput,
 } from "@tower/shared";
-import type { Claim, Conflict, Decision, DelegatedTask, Message, Worker } from "@tower/shared";
+import type {
+  Claim,
+  Conflict,
+  Decision,
+  DelegatedTask,
+  Message,
+  SymbolRef,
+  Worker,
+} from "@tower/shared";
 import { resolveRepoKey, looksLikeForkSplit } from "@tower/shared";
 
 /**
@@ -55,6 +64,11 @@ export const WORKER_CONNECTED_MS = 15 * 60 * 1000;
 /** Work completed inside this window still counts as done — redoing it is the same
  * waste as doing it in parallel. */
 export const RECENT_INTENT_MS = 6 * 60 * 60 * 1000;
+
+/** How far back claims count as evidence of what depends on what. Matches the store's
+ * prune window: nothing older survives anyway, and a week of reads is a fair picture of
+ * how the code currently hangs together. */
+export const DEPENDENCY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 import { TowerStore } from "./store/sqlite.js";
 import {
   claimRepoKey,
@@ -68,6 +82,8 @@ import {
 const SEVERITY_ORDER = { info: 0, soft: 1, hard: 2 } as const;
 import { matchIntent } from "./engine/intent.js";
 import { nextTask, type Policy } from "./engine/sequencer.js";
+import { buildAlternatives } from "./engine/alternatives.js";
+import { contractNotice } from "./engine/notices.js";
 
 /** What the live board renders: claims, the collisions between them, and the comms feed. */
 export interface BoardSnapshot {
@@ -159,11 +175,25 @@ export class TowerService {
     }
 
     if (hard && !input.force) {
+      const blocking = conflicts.filter((c) => c.severity === "hard");
+      // Register for a release notice, so "wait" stops meaning "poll". One row per
+      // blocking claim; the store sends the message itself on complete, release or
+      // expiry — expiry never passes through here, so it could not be done from here.
+      for (const claimId of new Set(blocking.map((c) => c.claimId))) {
+        this.store.addWaiter({ agentId: input.agentId, claimId, repo: input.repo, repoKey });
+      }
       return {
         claimId: null,
         conflicts,
         blocking: true,
         recommendation: "stand_down",
+        alternatives: buildAlternatives({
+          blocking,
+          active,
+          history: this.store.recentClaims(repoKey, DEPENDENCY_WINDOW_MS),
+          policy: this.policy,
+          agentId: input.agentId,
+        }),
         ...mail,
         ...split,
       };
@@ -296,7 +326,21 @@ export class TowerService {
     const repoKey = resolveRepoKey(input.repoId, input.repo, input.projectId);
     const named = input.reads.filter((r) => r.symbol !== "");
     this.store.recordReads(input.agentId, repoKey, named);
-    return { ok: true, recorded: named.length };
+    // Warn now. This is the cheapest moment an agent can learn that someone is changing
+    // what it just read — before a plan has been built on it. Before 0.12.0 the read was
+    // stored silently and the agent found out at its next claim, after spending the
+    // tokens to plan the edit.
+    const conflicts = detectAntidependencies(
+      {
+        agentId: input.agentId,
+        files: [],
+        symbols: [],
+        reads: named,
+        ...(input.branch ? { branch: input.branch } : {}),
+      },
+      this.store.activeClaims(repoKey),
+    );
+    return { ok: true, recorded: named.length, conflicts };
   }
 
   /**
@@ -323,13 +367,62 @@ export class TowerService {
         branch: claim.branch,
       },
       this.store.activeClaims(repoKey),
-    ).filter((c) => c.severity === "hard"); // only report a contract that actually moved
+      // A contract that actually moved, or one somebody has declared is about to — the
+      // second is what lets work already in flight adapt before the change lands.
+    ).filter((c) => c.severity === "hard" || c.declaredSigText !== undefined);
 
     return invalidations.length ? { ...beat, invalidations } : beat;
   }
 
-  completeClaim(input: CompleteClaimInput): OkOutput {
-    return { ok: this.store.completeClaim(input.claimId, input.commitSha) };
+  completeClaim(input: CompleteClaimInput): CompleteClaimOutput {
+    const before = this.store.getClaim(input.claimId);
+    const ok = this.store.completeClaim(input.claimId, input.commitSha);
+    if (!ok || !before || !input.symbols?.length) return { ok, notified: 0 };
+    return { ok, notified: this.announceLanded(before, input.symbols) };
+  }
+
+  /**
+   * Tell every active reader of a declaration what it landed as. Fires whenever a reader
+   * could have been told something now untrue: the declaration moved, or its holder had
+   * declared a contract — which it may or may not have kept. Returns agents messaged.
+   */
+  private announceLanded(claim: Claim, landed: SymbolRef[]): number {
+    const readers = this.store
+      .activeClaims(claimRepoKey(claim))
+      .filter((c) => c.agentId !== claim.agentId);
+    const told = new Set<string>();
+
+    for (const final of landed) {
+      if (!final.sig || !final.sigText) continue;
+      const held = claim.symbols.find((s) => s.file === final.file && s.symbol === final.symbol);
+      if (!held) continue;
+      const moved = held.sig ? held.sig !== final.sig : false;
+      if (!moved && !held.declares) continue;
+
+      const body = contractNotice({
+        holder: claim.agentId,
+        file: final.file,
+        symbol: final.symbol,
+        landed: { sig: final.sig, sigText: final.sigText },
+        ...(held.declares ? { declared: held.declares } : {}),
+      });
+      for (const reader of readers) {
+        const read = (reader.reads ?? []).some(
+          (r) => r.file === final.file && r.symbol === final.symbol,
+        );
+        if (!read) continue;
+        this.store.sendMessage({
+          fromAgentId: "tower",
+          toAgentId: reader.agentId,
+          repo: reader.repo,
+          ...(reader.repoKey ? { repoKey: reader.repoKey } : {}),
+          kind: "message",
+          body,
+        });
+        told.add(reader.agentId);
+      }
+    }
+    return told.size;
   }
 
   releaseClaim(input: ReleaseClaimInput): OkOutput {

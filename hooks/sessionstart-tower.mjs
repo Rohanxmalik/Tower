@@ -20,7 +20,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { agentIdFor, repoContext, loadCommands } from "./_tower-lib.mjs";
+import { agentIdFor, finish, repoContext, loadCommands } from "./_tower-lib.mjs";
 
 function readStdin() {
   try {
@@ -53,4 +53,4 @@ try {
   );
 }
 
-process.exit(0);
+finish(0);

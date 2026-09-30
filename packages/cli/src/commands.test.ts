@@ -14,6 +14,7 @@ import {
   cmdSetup,
   cmdRecordReads,
   cmdStats,
+  gitRepoId,
   resolveSymbols,
   resolvePort,
   localServeConflict,
@@ -738,7 +739,10 @@ describe("cmdRecordReads — the hook's half of a version-aware claim", () => {
     writeFileSync(join(dir, "auth.ts"), AUTH);
     await cmdRecordReads(dir, { agentId: "bob", repo: "acme/app", file: "auth.ts" });
     const service = buildService(dir);
-    const reads = service.store.takeReads("bob", resolveRepoKey(undefined, "acme/app"));
+    // Looked up the way production partitions — deriving repoId from the root commit when
+    // there is one, as cmdClaim does. This used the bare repo name, which encoded the bug
+    // 0.12.0 fixed: reads and claims landed in different partitions inside a git repo.
+    const reads = service.store.takeReads("bob", resolveRepoKey(gitRepoId(dir), "acme/app"));
     service.store.close();
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.every((r) => r.sig)).toBe(true);
@@ -746,9 +750,11 @@ describe("cmdRecordReads — the hook's half of a version-aware claim", () => {
   });
 
   it("is silent when the file is gone — a Read must never fail on coordination", async () => {
+    // Resolves, never throws, and warns about nothing. (It returns its warnings since
+    // 0.12.0, so "nothing" is an empty list rather than undefined.)
     await expect(
       cmdRecordReads(dir, { agentId: "bob", repo: "acme/app", file: "nope.ts" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
   });
 
   it("records nothing for a file with no declarations to depend on", async () => {

@@ -12,7 +12,7 @@
 // Requires a build first: `npm run build`. Fails OPEN (never blocks on its own error).
 import { readFileSync } from "node:fs";
 import { relative, isAbsolute } from "node:path";
-import { repoContext } from "./_tower-lib.mjs";
+import { finish, repoContext } from "./_tower-lib.mjs";
 
 const ALLOW = 0;
 const BLOCK = 2;
@@ -82,11 +82,11 @@ async function symbolsForEdit(cwd, filePath, rel, tool, toolInput) {
 async function main() {
   const input = readStdin();
   const tool = input.tool_name ?? "";
-  if (!/^(Edit|Write|MultiEdit)$/.test(tool)) process.exit(ALLOW);
+  if (!/^(Edit|Write|MultiEdit)$/.test(tool)) return ALLOW;
 
   const filePath = input.tool_input?.file_path;
   const cwd = input.cwd ?? process.cwd();
-  if (!filePath) process.exit(ALLOW);
+  if (!filePath) return ALLOW;
 
   const rel = isAbsolute(filePath) ? relative(cwd, filePath) : filePath;
   const agentId = `claude-${(input.session_id ?? "code").slice(0, 8)}`;
@@ -123,9 +123,9 @@ async function main() {
     process.stderr.write(
       `Tower: another agent is editing ${rel}. Do not edit it yet.\n\n${lines.join("\n")}\n`,
     );
-    process.exit(BLOCK);
+    return BLOCK;
   }
-  process.exit(ALLOW);
+  return ALLOW;
 }
 
 // Fail OPEN but LOUD. A hook bug or a Tower outage must never brick editing — but if we
@@ -133,12 +133,12 @@ async function main() {
 // identical, and you cannot tell which one you got.
 //
 //   Silence must always mean verified-clear, never "did not check."
-main().catch((err) => {
+main().then(finish, (err) => {
   process.stderr.write(
     `Tower: coordination NOT enforced for this edit — ${err?.message || err}
 ` +
       `       (allowing the edit; another agent may be editing this file)
 `,
   );
-  process.exit(ALLOW);
+  finish(ALLOW);
 });

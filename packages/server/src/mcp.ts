@@ -33,12 +33,21 @@ const TOOL_DESCRIPTIONS: Record<keyof typeof TOOL_SCHEMAS, string> = {
   claim_intent:
     "Register intent to edit code BEFORE editing. Returns any collisions with other active agents. Call this first, always. " +
     "Also pass `reads`: the declarations you consulted to write this — the functions, methods or types you are calling or implementing against. " +
-    "Tower tells you when one of them changes under you, and shows the old and new signature so you can patch your call sites without re-reading the file.",
+    "Tower tells you when one of them changes under you, and shows the old and new signature so you can patch your call sites without re-reading the file. " +
+    "If you are changing a symbol's signature, set `declares` on it to the new declaration as it will read in the source, up to the body (e.g. `function verify(token: string, opts: Opts): boolean`): " +
+    "agents whose work reads it are handed that contract immediately and can code against it in parallel instead of waiting for you. " +
+    "If the claim is refused, the response carries `alternatives`: what to avoid, and advice. Don't stop — work outside `avoid`; Tower messages you when it frees up.",
   check_collision: "Check for collisions without registering a claim (a dry run).",
   record_reads:
-    "Record declarations you just read, so your next claim_intent knows what your work is built on. Normally called by the PostToolUse hook, not by you.",
-  heartbeat: "Keep an active claim alive; claims auto-expire without heartbeats.",
-  complete_claim: "Release a claim after committing (optionally record the commit sha).",
+    "Record declarations you just read, so your next claim_intent knows what your work is built on. " +
+    "Returns `conflicts` straight away when another agent is changing what you read — the cheapest moment to find out, before you plan against it. " +
+    "Normally called by the PostToolUse hook, not by you.",
+  heartbeat:
+    "Keep an active claim alive; claims auto-expire without heartbeats. Returns `invalidations`: declarations your work read that have moved, " +
+    "or that another agent has declared it is about to change — with the new signature, so you can adapt before it lands.",
+  complete_claim:
+    "Release a claim after committing (optionally record the commit sha). Pass `symbols` with their final `sig`/`sigText` and every agent whose " +
+    "work reads a changed declaration is told what it landed as, and whether it matches what you declared.",
   release_claim: "Abandon a claim without committing.",
   list_claims: "List claims, optionally filtered by repo/branch/status.",
   log_decision:

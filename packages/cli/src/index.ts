@@ -113,6 +113,14 @@ export async function run(argv: string[]): Promise<number> {
   const cwd = process.cwd();
 
   switch (command) {
+    // --help is the most-run flag on any CLI. Falling through to `default` printed the
+    // right text and exited 1, so `tower --help && ...` and every smoke test saw failure.
+    case "help":
+    case "--help":
+    case "-h":
+      process.stdout.write(HELP + "\n");
+      return 0;
+
     case "demo": {
       await cmdDemo((l) => process.stdout.write(l + "\n"));
       // The demo server keeps the process alive until Ctrl+C.

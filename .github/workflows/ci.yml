@@ -49,7 +49,12 @@ jobs:
         working-directory: /tmp/proj
         run: |
           set -uo pipefail
-          npx tower --help | grep -q "Usage" || {
+          out=$(npx tower --help); code=$?
+          echo "$out"
+          [ $code -eq 0 ] || {
+            echo "::error::tower --help exited $code; --help must succeed"; exit 1;
+          }
+          echo "$out" | grep -q "Usage" || {
             echo "::error::CLI did not run from the package"; exit 1;
           }
 

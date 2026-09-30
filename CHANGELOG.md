@@ -50,6 +50,11 @@ and committing their config published a live team token.
   `::warning::` and exited 0 — a green check on an action that did nothing. Surfaced by
   opening the repository's first-ever pull request.
 
+- **`tower --help` exited 1.** `--help`, `-h` and `help` all fell through to the unknown-
+  command branch: the right text printed, then a failure code. `tower --help && …` broke,
+  and so did every smoke test. They are real commands now and exit 0. Bare `tower` was
+  already correct. Caught on the first run of the new packaged-tarball CI job.
+
 ## 0.10.0 — 2026-08-11
 
 **A fork and its upstream coordinated in separate spaces, in silence.** Two agents on one

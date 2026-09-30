@@ -19,3 +19,68 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  # Every bug that reached a user this cycle shared one shape: a path nobody had ever
+  # run end to end, with something green covering for it. Unit tests run against the
+  # workspace; users get a tarball. This job is the only thing that sees what they see.
+  packaged:
+    name: packaged tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack and install as an outside user would
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg /tmp/proj
+          cd packages/cli && npm pack --pack-destination /tmp/pkg
+          cd /tmp/proj
+          npm init -y > /dev/null
+          git init -q .
+          npm install /tmp/pkg/*.tgz --silent
+
+      - name: The CLI runs from the tarball
+        working-directory: /tmp/proj
+        run: |
+          set -uo pipefail
+          npx tower --help | grep -q "Usage" || {
+            echo "::error::CLI did not run from the package"; exit 1;
+          }
+
+      - name: doctor states the Node floor node:sqlite actually needs
+        working-directory: /tmp/proj
+        run: |
+          set -uo pipefail
+          out=$(npx tower doctor 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "22.13" || { echo "::error::doctor is quoting the wrong Node floor"; exit 1; }
+
+      - name: init --hooks refuses rather than writing hooks that cannot fire
+        working-directory: /tmp/proj
+        run: |
+          set -uo pipefail
+          out=$(npx tower init --hooks 2>&1 || true)
+          echo "$out"
+          if [ -f .claude/settings.json ]; then
+            echo "::error::init --hooks wrote hook config from the npm package; the scripts are not in it, so every hook would be dead"
+            cat .claude/settings.json
+            exit 1
+          fi
+          echo "$out" | grep -qi "clone" || { echo "::error::refusal did not tell the user what to do instead"; exit 1; }
+
+      - name: setup wires .mcp.json and leaves no secret in it
+        working-directory: /tmp/proj
+        run: |
+          set -euo pipefail
+          npx tower setup > /dev/null
+          grep -q "tower-mcp" .mcp.json || { echo "::error::setup did not write a tower server entry"; exit 1; }
+          if grep -qiE "token|secret|bearer" .mcp.json; then
+            echo "::error::setup put a credential in .mcp.json, which teams commit"
+            exit 1
+          fi

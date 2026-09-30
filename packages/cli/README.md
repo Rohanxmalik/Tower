@@ -68,6 +68,13 @@ npx -y tower-mcp setup --url https://your-tower.onrender.com/mcp --token <team-s
   at the **symbol** level (tree-sitter ASTs for TS/JS/Python), so `AuthService.verify`
   collides with `AuthService.verify` even across different diff hunks. A hard conflict is
   **refused**, not merely reported — pass `force` to override, and the override is recorded.
+- **The contract that moved under you.** Comparing what two agents will _write_ is blind
+  to the more common failure: alice changes `AuthService.verify` while bob, who read the
+  old signature, writes a caller in another file. Nothing overlaps, so nothing fires, and
+  bob finds out at CI. Claims now carry what they were _built on_, and Tower reports the
+  delta — `was: verify(token)` / `now: verify(token, opts)` — so the agent patches its
+  call sites without re-reading the file. The fingerprint covers the declaration and never
+  the body, so a reformat or a rewritten implementation moves nothing.
 - **One repo means one coordination space.** Claims are keyed on the repository's root
   commit, which every clone, fork and mirror shares — so a fork and its upstream coordinate,
   and `git@github.com:acme/app.git` and `https://github.com/Acme/App` are the same place.

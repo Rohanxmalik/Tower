@@ -71,12 +71,12 @@ session, and it prints that coordination was not enforced so you can tell the di
 
 `init --hooks` also installs, all silent on the happy path:
 
-| Hook               | Job                                                                           |
-| ------------------ | ----------------------------------------------------------------------------- |
-| `SessionStart`     | registers the session, so the board shows you without waiting for a heartbeat |
-| `UserPromptSubmit` | prints "N tasks waiting" only when a teammate actually delegated something    |
-| `PostToolUse`      | refreshes presence and keeps your in-progress claims from expiring            |
-| `SessionEnd`       | releases your claims, so a closed editor stops blocking teammates             |
+| Hook               | Job                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `SessionStart`     | registers the session, so the board shows you without waiting for a heartbeat                 |
+| `UserPromptSubmit` | prints "N tasks waiting" only when a teammate actually delegated something                    |
+| `PostToolUse`      | refreshes presence, and on `Read` records what you read so a claim knows what it was built on |
+| `SessionEnd`       | releases your claims, so a closed editor stops blocking teammates                             |
 
 Silence is what makes this affordable: a hook that exits without printing adds **zero
 tokens**, so per-edit checking is free across a whole session.

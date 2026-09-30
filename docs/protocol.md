@@ -110,6 +110,7 @@ All twenty tools take and return JSON validated by the schemas in
 | `request_approval` | Park a task for human approval (worker remote-approve mode).          |
 | `resolve_approval` | Approve or reject a parked task (the board / a phone taps this).      |
 | `heartbeat_worker` | A worker announces it's online & ready (drives live presence).        |
+| `record_reads`     | Record declarations an agent read, so its next claim carries them.    |
 
 ### The agent loop
 

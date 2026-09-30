@@ -252,23 +252,79 @@ Matched on meaning, not paths — it fires even though one agent would have writ
 `ai-agent-security-prompt-injection.mdx`. Entirely local: no model, no embeddings, no
 network call.
 
+## Catch the contract that moved under you
+
+A claim is only as fresh as the read that produced it.
+
+Comparing what two agents will **write** catches them editing the same function. It is
+blind to the more common failure: alice changes `AuthService.verify` in `auth.ts` while
+bob, who read the old signature ten minutes ago, writes a caller in `payments.ts`.
+Different file, different symbol — nothing overlaps, both are told to proceed, and bob
+finds out at CI.
+
+So a claim also carries what it was **built on**:
+
+```
+claim_intent  files: ["src/payments.ts"]  symbols: ["charge"]
+
+[HARD] AuthService.verify moved under you — alice changed the declaration you read
+    was: verify(token: string)
+    now: verify(token: string, opts: Opts)
+```
+
+Two details make this worth having switched on:
+
+**It shows you the delta, not a warning.** Telling an agent "your context may be stale,
+re-read the file" costs a whole module back in context to discover one parameter moved.
+Two lines replace it, and the agent patches its call sites without reopening anything.
+
+**It only fires when a caller could actually break.** The fingerprint covers the
+_declaration_, never the body — so a rewritten implementation, a renamed local, a comment
+or a `prettier` run move nothing. An added parameter or a changed return type always
+does.
+
+You don't have to declare what you read: the `PostToolUse` hook watches `Read` and
+records it for you, with each declaration's signature at the moment you looked. And if
+you claimed first and something moved afterwards, `heartbeat` tells you — on the call
+your agent already makes every 60 seconds.
+
+Honest limits: a behavioural change under an identical signature is invisible, which is
+the trade that keeps false positives near zero. See [docs/protocol.md](docs/protocol.md).
+
+## What actually collides
+
+```
+$ tower stats
+
+2 collision(s) recorded
+
+  by kind
+    write_write  1  (50%)  two agents on the same symbol
+    write_read   1  (50%)  a contract moved under a reader
+```
+
+Counts only — no file names, no symbol names, no code, and nothing leaves your machine.
+It exists because Tower spent four versions detecting collisions and forgetting every
+one, so nobody could say which kind actually happens.
+
 ## The 20 tools
 
-| Tool                                           | Purpose                                                                     |
-| ---------------------------------------------- | --------------------------------------------------------------------------- |
-| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)                |
-| `check_collision`                              | Dry-run collision check, no claim persisted                                 |
-| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                                 |
-| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                            |
-| `list_claims`                                  | Live claim state                                                            |
-| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                         |
-| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                     |
-| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents      |
-| `pending`                                      | Read-only count of unread messages + open tasks waiting for you (the nudge) |
-| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR           |
-| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone        |
-| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks         |
-| `propose_intent`                               | **Before you research:** say what you plan to do; catches duplicate work    |
+| Tool                                           | Purpose                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)                  |
+| `check_collision`                              | Dry-run collision check, no claim persisted                                   |
+| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                                   |
+| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                              |
+| `list_claims`                                  | Live claim state                                                              |
+| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                           |
+| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                       |
+| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents        |
+| `pending`                                      | Read-only count of unread messages + open tasks waiting for you (the nudge)   |
+| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR             |
+| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone          |
+| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks           |
+| `propose_intent`                               | **Before you research:** say what you plan to do; catches duplicate work      |
+| `record_reads`                                 | What you just read, so a claim knows what it was built on (the hook calls it) |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 

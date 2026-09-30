@@ -306,7 +306,7 @@
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
             <a class="btn" href="#install">30-second setup</a>
           </div>
-          <div class="trust">MIT · 377 tests · 20 MCP tools · zero native deps · Node 22.13+</div>
+          <div class="trust">MIT · 429 tests · 20 MCP tools · zero native deps · Node 22.13+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
@@ -490,7 +490,7 @@
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">How it works</span>
-          <h2 class="sec-title">Three checks, each cheaper than the one after it</h2>
+          <h2 class="sec-title">Four checks, each cheaper than the one after it</h2>
           <p class="lead-p">
             Coordination is only worth it if it costs less than the collision. Tower runs
             the cheap check first and never asks the model to do work a parser can do.
@@ -530,6 +530,27 @@
               and you get <span class="mono">recommendation: "stand_down"</span>. Same file,
               different symbols, or another branch → <b>soft</b>: you're told, you proceed.
               <span class="mono">force: true</span> overrides, and the override is recorded.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="num">WHILE YOU WORK</div>
+            <h3>Freshness</h3>
+            <p>
+              A claim is only as fresh as the read that produced it. Comparing what two
+              agents will <b>write</b> misses the more common one: alice changes
+              <span class="mono">AuthService.verify</span> while bob, who read the old
+              signature, writes a caller in another file. Nothing overlaps, both are told
+              to proceed, and bob finds out at CI.
+            </p>
+            <p class="lead-p">
+              So a claim carries what it was <b>built on</b>, and Tower hands back the
+              delta — <span class="mono">was: verify(token)</span> /
+              <span class="mono">now: verify(token, opts)</span> — instead of telling the
+              agent to go re-read the file. The fingerprint covers the
+              <b>declaration, never the body</b>, so a reformat or a rewritten
+              implementation moves nothing. You never declare your reads: the hook watches
+              them.
             </p>
           </div>
 
@@ -656,7 +677,7 @@ someone/app-fork → caaa8780f2853aec824905cc3278402fc26caa0a
       <div class="wrap">
         <div class="sec-head">
           <span class="eyebrow">The wire contract</span>
-          <h2 class="sec-title">Nineteen MCP tools</h2>
+          <h2 class="sec-title">Twenty MCP tools</h2>
         </div>
         <div class="tools">
           <div class="tool"><span class="name">propose_intent</span><span class="desc">Say what you plan to do <b>before researching</b> — catches duplicate work even when the filenames differ</span></div>

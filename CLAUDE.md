@@ -44,12 +44,12 @@ npm run demo      # the two-agent collision demo
 
 ## Layout
 
-| Package           | What                                                                                                        |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| `packages/shared` | Protocol types + zod schemas — the single source of truth (20 tools)                                        |
-| `packages/server` | Collision engine (tree-sitter), sequencer, SQLite store, MCP server, transports                             |
-| `packages/cli`    | `tower`: init / setup / serve / status / watch / claim / guard / complete / next-task / send / inbox / work |
-| `hooks/`          | Claude Code hooks: SessionStart, UserPromptSubmit, PreToolUse (blocks), PostToolUse, SessionEnd             |
+| Package           | What                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | Protocol types + zod schemas — the single source of truth (20 tools)                                                 |
+| `packages/server` | Collision engine (tree-sitter), sequencer, SQLite store, MCP server, transports                                      |
+| `packages/cli`    | `tower`: init / setup / serve / status / stats / watch / claim / guard / complete / next-task / send / inbox / work  |
+| `hooks/`          | Claude Code hooks: SessionStart, UserPromptSubmit, PreToolUse (blocks), PostToolUse (also records reads), SessionEnd |
 
 Wire contract: [docs/protocol.md](docs/protocol.md). Full design: [MVP-SPEC.md](MVP-SPEC.md).
 

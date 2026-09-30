@@ -30,6 +30,7 @@ editor — done.**
 
 ```bash
 tower status        # active claims
+tower stats         # which kind of collision actually fires (local counts only)
 tower watch         # live view in the terminal
 ```
 

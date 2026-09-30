@@ -15,7 +15,14 @@ symbols you're about to change, plus a short `purpose`.
 - Since 0.9.0 a **`hard`** conflict is **refused** — you get `claimId: null`,
   `blocking: true` and `recommendation: "stand_down"`, and **nothing is registered**.
   **Stop and ask the user.** Offer: wait / take a dependent task / branch from their WIP.
+  Since 0.12.0 the refusal carries `alternatives` — `avoid` (what's held, plus code
+  inferred to depend on it) and one line of `advice`; put them in front of the user, and
+  don't poll: Tower messages you when the claim ends.
   Only re-send with `force: true` if the human says so; the override is recorded.
+- **Changing a symbol's signature?** Set `declares` on it to the new declaration, written
+  as it will read in the source up to the body. Agents reading it get the contract and can
+  build against it in parallel; on `complete_claim` they're told whether it landed as
+  declared.
 - **Before starting research on anything substantial, call `propose_intent`** with a plain
   English description. It catches someone already doing the same work even when you'd have
   picked a different filename — the check that fires before the tokens are spent.

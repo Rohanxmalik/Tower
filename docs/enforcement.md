@@ -33,7 +33,8 @@ and it enforces against your **team's** hosted Tower ([team.md](./team.md)). Esc
 For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 
 > Before editing any file, call the `claim_intent` tool on the `tower` MCP server with the
-> files and symbols you'll change. If a `hard` conflict returns, stop and ask the user.
+> files and symbols you'll change. If a `hard` conflict returns, stop and ask the user;
+> the response's `alternatives` says what is safe to work on meanwhile.
 
 ## Layer 2: the Claude Code PreToolUse hook
 
@@ -59,7 +60,7 @@ For Cursor/Codex, also add to your rules file (`.cursor/rules/` or `AGENTS.md`):
 
 `hooks/pretooluse-tower.mjs` runs before every `Edit` / `Write` / `MultiEdit`:
 
-1. It calls `tower guard` for the target file.
+1. It works out which function the edit lands in and calls `tower guard` for it.
 2. If another active agent holds a **hard**-conflicting claim → the hook exits `2`,
    Claude Code **blocks the edit**, and the reason (who / what / ETA) is fed back to Claude.
 3. Otherwise it registers a claim for this agent and lets the edit through.
@@ -71,12 +72,12 @@ session, and it prints that coordination was not enforced so you can tell the di
 
 `init --hooks` also installs, all silent on the happy path:
 
-| Hook               | Job                                                                                           |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `SessionStart`     | registers the session, so the board shows you without waiting for a heartbeat                 |
-| `UserPromptSubmit` | prints "N tasks waiting" only when a teammate actually delegated something                    |
-| `PostToolUse`      | refreshes presence, and on `Read` records what you read so a claim knows what it was built on |
-| `SessionEnd`       | releases your claims, so a closed editor stops blocking teammates                             |
+| Hook               | Job                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| `SessionStart`     | registers the session, so the board shows you without waiting for a heartbeat                |
+| `UserPromptSubmit` | prints "N tasks waiting" only when a teammate actually delegated something                   |
+| `PostToolUse`      | refreshes presence; on `Read`, records what you read and warns you if someone is changing it |
+| `SessionEnd`       | releases your claims, so a closed editor stops blocking teammates                            |
 
 Silence is what makes this affordable: a hook that exits without printing adds **zero
 tokens**, so per-edit checking is free across a whole session.
@@ -112,8 +113,13 @@ get blocked when it reaches for a file the first is editing.
 - **Cross-developer enforcement**: set `TOWER_URL` (and `TOWER_TOKEN`) and the hook blocks
   based on _teammates'_ claims on a shared hosted Tower — see [team.md](./team.md). Repo
   identity is taken from the git `origin` remote so it matches across everyone's clones.
-- Granularity is **file-level** in the hook (PreToolUse can't know which symbol you'll
-  touch yet). Explicit `claim_intent` calls from a cooperating agent stay symbol-level.
+- Granularity is the **function** an edit lands in, found by locating the edit's
+  `old_string` in the parsed file. A `Write`, a new file, or an edit between declarations
+  falls back to the whole file — over-claiming is safe, under-claiming is not.
+- The verdict is the **exit code**, so the hooks never call `process.exit()` directly.
+  Before 0.12.0 they did, and on Windows that aborted in libuv while tree-sitter's
+  WebAssembly was still compiling: the hook exited `127` instead of `2`, and Claude Code
+  let the edit through.
 - Claims are compared across **all branches** in a repository. Same branch and same symbol
   is `hard`; another branch is `soft`, because the two still converge into one merge.
 - A repository is identified by its **root commit sha**, so forks and clones of one

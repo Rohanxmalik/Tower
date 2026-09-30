@@ -306,7 +306,7 @@
             <a class="btn btn-primary" href="https://github.com/Rohanxmalik/Tower">★ Star on GitHub · <span data-stars>—</span></a>
             <a class="btn" href="#install">30-second setup</a>
           </div>
-          <div class="trust">MIT · 430+ tests · 20 MCP tools · zero native deps · Node 22.13+</div>
+          <div class="trust">MIT · 520+ tests · 20 MCP tools · zero native deps · Node 22.13+</div>
         </div>
 
         <div class="console hero-anim" aria-hidden="true">
@@ -451,16 +451,17 @@
         <div class="grid">
           <div class="card star"><div class="tag">delegate</div><h3>Cross-machine tasks</h3><p>Your agent hands work to a teammate's agent — it runs on their machine and account, commits on a branch, opens a PR, and reports back the sha. First-accept-wins, so a broadcast runs exactly once.</p></div>
           <div class="card star"><div class="tag">spend</div><h3>Duplicate work, caught early</h3><p>An agent states its plan in one line before researching. Tower matches it against what everyone else is doing — by meaning, not filename — and says stand down if the work already exists.</p></div>
+          <div class="card star"><div class="tag">nobody waits</div><h3>A conflict is a detour, not a stop</h3><p>A refused claim says what's still safe — everything outside what the holder has, plus code Tower has seen written against it, inferred from what agents read. The refused agent is messaged the moment the claim ends. And an agent changing a signature can <em>declare</em> the new one, so callers build against it in parallel.</p></div>
           <div class="card star"><div class="tag">collisions</div><h3>Semantic pre-flight</h3><p>Overlap detection from tree-sitter ASTs (TS/JS/Python), so the second agent is held <em>before</em> the keystroke — not found at merge, after both burned tokens.</p></div>
           <div class="card"><div class="tag">rules</div><h3>Team rules on every task</h3><p>Pin standing orders ("always write tests") from the board; they're prepended to every delegated prompt. Editable from the board, no git commit, no redeploy.</p></div>
           <div class="card"><div class="tag">worker</div><h3>The <span class="mono">tower work</span> daemon</h3><p>Turn any machine into a task worker — headless <span class="mono">claude -p</span> / <span class="mono">codex exec</span> / custom runner, branch-per-task, auto-PR, per-task confirm or fully unattended, with rate-limit-aware backoff and a <span class="mono">--budget</span> cap.</p></div>
-          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason fed back to the agent. It claims at file granularity (PreToolUse can't know your symbol yet). A universal git pre-commit guard covers every other editor.</p></div>
+          <div class="card"><div class="tag">enforced</div><h3>It actually blocks</h3><p>A Claude Code PreToolUse hook turns "please coordinate" into an actual block: a hard-conflicting Edit/Write exits 2 and never runs, with the reason fed back to the agent. It claims the function the edit lands in, so two agents in one file don't block each other. A universal git pre-commit guard covers every other editor.</p></div>
           <div class="card"><div class="tag">live</div><h3>Board + command Map</h3><p>Every hosted Tower ships <span class="mono">/board</span>: the delegation tree, who's editing what, collisions flashing red, and a Map tab showing who directs which agent — tap any node to command it.</p></div>
           <div class="card"><div class="tag">agnostic</div><h3>Any agent, any model</h3><p>It's an MCP server — Claude Code, Cursor, Codex, and anything that speaks MCP work today. Coordination is only useful if the other vendor's agent is in the room.</p></div>
           <div class="card"><div class="tag">ci</div><h3>PR collision reports</h3><p>A zero-dependency GitHub Action comments when two open PRs touch overlapping lines, and shows which files an agent is editing right now. One workflow file, no server needed.</p></div>
           <div class="card"><div class="tag">memory</div><h3>Decisions, remembered</h3><p>Log architecture decisions and the <em>why</em>; agents recall them before acting, so nobody re-litigates a settled call. The same store powers team-wide pinned rules.</p></div>
           <div class="card"><div class="tag">sequencer</div><h3>Safe parallel order</h3><p>Declare module dependencies once; <span class="mono">next_task</span> hands each agent work whose dependencies aren't mid-change. Fewer conflicts by construction.</p></div>
-          <div class="card"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> boots a live board seeded with a real hard collision and a completed delegation — 30 seconds, nothing written to disk. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
+          <div class="card" style="grid-column: 1 / -1"><div class="tag">zero-setup</div><h3><span class="mono">demo</span> &amp; <span class="mono">doctor</span></h3><p><span class="mono">npx tower-mcp demo</span> boots a live board seeded with a real hard collision and a completed delegation — 30 seconds, nothing written to disk. <span class="mono">tower doctor</span> checks Node, git, runners, and your server in one command. No native deps — <span class="mono">node:sqlite</span>, nothing to compile.</p></div>
         </div>
       </div>
     </section>
@@ -527,7 +528,9 @@
             </p>
             <p class="lead-p">
               Same symbol → <b>hard</b>, and the claim is <b>refused</b>: no claim is written
-              and you get <span class="mono">recommendation: "stand_down"</span>. Same file,
+              and you get <span class="mono">recommendation: "stand_down"</span> — plus
+              <span class="mono">alternatives</span>: what's still safe to work on, and a
+              message from Tower the moment it frees up. Same file,
               different symbols, or another branch → <b>soft</b>: you're told, you proceed.
               <span class="mono">force: true</span> overrides, and the override is recorded.
             </p>

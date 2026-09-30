@@ -36,7 +36,7 @@ agent → send_message (task)      ─────────►   agent claims
 
 ![Tower live board — a delegated task, a reply, and a prevented collision](docs/board.png)
 
-> Status: **v0.11.1 — early, building in public.** Everything below works end-to-end today,
+> Status: **v0.12.0 — early, building in public.** Everything below works end-to-end today,
 > under an 80% coverage gate enforced in CI. What's shipped and what's next:
 > [CHANGELOG.md](./CHANGELOG.md) · design doc: [MVP-SPEC.md](./MVP-SPEC.md).
 
@@ -51,14 +51,14 @@ construction — coordination only matters if the _other_ vendor's agent is in t
 
 ## The six words you need
 
-| Word            | What it means here                                                                                                                                             |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **MCP**         | the standard way agents call external tools. Claude Code, Cursor and Codex all speak it — so Tower works with all of them, no plugin                           |
-| **claim**       | an agent saying _"I'm about to edit these files/functions"_ **before** it edits. The core move                                                                 |
-| **symbol**      | a named function, class or method — so two agents editing _different_ functions in one file aren't treated as colliding                                        |
-| **hard / soft** | `hard` = same symbol → the claim is **refused** (pass `force` to override). `soft` = same file different symbols, or another branch → you're told, you proceed |
-| **board**       | a web page showing every agent's active claims, tasks and messages                                                                                             |
-| **worker**      | `tower work` — a daemon on a machine that picks up delegated tasks and runs a coding agent headlessly                                                          |
+| Word            | What it means here                                                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MCP**         | the standard way agents call external tools. Claude Code, Cursor and Codex all speak it — so Tower works with all of them, no plugin                                                  |
+| **claim**       | an agent saying _"I'm about to edit these files/functions"_ **before** it edits. The core move                                                                                        |
+| **symbol**      | a named function, class or method — so two agents editing _different_ functions in one file aren't treated as colliding                                                               |
+| **hard / soft** | `hard` = same symbol → the claim is **refused**, with what to work on instead (`force` overrides). `soft` = same file different symbols, or another branch → you're told, you proceed |
+| **board**       | a web page showing every agent's active claims, tasks and messages                                                                                                                    |
+| **worker**      | `tower work` — a daemon on a machine that picks up delegated tasks and runs a coding agent headlessly                                                                                 |
 
 Claims expire on their own (15-minute TTL, refreshed by heartbeats), so a crashed agent
 never locks a file forever — and a **live** agent's claims are extended automatically, so
@@ -103,7 +103,7 @@ npm run demo    # after: git clone … && npm install
 ⛔ COLLISION — AuthService.verify
    Agent "cursor-bob" is mid-change (started 2s ago, ETA ~6m, purpose: replace JWT).
    Options:
-     [w] wait      — retry in a few minutes; their claim expires without heartbeats
+     [w] wait      — no need to retry: Tower messages you when their claim ends
      [d] dependent — run: tower next-task  (a module that's safe to start now)
      [b] branch    — build on their WIP instead of racing them
      [f] force     — re-run guard with --force; you own the merge risk
@@ -129,7 +129,9 @@ didn't configure:
 npx -y tower-mcp setup
 ```
 
-Reload your editor — done. Joining a team server instead?
+Reload your editor — done. Add `--keep-going` and the rule it writes tells agents to
+**route around a conflict** rather than stop and ask you (see [Nobody waits](#nobody-waits)).
+Joining a team server instead?
 
 ```bash
 npx -y tower-mcp setup --url https://tower-xxxx.onrender.com/mcp --token <team-secret> --hooks
@@ -170,7 +172,8 @@ node packages/cli/dist/index.js serve
 Then add to your agent's rules file:
 
 > "Before editing any file, call `claim_intent` with the files and symbols you'll change.
-> If a `hard` conflict returns, stop and ask the user."
+> If a `hard` conflict returns, stop and ask the user; the response's `alternatives` says
+> what is safe to work on meanwhile."
 
 Full setup → [docs/quickstart.md](./docs/quickstart.md).
 
@@ -291,6 +294,51 @@ your agent already makes every 60 seconds.
 Honest limits: a behavioural change under an identical signature is invisible, which is
 the trade that keeps false positives near zero. See [docs/protocol.md](docs/protocol.md).
 
+## Nobody waits
+
+A refusal used to be a full stop: `stand_down`, and a rule telling the agent to ask you.
+One conflict parked an agent until a human noticed. As of 0.12.0 a conflict is a
+**detour**:
+
+**The refusal says what's still safe.** It carries `alternatives` — what to stay out of,
+and one line of advice:
+
+```
+(claim REFUSED — another agent holds this. Re-run with --force to override.)
+What to do instead:
+  Held by bob (~10 min). Don't wait: work on anything outside the 2 symbols in
+  `avoid`. Tower will message you when it frees up — no need to retry.
+  Avoid for now: AuthService.verify() (src/auth.ts), charge() (src/payments.ts)
+```
+
+`charge` is in there because Tower **inferred** it: an earlier claim wrote `charge`
+having read `verify`, so `charge` depends on it. No dependency map to write — it comes
+from what agents actually read.
+
+**Nobody polls.** The moment bob's claim completes, is released or expires, the agent
+that was refused gets a message from `tower` saying what freed up.
+
+**You find out when you read, not when you edit.** Open a file someone is changing and
+the `PostToolUse` hook tells your agent right then — before it plans anything on top of
+code that's about to move.
+
+**Dependent work runs in parallel — contract-first.** If alice is changing a signature,
+she says what it will become:
+
+```
+claim_intent  symbols: [{ symbol: "AuthService.verify",
+                          declares: "verify(token: string, opts: Opts): boolean" }]
+```
+
+Bob, writing a caller, is handed that contract — not just a warning that `verify` is
+moving — and codes against it now instead of waiting for alice to land. When alice completes, Tower checks what actually landed and tells bob whether it
+matches what she declared — so if the plan changed, he hears it from Tower, not from CI.
+
+**Let agents keep going on their own.** `tower setup --keep-going` writes a rule that
+says: on a conflict, work outside `avoid` and only ask the human if nothing safe is left.
+The default rule still says stop and ask — waiting on a person is the conservative
+choice, and it stays the default.
+
 ## What actually collides
 
 ```
@@ -309,22 +357,22 @@ one, so nobody could say which kind actually happens.
 
 ## The 20 tools
 
-| Tool                                           | Purpose                                                                       |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)                  |
-| `check_collision`                              | Dry-run collision check, no claim persisted                                   |
-| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                                   |
-| `complete_claim` / `release_claim`             | Free a claim on commit / abandon                                              |
-| `list_claims`                                  | Live claim state                                                              |
-| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                           |
-| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                       |
-| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents        |
-| `pending`                                      | Read-only count of unread messages + open tasks waiting for you (the nudge)   |
-| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR             |
-| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone          |
-| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks           |
-| `propose_intent`                               | **Before you research:** say what you plan to do; catches duplicate work      |
-| `record_reads`                                 | What you just read, so a claim knows what it was built on (the hook calls it) |
+| Tool                                           | Purpose                                                                     |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `claim_intent`                                 | Register intent **and** get collisions in one call (primary)                |
+| `check_collision`                              | Dry-run collision check, no claim persisted                                 |
+| `heartbeat`                                    | Keep a claim alive (auto-expires otherwise)                                 |
+| `complete_claim` / `release_claim`             | Free a claim on commit / abandon; waiting agents are told it's free         |
+| `list_claims`                                  | Live claim state                                                            |
+| `log_decision` / `get_decisions`               | Shared architecture-decision memory                                         |
+| `next_task`                                    | Rule-based sequencer: a module that's safe to start now                     |
+| `send_message` / `fetch_messages`              | The agent channel: async messages + **task delegation** between agents      |
+| `pending`                                      | Read-only count of unread messages + open tasks waiting for you (the nudge) |
+| `accept_task` / `complete_task` / `list_tasks` | Task lifecycle: first-accept-wins assignment, results with sha/PR           |
+| `request_approval` / `resolve_approval`        | Human-in-the-loop gate: park a task, approve it from the board/phone        |
+| `heartbeat_worker`                             | Live presence — a worker announces it's online & ready to run tasks         |
+| `propose_intent`                               | **Before you research:** say what you plan to do; catches duplicate work    |
+| `record_reads`                                 | What you just read — and who is changing it right now (the hook calls it)   |
 
 Wire contract → [docs/protocol.md](./docs/protocol.md).
 
@@ -362,13 +410,11 @@ layers** — stack them:
    cp examples/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
    ```
 
-**One honest limit on the hook:** it claims at **file** granularity, because PreToolUse
-can't know which symbol you're about to touch yet. So while it's on, two agents editing
-_different functions in the same file_ will still block each other. Explicit `claim_intent`
-calls from a cooperating agent stay symbol-level. Full scope and limits →
+**How precise the hook is:** it locates each edit and claims the **function** it lands
+in, so two agents in different functions of one file don't block each other. A `Write`,
+a new file, or an edit between declarations (imports, top-level code) falls back to the
+whole file — over-claiming is safe, under-claiming is not. Full scope and limits →
 [docs/enforcement.md](./docs/enforcement.md).
-
-Details + scope → [docs/enforcement.md](./docs/enforcement.md).
 
 ## The live board
 

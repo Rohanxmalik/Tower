@@ -14,7 +14,9 @@ transport and MCP standardized agent-to-tool access.
 - **Conflict** — a detected overlap between an incoming intent and an active claim, with
   a severity. A `hard` conflict **refuses** the claim (`claimId: null`, `blocking: true`,
   `recommendation: "stand_down"`) unless the caller passes `force: true`, which is
-  recorded. `soft` never blocks.
+  recorded. `soft` never blocks. A refusal is not a dead end: it carries `alternatives`
+  (what is still safe to work on) and Tower messages the refused agent when the blocking
+  claim ends — see [Nobody waits](#nobody-waits--what-a-refusal-hands-you).
 - **repoId** — the repository's root commit sha (`git rev-list --max-parents=0 HEAD`),
   identical across every clone, fork and mirror. Claims partition on it, so a fork and its
   upstream coordinate. Omit it and the server falls back to the normalized remote URL.
@@ -48,6 +50,7 @@ against.
 | `soft`   | `write_write` | Proceed with care | Same file, different symbols (overlapping diffs likely)                 |
 | `hard`   | `write_read`  | Do not proceed    | A declaration in your `reads` **has already moved** — the `sig` differs |
 | `soft`   | `write_read`  | Proceed with care | Another agent holds a declaration you read, but it still matches        |
+| `soft`   | `write_read`  | Code against it   | The holder **declared** its new signature — `declaredSigText` has it    |
 | `info`   | —             | FYI               | Reserved; off by default                                                |
 
 ## Freshness — `reads`, `sig`, and why a write set is not enough
@@ -79,11 +82,64 @@ the module back into context:
 
 Everything here is optional. Send no `reads` and the behaviour is exactly as before.
 
-**Current limit, stated plainly:** detection runs when the _reader_ calls, against claims
-that are already open. An agent that claimed first is not retroactively notified when
-someone later moves a declaration it read — delivery on `heartbeat` is the next step.
-Behavioural changes under an identical signature are invisible by design; that is the
-trade that keeps false positives near zero.
+Detection runs at three moments, so neither side has to call first: when the reader
+**reads** (`record_reads` returns `conflicts`), when it **claims**, and on every
+**`heartbeat`** after it claimed, which reports anything that moved or was declared since.
+
+**Limit, stated plainly:** behavioural changes under an identical signature are
+invisible by design; that is the trade that keeps false positives near zero.
+
+## Nobody waits — what a refusal hands you
+
+A `hard` conflict used to end in `stand_down` and nothing else, so one conflict parked an
+agent until a human noticed. Since 0.12.0 each of the four places an agent could stall
+has an answer on the wire. All of it is additive: a client that ignores these fields
+behaves exactly as before.
+
+**1. A refusal says what to do instead.** A refused `claim_intent` carries
+`alternatives`:
+
+| Field             | Meaning                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `avoid`           | Stay out of these for now — everything the blocking claims hold, plus code **inferred** to depend on it (below). Anything else is free. |
+| `nextTask`        | A module the sequencer says is safe to start, when `.tower/policy.yaml` defines modules; otherwise `null`.                              |
+| `notifyOnRelease` | `true` — Tower will message you when the block ends.                                                                                    |
+| `advice`          | One line the agent can act on without parsing the rest.                                                                                 |
+
+**Dependencies are inferred, not configured.** Tower already records what each claim
+read. If a claim wrote `checkout` having read `verify`, then `checkout` depends on
+`verify` — so while `verify` is held, `checkout` lands in `avoid` too. One hop, over the
+last seven days of claims, capped at 50 entries. No `policy.yaml` needed.
+
+**2. The refused agent is told when it is free.** Refusal registers the agent as a
+waiter on each blocking claim. When that claim is completed, released or expires, Tower
+sends it a message from `tower` naming what freed up. No retry loop.
+
+**3. You are warned when you read, not when you edit.** `record_reads` returns
+`conflicts`: anyone currently changing what you just read. That is the cheapest moment to
+find out — before any plan has been built on it. The `PostToolUse` hook delivers this to
+Claude Code as `additionalContext` on every `Read`.
+
+**4. Contract-first: declare the signature before you write it.** A `SymbolRef` you
+claim may carry **`declares`** — the declaration it _will_ have once your change lands:
+
+```
+claim_intent  symbols: [{ file: "src/auth.ts", symbol: "AuthService.verify",
+                          declares: "verify(token: string, opts: Opts): boolean" }]
+```
+
+Write it as it will read in the source, up to the body — `verify(…)` for a method,
+`function charge(…)` for a function. `export`, whitespace and a trailing comma are
+ignored. Anyone whose work reads `AuthService.verify` gets a `soft` `write_read` conflict with
+`declaredSigText` set, and codes against the new contract in parallel instead of waiting
+for yours to land. A declared contract is never `hard`; a reader whose `sig` already
+matches the declaration is not warned at all.
+
+`complete_claim` takes the claimed **`symbols`** as they stand after the change (the
+`tower complete` CLI and post-commit hook fill them from the working tree). Where a
+declaration moved — or was declared — every agent whose work read it is messaged the
+landed signature and told whether it **matches what was declared**. The response
+reports how many: `{ ok, notified }`.
 
 ## Tools
 
@@ -95,7 +151,7 @@ All twenty tools take and return JSON validated by the schemas in
 | `claim_intent`     | Register intent **and** get collisions in one call. The primary tool. |
 | `check_collision`  | Dry-run collision check without persisting a claim.                   |
 | `heartbeat`        | Extend a claim's TTL; unheartbeated claims auto-expire.               |
-| `complete_claim`   | Release a claim on commit (optionally record the sha).                |
+| `complete_claim`   | Release a claim on commit; tells readers what their contract became.  |
 | `release_claim`    | Abandon a claim without committing.                                   |
 | `list_claims`      | List claims by repo/branch/status.                                    |
 | `log_decision`     | Record a decision + why.                                              |
@@ -110,13 +166,14 @@ All twenty tools take and return JSON validated by the schemas in
 | `request_approval` | Park a task for human approval (worker remote-approve mode).          |
 | `resolve_approval` | Approve or reject a parked task (the board / a phone taps this).      |
 | `heartbeat_worker` | A worker announces it's online & ready (drives live presence).        |
-| `record_reads`     | Record declarations an agent read, so its next claim carries them.    |
+| `propose_intent`   | Before researching: catch another agent already doing the same work.  |
+| `record_reads`     | Record what an agent read; returns anyone changing it right now.      |
 
 ### The agent loop
 
 ```
 1. Before editing            → claim_intent { agentId, repo, branch, files, symbols, purpose }
-2. If a "hard" conflict      → stop, surface options to the user
+2. If a "hard" conflict      → work outside alternatives.avoid; Tower messages you when free
 3. If unreadMessages > 0     → fetch_messages { agentId }; act on tasks, reply with task_update
 4. While editing (~60s)      → heartbeat { claimId }
 5. On commit (git hook)      → complete_claim { claimId, commitSha }

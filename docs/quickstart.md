@@ -73,6 +73,21 @@ headlessly, and PRs the result → [worker.md](./worker.md).
 - PR collision reports in CI → [action.md](./action.md)
 - The wire contract (all 20 tools) → [protocol.md](./protocol.md)
 
+## What changed in 0.12.0 — nobody waits
+
+- A **refused claim says what to do instead**: `alternatives.avoid` lists what the holder
+  has plus code inferred to depend on it (from recorded reads — no policy file), with one
+  line of advice and a sequencer task when you have modules defined.
+- **The refused agent is messaged when the claim ends** — completed, released or expired.
+- **Warned at read time**: `record_reads` (and the `PostToolUse` hook on every `Read`)
+  reports anyone currently changing what you just read.
+- **Contract-first**: set `declares` on a symbol you claim to the signature it will have.
+  Callers get it immediately and build in parallel; on completion Tower tells them whether
+  what landed matches.
+- `tower setup --keep-going` writes a rule that routes around conflicts instead of stopping.
+- The hooks' exit codes now survive on Windows — a blocked edit really is blocked.
+  **Re-run `npm run build` in your Tower clone** to pick up the hooks.
+
 ## What changed in 0.9.0
 
 - A **hard conflict is refused**, not just reported. Nothing is registered until the clash

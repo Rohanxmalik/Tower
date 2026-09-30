@@ -36,7 +36,9 @@ npx -y tower-mcp setup
 
 That writes the `tower` entry into `.mcp.json`, appends the claim-first rule to `CLAUDE.md`
 (and `AGENTS.md` if you have one), and adds `.tower/` to your `.gitignore`. With `--hooks`
-it also installs the git pre-commit and post-commit guards. Then reload your editor.
+it also installs the git pre-commit and post-commit guards. With `--keep-going` the rule
+tells agents to route around a conflict instead of stopping to ask you. Then reload your
+editor.
 
 Using Claude Code? `npx -y tower-mcp init --hooks` wires five hooks into
 `.claude/settings.json` — one blocks an edit that conflicts, the others keep the board
@@ -75,6 +77,13 @@ npx -y tower-mcp setup --url https://your-tower.onrender.com/mcp --token <team-s
   delta — `was: verify(token)` / `now: verify(token, opts)` — so the agent patches its
   call sites without re-reading the file. The fingerprint covers the declaration and never
   the body, so a reformat or a rewritten implementation moves nothing.
+- **Nobody waits.** A refused claim says what is still safe to work on — everything
+  outside what the holder has, plus the code Tower has seen written against it, inferred
+  from what agents read (no dependency map to maintain). The refused agent is messaged
+  the moment the claim ends, so nothing polls. You are warned when you _read_ code someone
+  is changing, not when you finally edit it. And an agent changing a signature can
+  **declare** the new one up front, so callers build against it in parallel — Tower tells
+  them on completion whether what landed matches what was declared.
 - **One repo means one coordination space.** Claims are keyed on the repository's root
   commit, which every clone, fork and mirror shares — so a fork and its upstream coordinate,
   and `git@github.com:acme/app.git` and `https://github.com/Acme/App` are the same place.

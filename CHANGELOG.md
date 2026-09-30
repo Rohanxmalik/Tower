@@ -3,6 +3,65 @@
 All notable changes to `tower-mcp`. Follows [Keep a Changelog](https://keepachangelog.com);
 versions are [semver](https://semver.org) (0.x — expect movement).
 
+## 0.12.0 - 2026-10-01
+
+**Nobody waits.** Before this release a `hard` conflict ended in `stand_down` and
+nothing else, and the rule `tower setup` writes said "stop and ask the user" — so a single
+conflict parked an agent until a human noticed. Each of the four places an agent could
+stall now has an answer on the wire. All of it is additive and optional: a client that
+ignores the new fields behaves exactly as on 0.11. Still 20 tools.
+
+### Added
+
+- **A refusal says what to do instead.** A refused `claim_intent` carries
+  `alternatives`: `avoid` (what the blocking claims hold, plus code inferred to depend on
+  it), `nextTask` (a sequencer task, when `.tower/policy.yaml` defines modules),
+  `notifyOnRelease`, and one line of `advice`. `tower claim` prints it under the refusal.
+- **Dependencies inferred from reads, not configured.** A claim that wrote `checkout`
+  having read `verify` is evidence that `checkout` depends on `verify`, so while `verify`
+  is held `checkout` is in `avoid` too. One hop, the last seven days of claims, capped at
+  50 — no `policy.yaml` required.
+- **The refused agent is messaged when the block ends.** Refusal registers a waiter on
+  each blocking claim; completion, release or expiry sends it a message from `tower`
+  naming what freed up. No retry loop.
+- **Warned at read time.** `record_reads` returns `conflicts` — anyone changing what you
+  just read — and takes an optional `branch`, so work on another branch warns `soft`. The
+  `PostToolUse` hook delivers this to Claude Code as `additionalContext` on every `Read`
+  (plain stdout from that hook never reaches the agent).
+- **Contract-first: `declares`.** A `SymbolRef` you claim may carry the declaration it
+  will have once your change lands. Readers get a `soft` `write_read` with
+  `declaredSigText` and build against it in parallel; a declared contract is never `hard`,
+  and a reader already on it is not warned. `heartbeat` delivers a declaration to readers
+  that claimed first.
+- **`complete_claim` reports the contract that landed.** It takes the claimed `symbols`
+  as they stand after the change (`tower complete` and the post-commit hook fill them
+  from the working tree). Every agent that read a declaration which moved — or was
+  declared — is messaged the landed signature and whether it matches the declaration. The
+  output is now `{ ok, notified }`.
+- `tower setup --keep-going` writes a rule that routes around a conflict instead of
+  stopping: work outside `avoid`, and ask the human only when nothing safe is left. The
+  default rule still says stop and ask.
+
+### Fixed
+
+- **On Windows, a blocked edit was not blocked.** The hooks ended with `process.exit()`,
+  which aborts in libuv (`!(handle->flags & UV_HANDLE_CLOSING)`) while V8 is still
+  compiling tree-sitter's WebAssembly in the background. The PreToolUse hook printed its
+  refusal and exited `127` instead of `2`, which Claude Code treats as a non-blocking
+  error — so the edit went ahead. The same crash discarded every `PostToolUse` context.
+  The hooks now set `process.exitCode` and let the process end, with an unref'd timer as
+  a backstop; measured 0/10 correct exit codes before and 10/10 after. **Re-run
+  `npm run build` in your Tower clone** — the hooks run from there, not from npm.
+- `cmdRecordReads` did not fall back to deriving `repoId` the way `cmdClaim` does, so a
+  caller that omitted it recorded reads in a different partition from its own claims. The
+  shipped hook always passed one; this closes the gap for every other caller.
+- A `declares` written with a leading `export` fingerprints the same as the parsed
+  declaration, which never includes it.
+- `[w] wait` in the collision prompt said "retry in a few minutes"; Tower now messages you.
+- Docs: the protocol tool table omitted `propose_intent`, the README and site still said
+  the hook claims at file granularity (it has claimed the enclosing function since
+  0.10), and the protocol's "current limit" described heartbeat delivery as unshipped.
+
 ## 0.11.1 - 2026-09-30
 
 **Listed on the official MCP Registry.** The registry is upstream of the directory

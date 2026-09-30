@@ -18,5 +18,5 @@ inputs:
     description: "Optional: TOWER_TOKEN for the hosted Tower."
     required: false
 runs:
-  using: "node20"
+  using: "node24"
   main: "main.mjs"
